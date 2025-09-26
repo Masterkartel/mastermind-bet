@@ -249,57 +249,145 @@ body{font-family:system-ui,Arial,sans-serif;padding:16px}.card{width:380px;borde
 </div><script>window.print()</script></body></html>`);
 });
 
-// POS PAGE (kept simple; you can keep using)
+// Simple Cashier POS page (dark, responsive). Manual place supports odds + product tab.
 app.get('/pos', (_req, res) => {
-  res.type('html').send(`<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+  res.set('Content-Type','text/html');
+  res.send(`<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Mastermind Cashier</title>
 <style>
-:root{--bg:#0b1220;--panel:#0f172a;--muted:#94a3b8;--text:#e2e8f0;--brand:#f59e0b;--line:#1f2937}
-*{box-sizing:border-box}body{font-family:system-ui,Arial;background:var(--bg);color:var(--text);margin:0}
-.wrap{max-width:1200px;margin:0 auto;padding:16px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin:12px 0}
-.grid{display:grid;gap:12px}.grid.cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}@media(max-width:900px){.grid.cols-4{grid-template-columns:repeat(2,1fr)}}@media(max-width:560px){.grid.cols-4{grid-template-columns:1fr}}
-input,button{padding:10px 12px;border-radius:10px;border:1px solid #243044;background:#0b1528;color:var(--text)}.btn{background:var(--brand);color:#111;border:none;cursor:pointer;font-weight:700}
-.tabs{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}.tab{padding:8px 12px;border-radius:9999px;border:1px solid #334155;background:#0b1528;cursor:pointer}.tab.active{background:#ef4444;border-color:#ef4444}
-.badge{padding:4px 8px;border-radius:9999px;background:#1f2937}.muted{color:var(--muted)}table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid #223048;padding:8px;text-align:left;font-size:14px}
-</style></head>
-<body><div class="wrap">
-  <h2>Cashier Dashboard</h2>
-  <div class="panel"><input id="key" placeholder="x-cashier-key" style="width:260px"/></div>
-  <div class="grid cols-4">
-    <div class="panel"><div class="muted">Float Balance</div><div id="float">KES 0</div></div>
-    <div class="panel"><div class="muted">Today Stake</div><div id="tStake">KES 0</div></div>
-    <div class="panel"><div class="muted">Today Payouts</div><div id="tPay">KES 0</div></div>
-    <div class="panel"><div class="muted">Pending / Won / Lost</div><div id="stats">0 / 0 / 0</div></div>
-  </div>
-  <div class="panel">
-    <div class="muted">Limits</div><div>Min 20 • Max 1000 • Max Payout 20000</div>
-  </div>
-  <div class="panel">
-    <div class="tabs" id="tabs">
-      <button class="tab active" data-product="FOOTBALL">Football</button>
-      <button class="tab" data-product="COLOR">Color</button>
-      <button class="tab" data-product="DOGS">Dogs</button>
-      <button class="tab" data-product="HORSES">Horses</button>
+  :root{
+    --bg:#0b1220; --panel:#0f172a; --muted:#94a3b8; --text:#e2e8f0; --brand:#f59e0b; --accent:#1f2937;
+    --ok:#16a34a; --warn:#f59e0b; --bad:#dc2626;
+  }
+  *{box-sizing:border-box}
+  body{font-family:system-ui,Arial;background:var(--bg);color:var(--text);margin:0}
+  .wrap{max-width:1200px;margin:0 auto;padding:16px}
+  .panel{background:var(--panel);border:1px solid #1f2937;border-radius:12px;padding:12px;margin:12px 0}
+  .grid{display:grid;gap:12px}
+  .grid.cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+  @media (max-width:900px){.grid.cols-4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media (max-width:560px){.grid.cols-4{grid-template-columns:1fr}}
+  input,button,select{padding:10px 12px;border-radius:10px;border:1px solid #243044;background:#0b1528;color:var(--text)}
+  .btn{background:var(--brand);color:#111;border:none;cursor:pointer;font-weight:700}
+  .muted{color:var(--muted)}
+  table{width:100%;border-collapse:collapse}
+  th,td{border-bottom:1px solid #223048;padding:8px;text-align:left;font-size:14px}
+  .tabs{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+  .tab{padding:8px 12px;border-radius:9999px;border:1px solid #334155;background:#0b1528;cursor:pointer}
+  .tab.active{background:#ef4444;border-color:#ef4444}
+  .badge{padding:4px 8px;border-radius:9999px;background:#1f2937}
+  .tiny{font-size:12px}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h2>Cashier Dashboard</h2>
+    <div class="panel">
+      <input id="key" placeholder="x-cashier-key" style="width:260px"/>
     </div>
-    <div class="muted" style="margin:6px 0">Manual single (stake + odds). Use tabs to set the product.</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <input id="stake" type="number" placeholder="Stake KES (min 20, max 1000)"/><input id="odds" type="number" step="0.01" placeholder="Odds (e.g. 2.10)"/>
-      <button class="btn" onclick="placeBet()">Place Manual</button>
+
+    <div class="grid cols-4">
+      <div class="panel"><div class="muted tiny">Float Balance</div><div id="float">KES 0</div></div>
+      <div class="panel"><div class="muted tiny">Today Stake</div><div id="tStake">KES 0</div></div>
+      <div class="panel"><div class="muted tiny">Today Payouts</div><div id="tPay">KES 0</div></div>
+      <div class="panel"><div class="muted tiny">Pending / Won / Lost</div><div id="stats">0 / 0 / 0</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="muted tiny">Limits</div>
+      <div>Min 20 - Max 1000 • Max Payout 20000</div>
+    </div>
+
+    <div class="panel">
+      <div class="tabs" id="tabs">
+        <button class="tab active" data-product="FOOTBALL">Football</button>
+        <button class="tab" data-product="COLOR">Color</button>
+        <button class="tab" data-product="DOGS">Dogs</button>
+        <button class="tab" data-product="HORSES">Horses</button>
+      </div>
+
+      <div class="muted tiny" style="margin:6px 0">Manual single (stake + odds). Use tabs to set the product.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input id="stake" type="number" placeholder="Stake KES (min 20, max 1000)" />
+        <input id="odds" type="number" step="0.01" placeholder="Odds (e.g. 2.10)" />
+        <button class="btn" onclick="placeBet()">Place Manual</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <strong>Recent Tickets</strong>
+        <button class="btn" onclick="loadTickets()">Refresh</button>
+      </div>
+      <table id="t">
+        <thead>
+          <tr>
+            <th>UID</th><th>Stake</th><th>Odds</th><th>Product</th><th>Pick</th><th>Status</th><th>Print</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
     </div>
   </div>
-  <div class="panel">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><strong>Recent Tickets</strong><button class="btn" onclick="loadTickets()">Refresh</button></div>
-    <table id="t"><thead><tr><th>UID</th><th>Stake</th><th>Odds</th><th>Product</th><th>Pick</th><th>Status</th><th>Print</th></tr></thead><tbody></tbody></table>
-  </div>
-</div>
+
 <script>
-let currentProduct='FOOTBALL'; document.querySelectorAll('#tabs .tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('#tabs .tab').forEach(x=>x.classList.remove('active')); b.classList.add('active'); currentProduct=b.dataset.product;});
+let currentProduct = 'FOOTBALL';
+document.querySelectorAll('#tabs .tab').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    document.querySelectorAll('#tabs .tab').forEach(function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    currentProduct = btn.dataset.product;
+  });
+});
+
 function fmtKES(c){ return 'KES ' + Math.round((c||0)/100); }
-async function placeBet(){ const key=document.getElementById('key').value.trim(); const stakeKES=parseInt(document.getElementById('stake').value||'0',10); const stake_cents=stakeKES*100; const odds=parseFloat(document.getElementById('odds').value||'2.00');
-  const res = await fetch('/bets/place',{method:'POST',headers:{'Content-Type':'application/json','x-cashier-key':key},body:JSON.stringify({stake_cents,odds,product:currentProduct})}); const data=await res.json(); alert(JSON.stringify(data,null,2)); loadTickets(); }
-async function loadTickets(){ const key=document.getElementById('key').value.trim(); const res=await fetch('/cashier/tickets',{headers:{'x-cashier-key':key}}); const rows=await res.json(); const tb=document.querySelector('#t tbody'); tb.innerHTML=''; (rows||[]).forEach(r=>{ const tr=document.createElement('tr');
-  tr.innerHTML = '<td>'+r.uid+'</td><td>'+fmtKES(r.stake_cents)+'</td><td>'+(r.odds?Number(r.odds).toFixed(2):'-')+'</td><td><span class="badge">'+(r.product||'-')+'</span></td><td>'+(r.pick_label||r.selection_code||'-')+'</td><td>'+r.status+'</td><td><a href="/tickets/'+r.uid+'/print" target="_blank">Print</a></td>'; tb.appendChild(tr); }); }
-</script></body></html>`);
+
+async function placeBet(){
+  const key = document.getElementById('key').value.trim();
+  const stakeKES = parseInt(document.getElementById('stake').value||'0',10);
+  const stake_cents = stakeKES*100;
+  const odds = parseFloat(document.getElementById('odds').value||'2.00');
+
+  const res = await fetch('/bets/place',{method:'POST',
+    headers:{'Content-Type':'application/json','x-cashier-key':key},
+    body: JSON.stringify({
+      stake_cents: stake_cents,
+      odds: odds,
+      product: currentProduct
+      // event_code/market_code/selection_code/pick_label can be sent later
+    })
+  });
+  const data = await res.json();
+  alert(JSON.stringify(data, null, 2));
+  loadTickets();
+}
+
+async function loadTickets(){
+  const key = document.getElementById('key').value.trim();
+  const res = await fetch('/cashier/tickets',{headers:{'x-cashier-key':key}});
+  const rows = await res.json();
+  const tb = document.querySelector('#t tbody');
+  tb.innerHTML = '';
+  (rows||[]).forEach(function(r){
+    const tr = document.createElement('tr');
+    tr.innerHTML = ` + String.raw\`
+      <td>\${r.uid}</td>
+      <td>\${fmtKES(r.stake_cents)}</td>
+      <td>\${r.odds ? Number(r.odds).toFixed(2) : '-'}</td>
+      <td><span class="badge">\${r.product||'-'}</span></td>
+      <td>\${r.pick_label||r.selection_code||'-'}</td>
+      <td>\${r.status}</td>
+      <td><a href="/tickets/\${r.uid}/print" target="_blank">Print</a></td>\` + `;
+    tb.appendChild(tr);
+  });
+}
+</script>
+</body>
+</html>`);
 });
 
 // ======= VIRTUAL SPORTS PAGE (matches your screenshots) =======
