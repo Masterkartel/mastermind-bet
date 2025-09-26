@@ -16,9 +16,21 @@ jobs:
         with:
           node-version: 'lts/*'
 
-      - name: Install deps locally (optional build step)
-        run: npm ci
+      # Optional local step; works even without package-lock.json
+      - name: Install deps locally (optional build)
+        run: npm install --no-audit --no-fund
 
+      # Make sure the folder exists on the Droplet
+      - name: Create app dir on server (if missing)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            mkdir -p /home/deploy/apps/mastermind-bet
+
+      # Sync repo to server via rsync (requires rsync installed server-side)
       - name: Upload files to server (rsync)
         uses: easingthemes/ssh-deploy@v4
         env:
@@ -29,7 +41,8 @@ jobs:
           REMOTE_USER: ${{ secrets.SSH_USER }}
           TARGET: "/home/deploy/apps/mastermind-bet"
 
-      - name: Install on server & restart with PM2
+      # Install on server & (re)start with PM2
+      - name: Install deps on server & restart
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -37,6 +50,6 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             cd /home/deploy/apps/mastermind-bet
-            npm ci --omit=dev
+            npm install --omit=dev --no-audit --no-fund
             pm2 start index.js --name mastermind-bet || pm2 reload mastermind-bet
             pm2 save
