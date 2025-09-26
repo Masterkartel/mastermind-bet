@@ -1,0 +1,117 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Virtual Sports</title>
+<style>
+body{margin:0;background:#0b1220;color:#e2e8f0;font-family:system-ui,Arial}
+header{display:flex;gap:10px;align-items:center;padding:10px 12px;background:#0f172a;border-bottom:1px solid #1f2937;position:sticky;top:0}
+.tab{padding:8px 12px;border-radius:9999px;background:#111827;border:1px solid #334155;cursor:pointer}
+.tab.active{background:#ef4444;border-color:#ef4444}
+.wrap{display:grid;grid-template-columns:1fr 320px;gap:12px;padding:12px}
+@media(max-width:1000px){.wrap{grid-template-columns:1fr}}
+.panel{background:#0f172a;border:1px solid #1f2937;border-radius:12px;padding:10px}
+.league-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.league{padding:6px 10px;border-radius:10px;background:#111827;border:1px solid #334155;cursor:pointer}
+.league.active{background:#1d4ed8;border-color:#1d4ed8}
+.tbl{width:100%;border-collapse:collapse}.tbl th,.tbl td{border-bottom:1px solid #223048;padding:6px 8px;font-size:14px}
+.btn-odd{display:inline-block;min-width:52px;text-align:center;background:#111827;border:1px solid #334155;border-radius:8px;padding:6px 8px;margin:2px;cursor:pointer}
+.btn-odd:hover{outline:2px solid #f59e0b}
+.right{position:sticky;top:56px;height:max-content}
+.key{width:100%;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0b1528;color:#e2e8f0}
+.tiny{font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <span class="tab active" data-prod="FOOTBALL">Football</span>
+  <span class="tab" data-prod="COLOR">Color</span>
+  <span class="tab" data-prod="DOGS">Dogs</span>
+  <span class="tab" data-prod="HORSES">Horses</span>
+  <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+    <span>Cashier key:</span><input id="key" class="key" placeholder="x-cashier-key" style="max-width:260px"/>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="panel"><div id="content"></div></div>
+  <div class="right">
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <strong>Fastbet</strong><button id="refresh" class="tab">Refresh</button>
+      </div>
+      <div id="tickets" class="tiny"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let PROD='FOOTBALL';
+document.querySelectorAll("header .tab").forEach(t=>t.onclick=()=>{
+  document.querySelectorAll("header .tab").forEach(x=>x.classList.remove("active"));
+  t.classList.add("active"); PROD=t.dataset.prod; render();
+});
+function fmt(t){ const s=Math.max(0,Math.floor((t-Date.now())/1000));
+  return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
+async function fetchJSON(u){ const r=await fetch(u); return r.json(); }
+function cellOdd(o,cb){ const a=document.createElement('span'); a.className='btn-odd'; a.textContent=o.toFixed?o.toFixed(2):o; a.onclick=cb; return a; }
+
+async function render(){
+  const box=document.getElementById('content'); box.innerHTML='';
+  if(PROD==='FOOTBALL'){
+    const st=await fetchJSON('/virtual/state'); const leagues=st.leagues||[];
+    const nav=document.createElement('div'); nav.className='league-tabs';
+    leagues.forEach((L,i)=>{
+      const b=document.createElement('span');
+      b.className='league'+(i===0?' active':''); b.dataset.code=L.code;
+      b.textContent=L.code+' • R'+L.round+' • '+fmt(L.endsAt);
+      b.onclick=()=>{ nav.querySelectorAll('.league').forEach(x=>x.classList.remove('active')); b.classList.add('active'); loadLeague(L.code); };
+      nav.appendChild(b);
+    });
+    box.appendChild(nav);
+    if(leagues[0]) loadLeague(leagues[0].code);
+
+    async function loadLeague(code){
+      const data=await fetchJSON('/virtual/league/'+code);
+      const t=document.createElement('table'); t.className='tbl';
+      t.innerHTML='<thead><tr><th>#</th><th>Match</th><th>1</th><th>X</th><th>2</th><th>GG</th><th>NG</th><th>OV 2.5</th><th>UN 2.5</th></tr></thead><tbody></tbody>';
+      const tb=t.querySelector('tbody');
+      (data.fixtures||[]).forEach(f=>{
+        const tr=document.createElement('tr'); const label=f.home+' vs '+f.away;
+        const m1=f.markets['1X2'], gg=f.markets['GG/NG'], ou=f.markets['1X2 OV/UN 2.5'];
+        tr.innerHTML='<td>'+f.id+'</td><td>'+label+'</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>';
+        tb.appendChild(tr);
+        const key=document.getElementById('key').value.trim();
+        tr.children[2].appendChild(cellOdd(m1['1'], ()=>place(label,'1X2','1',m1['1'],key,'FOOTBALL',data,f)));
+        tr.children[3].appendChild(cellOdd(m1['X'], ()=>place(label,'1X2','X',m1['X'],key,'FOOTBALL',data,f)));
+        tr.children[4].appendChild(cellOdd(m1['2'], ()=>place(label,'1X2','2',m1['2'],key,'FOOTBALL',data,f)));
+        tr.children[5].appendChild(cellOdd(gg['GG'], ()=>place(label,'GG/NG','GG',gg['GG'],key,'FOOTBALL',data,f)));
+        tr.children[6].appendChild(cellOdd(gg['NG'], ()=>place(label,'GG/NG','NG',gg['NG'],key,'FOOTBALL',data,f)));
+        tr.children[7].appendChild(cellOdd(ou['OV2.5'], ()=>place(label,'1X2 OV/UN 2.5','OV2.5',ou['OV2.5'],key,'FOOTBALL',data,f)));
+        tr.children[8].appendChild(cellOdd(ou['UN2.5'], ()=>place(label,'1X2 OV/UN 2.5','UN2.5',ou['UN2.5'],key,'FOOTBALL',data,f)));
+      });
+      box.appendChild(t);
+    }
+  } else {
+    const p=document.createElement('div');
+    p.innerHTML='<div class="panel">Simple '+PROD+' view placeholder. Betting buttons go here.</div>';
+    box.appendChild(p);
+  }
+}
+
+async function place(label,market,sel,odds,key,product,data,fixture){
+  const stakeKES = 20; // default stake for quick demo
+  const res = await fetch('/bets/place',{
+    method:'POST', headers:{'Content-Type':'application/json','x-cashier-key':key},
+    body: JSON.stringify({
+      stake_cents: stakeKES*100, odds, product,
+      event_code: (data.code||'')+'#'+fixture.home+'-'+fixture.away,
+      market_code: market, selection_code: sel, pick_label: label+' • '+market+' • '+sel
+    })
+  });
+  const out=await res.json(); alert(JSON.stringify(out,null,2));
+}
+render();
+</script>
+</body>
+</html>
