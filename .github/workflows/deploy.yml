@@ -20,39 +20,46 @@ jobs:
         with:
           node-version: 'lts/*'
 
-      # Optional local step (safe even without lockfile)
+      # Optional local step (ok even without lockfile)
       - name: Install deps locally (optional)
         run: npm install --no-audit --no-fund
 
-      # Decode SSH key to a file (prevents libcrypto errors)
+      # Decode SSH key to file (prevents libcrypto errors)
       - name: Write SSH key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_KEY_B64 }}" | base64 -d > ~/.ssh/mmbet_actions
+          echo "${{ secrets.SSH_KEY_B64 }}" | tr -d '\r' | base64 -d > ~/.ssh/mmbet_actions
           chmod 600 ~/.ssh/mmbet_actions
 
-      # Ensure server is ready (dir exists and rsync installed)
-      - name: Prepare server
+      # Ensure target dir exists and rsync is available on server
+      - name: Prepare server (mkdir + rsync)
         run: |
-          ssh -i ~/.ssh/mmbet_actions -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
-            mkdir -p /home/deploy/apps/mastermind-bet ;
-            if ! command -v rsync >/dev/null 2>&1; then
-              sudo apt-get update && sudo apt-get install -y rsync ;
-            fi
-          "
+          ssh -i ~/.ssh/mmbet_actions -o StrictHostKeyChecking=no \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+              mkdir -p /home/deploy/apps/mastermind-bet ;
+              if ! command -v rsync >/dev/null 2>&1; then
+                sudo apt-get update && sudo apt-get install -y rsync ;
+              fi
+            "
 
-      # Sync repo using native rsync + our key
+      # Rsync code to server (exclude secrets & bulky folders)
       - name: Rsync code to server
         run: |
-          rsync -rtlDz --delete -e "ssh -i ~/.ssh/mmbet_actions -o StrictHostKeyChecking=no" ./ \
+          rsync -rtlDz --delete \
+            --exclude='.env' \
+            --exclude='node_modules' \
+            --exclude='.git' \
+            --exclude='.github' \
+            -e "ssh -i ~/.ssh/mmbet_actions -o StrictHostKeyChecking=no" ./ \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/deploy/apps/mastermind-bet
 
       # Install deps on server & (re)start with PM2
       - name: Install & restart app
         run: |
-          ssh -i ~/.ssh/mmbet_actions -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
-            cd /home/deploy/apps/mastermind-bet &&
-            npm install --omit=dev --no-audit --no-fund &&
-            pm2 start index.js --name mastermind-bet || pm2 reload mastermind-bet &&
-            pm2 save
-          "
+          ssh -i ~/.ssh/mmbet_actions -o StrictHostKeyChecking=no \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+              cd /home/deploy/apps/mastermind-bet &&
+              npm install --omit=dev --no-audit --no-fund &&
+              pm2 start index.js --name mastermind-bet || pm2 reload mastermind-bet &&
+              pm2 save
+            "
