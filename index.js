@@ -1,4 +1,4 @@
-// index.js — simple float engine + tickets + ledger endpoints
+// index.js — float engine + tickets + ledger + settle + limits
 require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
@@ -8,7 +8,9 @@ const app = express();
 app.use(express.json());
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const MIN_STAKE = parseInt(process.env.MIN_STAKE_CENTS || '2000', 10);
+const MIN_STAKE = parseInt(process.env.MIN_STAKE_CENTS || '2000', 10);   // 20 KES (cents)
+const MAX_STAKE = 100000;   // 1000 KES (cents)
+const MAX_PAYOUT = 2000000; // 20,000 KES (cents)
 
 // --- helpers ---
 async function withTxn(fn) {
@@ -111,26 +113,7 @@ async function ledger(client, walletId, type, amount, refType, refId, memo) {
   );
 }
 
-async function transfer(client, fromW, toW, amount, refType, refId, memo, requestedBy, approvedBy) {
-  if (amount <= 0) throw new Error('amount must be > 0');
-  const from = await client.query('SELECT * FROM wallets WHERE id=$1 FOR UPDATE', [fromW.id]);
-  const to   = await client.query('SELECT * FROM wallets WHERE id=$1 FOR UPDATE', [toW.id]);
-  if (from.rows.length === 0 || to.rows.length === 0) throw new Error('wallet missing');
-  if (from.rows[0].balance_cents < amount) throw new Error('insufficient funds');
-
-  await client.query('UPDATE wallets SET balance_cents = balance_cents - $1 WHERE id=$2', [amount, fromW.id]);
-  await ledger(client, fromW.id, 'debit', amount, refType, refId, memo);
-
-  await client.query('UPDATE wallets SET balance_cents = balance_cents + $1 WHERE id=$2', [amount, toW.id]);
-  await ledger(client, toW.id, 'credit', amount, refType, refId, memo);
-
-  await client.query(
-    'INSERT INTO transfers(from_wallet,to_wallet,amount_cents,requested_by,approved_by,memo) VALUES ($1,$2,$3,$4,$5,$6)',
-    [fromW.id, toW.id, amount, requestedBy||null, approvedBy||null, memo||null]
-  );
-}
-
-// --- auth ---
+// --- auth (header keys for now) ---
 function needAdmin(req, res, next) {
   if (req.header('x-admin-key') === process.env.ADMIN_KEY) return next();
   return res.status(401).json({error:'admin key required'});
@@ -152,95 +135,101 @@ function makeTicketUid() {
 // --- endpoints ---
 app.get('/health', (_req, res)=> res.json({ok:true}));
 
+// BALANCES
 app.get('/balances', needAdmin, async (_req,res) => {
   const { rows } = await pool.query('SELECT owner_type, owner_id, balance_cents FROM wallets ORDER BY owner_type, owner_id');
   res.json(rows);
 });
 
-// LEDGER views
+// LEDGER (you can add agent/cashier-specific filters later)
 app.get('/admin/ledger', needAdmin, async (_req,res)=>{
-  const { rows } = await pool.query(
-    'SELECT * FROM wallet_ledger ORDER BY created_at DESC LIMIT 50'
-  );
-  res.json(rows);
-});
-app.get('/agent/ledger', needAgent, async (_req,res)=>{
-  const { rows } = await pool.query(
-    `SELECT wl.* 
-     FROM wallet_ledger wl
-     JOIN wallets w ON wl.wallet_id=w.id
-     WHERE w.owner_type IN ('agent','cashier')
-     ORDER BY wl.created_at DESC LIMIT 50`
-  );
-  res.json(rows);
-});
-app.get('/cashier/ledger', needCashier, async (_req,res)=>{
-  const { rows } = await pool.query(
-    `SELECT wl.* 
-     FROM wallet_ledger wl
-     JOIN wallets w ON wl.wallet_id=w.id
-     WHERE w.owner_type='cashier'
-     ORDER BY wl.created_at DESC LIMIT 50`
-  );
+  const { rows } = await pool.query('SELECT * FROM wallet_ledger ORDER BY created_at DESC LIMIT 50');
   res.json(rows);
 });
 
-// ADMIN: mint to house
-app.post('/admin/mint', needAdmin, async (req,res)=>{
-  const amount = parseInt(req.body.amount_cents,10);
-  if (!amount || amount<=0) return res.status(400).json({error:'amount_cents > 0'});
-  await withTxn(async (client)=>{
-    const house = await getWallet(client,'house',null);
-    await client.query('UPDATE wallets SET balance_cents = balance_cents + $1 WHERE id=$2',[amount, house.id]);
-    await ledger(client, house.id,'credit', amount, 'admin_mint', null, req.body.memo||'');
-  });
-  res.json({ok:true});
-});
-
-// ADMIN: house -> agent
-app.post('/admin/house-to-agent', needAdmin, async (req,res)=>{
-  const amount = parseInt(req.body.amount_cents,10);
-  const agentId = req.body.agent_id || 'agent1';
-  if (!amount || amount<=0) return res.status(400).json({error:'amount_cents > 0'});
-  await withTxn(async (client)=>{
-    const house = await getWallet(client,'house',null);
-    const agent = await getWallet(client,'agent',agentId);
-    await transfer(client, house, agent, amount, 'transfer', 'house_to_agent', req.body.memo||'', 'admin','admin');
-  });
-  res.json({ok:true});
-});
-
-// AGENT: agent -> cashier
-app.post('/agent/to-cashier', needAgent, async (req,res)=>{
-  const amount = parseInt(req.body.amount_cents,10);
-  const agentId = 'agent1';
-  const cashierId = req.body.cashier_id || 'cashier1';
-  if (!amount || amount<=0) return res.status(400).json({error:'amount_cents > 0'});
-  await withTxn(async (client)=>{
-    const agent = await getWallet(client,'agent',agentId);
-    const cashier = await getWallet(client,'cashier',cashierId);
-    await transfer(client, agent, cashier, amount, 'transfer', 'agent_to_cashier', req.body.memo||'', 'agent','agent');
-  });
-  res.json({ok:true});
-});
-
-// CASHIER: place bet
+// CASHIER: place bet with min/max stake + set potential_win (capped)
 app.post('/bets/place', needCashier, async (req,res)=>{
   const stake = parseInt(req.body.stake_cents,10);
-  if (!stake || stake < MIN_STAKE) return res.status(400).json({error:`min stake ${MIN_STAKE} cents (KES ${MIN_STAKE/100})`});
+  if (!stake || stake < MIN_STAKE) {
+    return res.status(400).json({error:`min stake ${MIN_STAKE} cents (KES ${MIN_STAKE/100})`});
+  }
+  if (stake > MAX_STAKE) {
+    return res.status(400).json({error:`max stake ${MAX_STAKE/100} KES`});
+  }
+
   await withTxn(async (client)=>{
     const cashier = await getWallet(client,'cashier','cashier1');
     const w = await client.query('SELECT * FROM wallets WHERE id=$1 FOR UPDATE',[cashier.id]);
     if (w.rows[0].balance_cents < stake) throw new Error('insufficient funds');
+
+    // reserve stake
     await client.query('UPDATE wallets SET balance_cents = balance_cents - $1 WHERE id=$2',[stake, cashier.id]);
     const ticketUid = makeTicketUid();
     await ledger(client, cashier.id, 'debit', stake, 'stake', ticketUid, 'stake reserved');
+
+    // potential win: simple 2x for now, capped by MAX_PAYOUT
+    const potential = Math.min(stake * 2, MAX_PAYOUT);
+
     await client.query(
-      'INSERT INTO tickets(uid,cashier_id,stake_cents,status) VALUES ($1,$2,$3,$4)',
-      [ticketUid, 'cashier1', stake, 'PENDING']
+      'INSERT INTO tickets(uid,cashier_id,stake_cents,status,potential_win_cents) VALUES ($1,$2,$3,$4,$5)',
+      [ticketUid, 'cashier1', stake, 'PENDING', potential]
     );
-    res.json({ok:true, ticket_uid: ticketUid, stake_cents: stake});
+
+    res.json({ok:true, ticket_uid: ticketUid, stake_cents: stake, potential_win_cents: potential});
   }).catch(e=> res.status(400).json({error:e.message}));
+});
+
+// ADMIN: settle ticket (WON/LOST/CANCELLED) with payout cap
+app.post('/admin/settle-ticket', needAdmin, async (req,res)=>{
+  const { uid, outcome } = req.body; // outcome = WON | LOST | CANCELLED
+  if (!uid || !['WON','LOST','CANCELLED'].includes(outcome)) {
+    return res.status(400).json({error:'uid + outcome required (WON|LOST|CANCELLED)'});
+  }
+
+  await withTxn(async (client)=>{
+    const { rows } = await client.query('SELECT * FROM tickets WHERE uid=$1 FOR UPDATE',[uid]);
+    if (!rows[0]) throw new Error('ticket not found');
+    const t = rows[0];
+    if (t.status !== 'PENDING') throw new Error('already settled');
+
+    const cashier = await getWallet(client,'cashier',t.cashier_id);
+    let payout = 0;
+
+    if (outcome === 'WON') {
+      payout = Math.min(t.potential_win_cents || (t.stake_cents * 2), MAX_PAYOUT);
+      await client.query('UPDATE wallets SET balance_cents=balance_cents+$1 WHERE id=$2',[payout,cashier.id]);
+      await ledger(client,cashier.id,'credit',payout,'payout',uid,'ticket won');
+    } else if (outcome === 'CANCELLED') {
+      payout = t.stake_cents; // refund stake
+      await client.query('UPDATE wallets SET balance_cents=balance_cents+$1 WHERE id=$2',[payout,cashier.id]);
+      await ledger(client,cashier.id,'credit',payout,'refund',uid,'ticket cancelled');
+    }
+    // LOST → payout stays 0 (stake already reserved/debited)
+
+    await client.query(
+      'UPDATE tickets SET status=$1, payout_cents=$2, settled_at=now() WHERE id=$3',
+      [outcome, payout, t.id]
+    );
+  }).then(()=> res.json({ok:true, uid, outcome}))
+    .catch(e=> res.status(400).json({error:e.message}));
+});
+
+// TICKETS: get one (frontend can render barcode + watermark color by status)
+app.get('/tickets/:uid', async (req, res) => {
+  const { uid } = req.params;
+  const { rows } = await pool.query('SELECT * FROM tickets WHERE uid=$1', [uid]);
+  if (!rows[0]) return res.status(404).json({ error: 'ticket not found' });
+  res.json(rows[0]);
+});
+
+// CASHIER: list last 20 tickets
+app.get('/cashier/tickets', needCashier, async (_req, res) => {
+  const cashierId = 'cashier1';
+  const { rows } = await pool.query(
+    'SELECT uid, stake_cents, potential_win_cents, status, payout_cents, created_at FROM tickets WHERE cashier_id=$1 ORDER BY created_at DESC LIMIT 20',
+    [cashierId]
+  );
+  res.json(rows);
 });
 
 // start
