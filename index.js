@@ -1,4 +1,4 @@
-// index.js — Mastermind Bet (wallets + tickets + barcode/print + virtuals: football, color, dogs, horses)
+// index.js — Mastermind Bet (wallets + tickets + barcode/print + virtuals w/ More panel)
 require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
@@ -7,9 +7,11 @@ const bwipjs = require('bwip-js');
 
 const app = express();
 app.use(express.json());
-app.use(express.static('public')); // for /logos, /icons, etc
+app.use(express.static('public')); // serve /public assets (logos, icons, etc.)
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+// Limits
 const MIN_STAKE = parseInt(process.env.MIN_STAKE_CENTS || '2000', 10);   // 20 KES
 const MAX_STAKE = 100000;   // 1000 KES
 const MAX_PAYOUT = 2000000; // 20,000 KES
@@ -21,12 +23,11 @@ async function withTxn(fn) {
   catch (e) { await client.query('ROLLBACK'); throw e; }
   finally { client.release(); }
 }
-function now() { return new Date(); }
 function makeUid(prefix='T') { return prefix + crypto.randomBytes(6).toString('hex').toUpperCase(); }
 function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
 function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
 
-// ---------- bootstrap / migrations ----------
+// ---------- migrations ----------
 async function migrate() {
   const sql = `
   CREATE TABLE IF NOT EXISTS wallets (
@@ -61,17 +62,16 @@ async function migrate() {
     odds NUMERIC(6,2),
     product_code TEXT,          -- FOOTBALL | COLOR | DOGS | HORSES
     event_id BIGINT,            -- virtual event id
-    market_code TEXT,           -- e.g. 1X2, GGNG, OU25, COLOR, RACE_WIN
+    market_code TEXT,           -- e.g. 1X2, GGNG, OU25, TG, CS, COLOR, RACE_WIN
     selection_code TEXT,        -- e.g. 1, X, 2 / GG / OV / RED / #1
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     settled_at TIMESTAMPTZ
   );
 
-  -- virtual engine
   CREATE TABLE IF NOT EXISTS virtual_events (
     id BIGSERIAL PRIMARY KEY,
-    product_code TEXT NOT NULL,     -- FOOTBALL | COLOR | DOGS | HORSES
-    league_code TEXT,               -- e.g. EPL/WEEK34 for football (display only)
+    product_code TEXT NOT NULL,
+    league_code TEXT,
     home_team_code TEXT,
     away_team_code TEXT,
     start_at TIMESTAMPTZ NOT NULL,
@@ -81,18 +81,17 @@ async function migrate() {
   CREATE TABLE IF NOT EXISTS virtual_markets (
     id BIGSERIAL PRIMARY KEY,
     event_id BIGINT NOT NULL REFERENCES virtual_events(id) ON DELETE CASCADE,
-    market_code TEXT NOT NULL,        -- 1X2, GGNG, OU25, COLOR, RACE_WIN
-    selection_code TEXT NOT NULL,     -- 1/X/2, GG/NG, OV/UN, RED/BLACK/GREEN, #1..#8
+    market_code TEXT NOT NULL,
+    selection_code TEXT NOT NULL,
     odds NUMERIC(6,2) NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS virtual_results (
     event_id BIGINT PRIMARY KEY REFERENCES virtual_events(id) ON DELETE CASCADE,
-    result_json JSONB NOT NULL,      -- { "1X2":"1", "GGNG":"GG", "OU25":"OV" } or { "COLOR":"RED" } or { "RACE_WIN":"#5" }
+    result_json JSONB NOT NULL,
     settled_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
 
-  -- ensure house + a default agent/cashier exist (legacy)
   INSERT INTO wallets(owner_type, owner_id, currency, balance_cents)
   SELECT 'house', NULL, 'KES', 0
   WHERE NOT EXISTS (SELECT 1 FROM wallets WHERE owner_type='house' AND owner_id IS NULL);
@@ -131,7 +130,7 @@ async function ledger(client, walletId, type, amount, refType, refId, memo) {
   );
 }
 
-// ---------- auth (header keys for now) ----------
+// ---------- auth (simple header keys) ----------
 function needAdmin(req, res, next) {
   if (req.header('x-admin-key') === process.env.ADMIN_KEY) return next();
   return res.status(401).json({error:'admin key required'});
@@ -141,21 +140,11 @@ function needAgent(req, res, next) {
   return res.status(401).json({error:'agent key required'});
 }
 function needCashier(req, res, next) {
-  // legacy single-key cashier
   if (req.header('x-cashier-key') === process.env.CASHIER_KEY) { req.cashier_code = 'cashier1'; return next(); }
   return res.status(401).json({error:'cashier key required'});
 }
 
-// ---------- utils ----------
-function crestSvg(code){
-  // fallback colored badge if no real logo file
-  const colors = ['#2563eb','#10b981','#f59e0b','#ef4444','#7c3aed','#f97316'];
-  const c = colors[Math.abs(code?.split('').reduce((a,ch)=>a+ch.charCodeAt(0),0)) % colors.length];
-  return `
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect rx="4" width="20" height="20" fill="${c}"/><text x="10" y="13" font-size="10" text-anchor="middle" fill="white" font-family="Arial, sans-serif">${(code||'??').slice(0,2)}</text></svg>`;
-}
-
-// ---------- endpoints (core) ----------
+// ---------- core endpoints ----------
 app.get('/health', (_req,res)=> res.json({ok:true}));
 
 app.get('/balances', needAdmin, async (_req,res) => {
@@ -168,7 +157,7 @@ app.get('/admin/ledger', needAdmin, async (_req,res)=>{
   res.json(rows);
 });
 
-// place bet (with odds + market info)
+// Place bet (odds + market info)
 app.post('/bets/place', needCashier, async (req,res)=>{
   const stake = parseInt(req.body.stake_cents,10);
   const odds = parseFloat(req.body.odds);
@@ -191,7 +180,6 @@ app.post('/bets/place', needCashier, async (req,res)=>{
 
     const potential = Math.min(Math.floor(stake * odds), MAX_PAYOUT);
 
-    // attach event if provided
     let evId = event_id || null;
     if (!evId) {
       const ev = await client.query(
@@ -211,7 +199,7 @@ app.post('/bets/place', needCashier, async (req,res)=>{
   }).catch(e=> res.status(400).json({error:e.message}));
 });
 
-// settle ticket (manual)
+// Manual admin settle (optional)
 app.post('/admin/settle-ticket', needAdmin, async (req,res)=>{
   const { uid, outcome } = req.body; // WON | LOST | CANCELLED
   if (!uid || !['WON','LOST','CANCELLED'].includes(outcome)) return res.status(400).json({error:'uid + outcome required (WON|LOST|CANCELLED)'});
@@ -241,7 +229,6 @@ app.post('/admin/settle-ticket', needAdmin, async (req,res)=>{
     .catch(e=> res.status(400).json({error:e.message}));
 });
 
-// get ticket
 app.get('/tickets/:uid', async (req, res) => {
   const { uid } = req.params;
   const { rows } = await pool.query('SELECT * FROM tickets WHERE uid=$1', [uid]);
@@ -249,7 +236,6 @@ app.get('/tickets/:uid', async (req, res) => {
   res.json(rows[0]);
 });
 
-// cashier last 20
 app.get('/cashier/tickets', needCashier, async (_req, res) => {
   const cashierId = 'cashier1';
   const { rows } = await pool.query(
@@ -311,25 +297,54 @@ body{font-family:system-ui,Arial,sans-serif;padding:16px}
 </body></html>`);
 });
 
-// ---------- VIRTUAL ENGINE (seed + list + result) ----------
+// ---------- VIRTUAL ENGINE ----------
 const CLUBS = ['ARS','CHE','LIV','MCI','MUN','TOT','EVE','WHU','NEW','AVL','BHA','LEE','LEI','WOL','CRY','SOU','BUR','FUL','BRE','BOU'];
 
 function gen1x2Odds() {
-  // simple overround ~107-110%
-  const baseH = 1.5 + Math.random()*2.2; // 1.5 - 3.7
+  const baseH = 1.5 + Math.random()*2.2;
   const baseA = 1.5 + Math.random()*2.2;
   const baseD = 2.8 + Math.random()*1.6;
   const scale = 1.06 + Math.random()*0.05;
   return {
-    '1': clamp((baseH*scale).toFixed(2), 1.15, 9.99),
-    'X': clamp((baseD*scale).toFixed(2), 1.15, 9.99),
-    '2': clamp((baseA*scale).toFixed(2), 1.15, 9.99)
+    '1': clamp((baseH*scale).toFixed(2), 1.15, 13.99),
+    'X': clamp((baseD*scale).toFixed(2), 1.15, 13.99),
+    '2': clamp((baseA*scale).toFixed(2), 1.15, 13.99)
   };
 }
-function genGGNG(){ return { GG: (1.90+Math.random()*0.6).toFixed(2), NG: (1.30+Math.random()*0.5).toFixed(2) }; }
-function genOU25(){ return { OV: (1.70+Math.random()*0.9).toFixed(2), UN: (1.25+Math.random()*0.5).toFixed(2) }; }
-function genOU15(){ return { OV: (1.30+Math.random()*0.3).toFixed(2), UN: (2.00+Math.random()*0.7).toFixed(2) }; }
-function genOU05(){ return { OV: (1.15+Math.random()*0.3).toFixed(2), UN: (2.20+Math.random()*1.3).toFixed(2) }; }
+function genGGNG(){ return { GG: (1.90+Math.random()*0.6).toFixed(2), NG: (1.25+Math.random()*0.6).toFixed(2) }; }
+function genOU25(){ return { OV: (1.60+Math.random()*1.0).toFixed(2), UN: (1.25+Math.random()*0.6).toFixed(2) }; }
+function genOU15(){ return { OV: (1.25+Math.random()*0.35).toFixed(2), UN: (2.00+Math.random()*0.9).toFixed(2) }; }
+function genOU05(){ return { OV: (1.12+Math.random()*0.25).toFixed(2), UN: (2.20+Math.random()*1.3).toFixed(2) }; }
+
+// NEW: Total Goals (TG) & Correct Score (CS)
+function genTG() {
+  return {
+    '0': (6.00 + Math.random()*3.5).toFixed(2),
+    '1': (2.50 + Math.random()*1.1).toFixed(2),
+    '2': (3.00 + Math.random()*1.3).toFixed(2),
+    '3': (3.20 + Math.random()*1.5).toFixed(2),
+    '4': (6.00 + Math.random()*4.0).toFixed(2)
+  };
+}
+function genCS() {
+  const base = {
+    '1-0':  (5.00 + Math.random()*2.0),
+    '2-0':  (9.00 + Math.random()*6.0),
+    '2-1':  (7.00 + Math.random()*4.0),
+    '3-0':  (15.0 + Math.random()*20),
+    '4-0':  (35.0 + Math.random()*40),
+    '0-0':  (7.00 + Math.random()*2.0),
+    '1-1':  (6.50 + Math.random()*2.0),
+    '2-2':  (18.0 + Math.random()*16),
+    '0-1':  (7.00 + Math.random()*3.0),
+    '0-2':  (12.0 + Math.random()*8.0),
+    '1-2':  (10.0 + Math.random()*8.0),
+    '0-3':  (30.0 + Math.random()*30),
+    '0-4':  (60.0 + Math.random()*50)
+  };
+  Object.keys(base).forEach(k => base[k] = base[k].toFixed(2));
+  return base;
+}
 
 async function createFootballEvent(league='EPL', startsInSec=60) {
   const home = pick(CLUBS), away = pick(CLUBS.filter(c=>c!==home));
@@ -340,16 +355,26 @@ async function createFootballEvent(league='EPL', startsInSec=60) {
     [`${league}:WEEK`, home, away, startAt]
   );
   const id = ev.rows[0].id;
-  const m1 = gen1x2Odds(); const gg = genGGNG(); const ou25 = genOU25(); const ou15=genOU15(); const ou05=genOU05();
+
+  const m1 = gen1x2Odds();
+  const gg = genGGNG();
+  const ou25 = genOU25();
+  const ou15 = genOU15();
+  const ou05 = genOU05();
+  const tg  = genTG();
+  const cs  = genCS();
+
   const ins = [];
-  for (const [k,v] of Object.entries(m1)) ins.push([id,'1X2',k,v]);
-  for (const [k,v] of Object.entries(gg)) ins.push([id,'GGNG',k,v]);
-  for (const [k,v] of Object.entries(ou25)) ins.push([id,'OU25',k,v]);
-  for (const [k,v] of Object.entries(ou15)) ins.push([id,'OU15',k,v]);
-  for (const [k,v] of Object.entries(ou05)) ins.push([id,'OU05',k,v]);
+  for (const [k,v] of Object.entries(m1))  ins.push([id,'1X2',k,v]);
+  for (const [k,v] of Object.entries(gg))  ins.push([id,'GGNG',k,v]);
+  for (const [k,v] of Object.entries(ou25))ins.push([id,'OU25',k,v]);
+  for (const [k,v] of Object.entries(ou15))ins.push([id,'OU15',k,v]);
+  for (const [k,v] of Object.entries(ou05))ins.push([id,'OU05',k,v]);
+  for (const [k,v] of Object.entries(tg))  ins.push([id,'TG',k,v]);
+  for (const [k,v] of Object.entries(cs))  ins.push([id,'CS',k,v]);
+
   const textValues = ins.map((_,i)=>`($${i*4+1},$${i*4+2},$${i*4+3},$${i*4+4})`).join(',');
-  const flat = ins.flat();
-  await pool.query(`INSERT INTO virtual_markets(event_id,market_code,selection_code,odds) VALUES ${textValues}`, flat);
+  await pool.query(`INSERT INTO virtual_markets(event_id,market_code,selection_code,odds) VALUES ${textValues}`, ins.flat());
   return id;
 }
 
@@ -379,7 +404,6 @@ async function createRaceEvent(product='DOGS', startsInSec=40) {
   const id = ev.rows[0].id;
   const runners = Array.from({length:8}, (_,i)=> `#${i+1}`);
   const rows = runners.map((r)=>{
-    // field odds roughly 1.7 .. 10.0
     const o = (1.6 + Math.random()*8.4);
     return [id,'RACE_WIN',r,o.toFixed(2)];
   });
@@ -390,53 +414,54 @@ async function createRaceEvent(product='DOGS', startsInSec=40) {
 
 // seed cadence
 async function seedTick() {
-  // football: ensure ~10 OPEN events in next 2 minutes
   const f = await pool.query(`SELECT count(*)::int c FROM virtual_events WHERE product_code='FOOTBALL' AND status='OPEN' AND start_at > now()`);
   for (let i=f.rows[0].c; i<10; i++) await createFootballEvent('EPL', 20 + i*10);
 
-  // color: ensure 4 opens
   const c = await pool.query(`SELECT count(*)::int c FROM virtual_events WHERE product_code='COLOR' AND status='OPEN' AND start_at > now()`);
   for (let i=c.rows[0].c; i<4; i++) await createColorEvent(12 + i*6);
 
-  // dogs + horses: 3 each
   const d = await pool.query(`SELECT count(*)::int c FROM virtual_events WHERE product_code='DOGS' AND status='OPEN' AND start_at > now()`);
   for (let i=d.rows[0].c; i<3; i++) await createRaceEvent('DOGS', 25 + i*10);
+
   const h = await pool.query(`SELECT count(*)::int c FROM virtual_events WHERE product_code='HORSES' AND status='OPEN' AND start_at > now()`);
   for (let i=h.rows[0].c; i<3; i++) await createRaceEvent('HORSES', 30 + i*10);
 }
 
-// roll statuses & result events
+// settle loop
 async function settleTick() {
-  // CLOSE events 5s before start
   await pool.query(`UPDATE virtual_events SET status='CLOSED' WHERE status='OPEN' AND start_at < now() + INTERVAL '5 seconds'`);
 
-  // RESULT events that passed start_at
   const { rows } = await pool.query(`SELECT * FROM virtual_events WHERE status='CLOSED' AND start_at <= now()`);
   for (const ev of rows) {
     let result = {};
     if (ev.product_code === 'FOOTBALL') {
-      // random but coherent: goals 0..5 each
       const hg = Math.floor(Math.random()*6), ag = Math.floor(Math.random()*6);
       const oneXtwo = hg>ag ? '1' : (hg<ag ? '2' : 'X');
+      const goals = hg + ag;
       result = {
         '1X2': oneXtwo,
         'GGNG': (hg>0 && ag>0)?'GG':'NG',
-        'OU25': (hg+ag>2)?'OV':'UN',
-        'OU15': (hg+ag>1)?'OV':'UN',
-        'OU05': (hg+ag>0)?'OV':'UN'
+        'OU25': (goals>2)?'OV':'UN',
+        'OU15': (goals>1)?'OV':'UN',
+        'OU05': (goals>0)?'OV':'UN',
+        'TG':   (goals>=4)?'4': String(Math.min(goals,4)),
       };
+      // choose one CS outcome we support
+      const csPick = `${hg}-${ag}`;
+      const allowedCS = ['1-0','2-0','2-1','3-0','4-0','0-0','1-1','2-2','0-1','0-2','1-2','0-3','0-4'];
+      if (allowedCS.includes(csPick)) result['CS'] = csPick;
+      else result['CS'] = (hg>ag?'1-0':hg<ag?'0-1':'1-1'); // fallback
     } else if (ev.product_code === 'COLOR') {
-      result = { 'COLOR': pick(['RED','BLACK','GREEN','RED','BLACK']) }; // bias to red/black
+      result = { 'COLOR': pick(['RED','BLACK','GREEN','RED','BLACK']) };
     } else {
-      // race
       const win = '#'+(1+Math.floor(Math.random()*8));
       result = { 'RACE_WIN': win };
     }
+
     await withTxn(async (client)=>{
       await client.query('INSERT INTO virtual_results(event_id,result_json) VALUES ($1,$2)', [ev.id, result]);
       await client.query('UPDATE virtual_events SET status=\'RESULTED\' WHERE id=$1', [ev.id]);
 
-      // settle tickets tied to this event
       const tix = await client.query(`SELECT * FROM tickets WHERE status='PENDING' AND event_id=$1`, [ev.id]);
       for (const t of tix.rows) {
         const winSel = result[t.market_code];
@@ -485,20 +510,17 @@ app.get('/virtual/markets', async (req,res)=>{
   res.json(rows);
 });
 
-// DEBUG: one-shot seed
-app.post('/admin/debug/seed', needAdmin, async (_req,res)=>{
-  await seedTick();
-  res.json({ok:true});
-});
+// DEBUG: manual seed
+app.post('/admin/debug/seed', needAdmin, async (_req,res)=>{ await seedTick(); res.json({ok:true}); });
 
-// ---------- Cashier POS (4 products) ----------
+// ---------- Cashier POS (Football + More, Color, Races) ----------
 app.get('/pos', (_req, res) => {
   res.set('Content-Type','text/html');
   res.send(`<!doctype html>
 <html><head><meta charset="utf-8"/><title>Mastermind Cashier</title>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <style>
-:root{--bg:#0b1220;--card:#0f172a;--muted:#9aa4b2;--text:#e5e7eb;--brand:#f59e0b;--ok:#16a34a;--bad:#dc2626;}
+:root{--bg:#0b1220;--card:#0f172a;--muted:#9aa4b2;--text:#e5e7eb;--brand:#f59e0b;}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Arial,sans-serif}
 .wrap{max-width:1200px;margin:0 auto;padding:16px}
@@ -516,7 +538,6 @@ h2{margin:8px 0 12px}
 .tab.active{background:#3b82f6;color:#fff;border-color:#2563eb}
 .pills{display:flex;gap:6px;overflow:auto;padding-bottom:6px}
 .pill{display:flex;gap:6px;align-items:center;background:#101827;border:1px solid #1f2937;color:#cbd5e1;border-radius:999px;padding:6px 10px;white-space:nowrap;cursor:pointer}
-.pill img{width:18px;height:18px;border-radius:4px}
 .table{width:100%;border-collapse:collapse}
 .table th,.table td{padding:8px;border-bottom:1px solid #1f2937;text-align:center}
 .table th{color:#cbd5e1;font-weight:600}
@@ -554,7 +575,7 @@ h2{margin:8px 0 12px}
       <table class="table" id="ftbl">
         <thead><tr>
           <th>#</th><th style="text-align:left">HOME</th><th style="text-align:left">AWAY</th>
-          <th>1</th><th>X</th><th>2</th><th>GG</th><th>NG</th><th>OV2.5</th><th>UN2.5</th>
+          <th>1</th><th>X</th><th>2</th><th>GG</th><th>NG</th><th>OV2.5</th><th>UN2.5</th><th>More</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -596,6 +617,23 @@ h2{margin:8px 0 12px}
   </div>
 </div>
 
+<!-- MORE MODAL -->
+<div id="moreModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);align-items:center;justify-content:center;z-index:50">
+  <div id="moreCard" style="background:#0f172a;border:1px solid #1f2937;border-radius:12px;max-width:980px;width:96%;padding:16px;color:#e5e7eb">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div id="moreTitle" style="font-weight:700"></div>
+      <button onclick="closeMore()" class="od">✕</button>
+    </div>
+    <div style="display:flex;gap:8px;margin:8px 0">
+      <button class="od" onclick="renderMoreTab('TG')">Total Goals</button>
+      <button class="od" onclick="renderMoreTab('CS')">Correct Score</button>
+      <button class="od" onclick="renderMoreTab('OU15')">OV/UN 1.5</button>
+      <button class="od" onclick="renderMoreTab('OU05')">OV/UN 0.5</button>
+    </div>
+    <div id="moreBody"></div>
+  </div>
+</div>
+
 <script>
 const fmt = k => 'KES ' + (Math.round(k/100)).toString();
 
@@ -611,7 +649,6 @@ document.querySelectorAll('.tab').forEach(el=>{
     document.getElementById('color').style.display    = (p==='COLOR')?'block':'none';
     document.getElementById('races').style.display    = (p==='DOGS'||p==='HORSES')?'block':'none';
     if (p==='FOOTBALL') loadFootball();
-    if (p==='COLOR')    {/* nothing to load; single current event */}
     if (p==='DOGS' || p==='HORSES') loadRaces(p);
   };
 });
@@ -635,7 +672,7 @@ async function loadFootball(){
   evs.forEach((e,i)=>{
     const b = document.createElement('div');
     b.className='pill';
-    b.innerHTML = (e.home_team_code||'H') + ' vs ' + (e.away_team_code||'A') + ' • ' + new Date(e.start_at).toLocaleTimeString();
+    b.textContent = (e.home_team_code||'H') + ' vs ' + (e.away_team_code||'A') + ' • ' + new Date(e.start_at).toLocaleTimeString();
     b.onclick=()=> showFootball(e);
     pills.appendChild(b);
     if(i===0) currentEvent=e;
@@ -661,13 +698,90 @@ async function showFootball(e){
   <td class="od" onclick="pickBet(\${e.id},'FOOTBALL','GGNG','GG',\${odds('GGNG','GG')})">\${odds('GGNG','GG')}</td>
   <td class="od" onclick="pickBet(\${e.id},'FOOTBALL','GGNG','NG',\${odds('GGNG','NG')})">\${odds('GGNG','NG')}</td>
   <td class="od" onclick="pickBet(\${e.id},'FOOTBALL','OU25','OV',\${odds('OU25','OV')})">\${odds('OU25','OV')}</td>
-  <td class="od" onclick="pickBet(\${e.id},'FOOTBALL','OU25','UN',\${odds('OU25','UN')})">\${odds('OU25','UN')}</td>\`;
+  <td class="od" onclick="pickBet(\${e.id},'FOOTBALL','OU25','UN',\${odds('OU25','UN')})">\${odds('OU25','UN')}</td>
+  <td><button class="od" onclick="openMore(\${e.id})">More ▸</button></td>\`;
   tb.appendChild(tr);
+}
+
+// MORE panel
+let moreEvent = null;
+let moreMarkets = null;
+
+async function openMore(eventId){
+  const ev = currentEvent && currentEvent.id === eventId ? currentEvent
+            : (await (await fetch('/virtual/events?product=FOOTBALL')).json()).find(x=>x.id===eventId);
+  const mk = await (await fetch('/virtual/markets?event_id='+eventId)).json();
+  moreEvent = ev; moreMarkets = mk;
+  document.getElementById('moreTitle').textContent =
+    (ev.home_team_code||'HOME') + ' vs ' + (ev.away_team_code||'AWAY');
+  document.getElementById('moreModal').style.display = 'flex';
+  renderMoreTab('TG');
+}
+function closeMore(){
+  document.getElementById('moreModal').style.display = 'none';
+}
+function renderMoreTab(code){
+  if(!moreMarkets) return;
+  const body = document.getElementById('moreBody');
+  body.innerHTML = '';
+  const get = (m,s)=> {
+    const row = moreMarkets.find(r=> r.market_code===m && r.selection_code===s);
+    return row ? Number(row.odds).toFixed(2) : null;
+  };
+
+  if (code === 'TG') {
+    const row = document.createElement('div');
+    row.style.display='grid'; row.style.gridTemplateColumns='repeat(5,1fr)'; row.style.gap='8px';
+    ['0','1','2','3','4'].forEach(k=>{
+      const o = get('TG',k); if(!o) return;
+      const b = document.createElement('button'); b.className='od';
+      b.textContent = k+'  •  '+o;
+      b.onclick = ()=> pickBet(moreEvent.id,'FOOTBALL','TG',k,Number(o));
+      row.appendChild(b);
+    });
+    body.appendChild(row);
+  }
+
+  if (code === 'CS') {
+    const wrap = document.createElement('div');
+    wrap.style.display='grid'; wrap.style.gridTemplateColumns='repeat(3,1fr)'; wrap.style.gap='12px';
+    const mk = (title, list) => {
+      const card = document.createElement('div');
+      card.innerHTML = '<div style="margin-bottom:6px;color:#9aa4b2">'+title+'</div>';
+      const g = document.createElement('div');
+      g.style.display='grid'; g.style.gridTemplateColumns='repeat(2,1fr)'; g.style.gap='8px';
+      list.forEach(k=>{
+        const o = get('CS',k); if(!o) return;
+        const b = document.createElement('button'); b.className='od';
+        b.textContent = k+'  •  '+o;
+        b.onclick = ()=> pickBet(moreEvent.id,'FOOTBALL','CS',k,Number(o));
+        g.appendChild(b);
+      });
+      card.appendChild(g);
+      return card;
+    };
+    wrap.appendChild(mk('HOME', ['1-0','2-0','2-1','3-0','4-0']));
+    wrap.appendChild(mk('DRAW', ['0-0','1-1','2-2']));
+    wrap.appendChild(mk('AWAY', ['0-1','0-2','1-2','0-3','0-4']));
+    body.appendChild(wrap);
+  }
+
+  if (code === 'OU15' || code === 'OU05') {
+    const row = document.createElement('div');
+    row.style.display='grid'; row.style.gridTemplateColumns='repeat(2,1fr)'; row.style.gap='8px';
+    [['OV','Over'],['UN','Under']].forEach(([sel,label])=>{
+      const o = get(code,sel); if(!o) return;
+      const b = document.createElement('button'); b.className='od';
+      b.textContent = label+' • '+(code==='OU15'?'1.5':'0.5')+' • '+o;
+      b.onclick = ()=> pickBet(moreEvent.id,'FOOTBALL',code,sel,Number(o));
+      row.appendChild(b);
+    });
+    body.appendChild(row);
+  }
 }
 
 // COLOR
 async function placeColor(sel){
-  // use the soonest OPEN color event
   const evs = await (await fetch('/virtual/events?product=COLOR')).json();
   const e = evs[0]; if(!e){ alert('no round'); return; }
   const odds = sel==='GREEN'?12.00:1.95;
@@ -685,7 +799,8 @@ async function loadRaces(product){
   const evs = await (await fetch('/virtual/events?product='+product)).json();
   const pills = document.getElementById('racepills'); pills.innerHTML='';
   evs.forEach((e,i)=>{
-    const b = document.createElement('div'); b.className='pill'; b.textContent = product + ' • ' + new Date(e.start_at).toLocaleTimeString();
+    const b = document.createElement('div'); b.className='pill';
+    b.textContent = product + ' • ' + new Date(e.start_at).toLocaleTimeString();
     b.onclick=()=> showRace(e,product); pills.appendChild(b); if(i===0) showRace(e,product);
   });
 }
@@ -735,14 +850,14 @@ setInterval(()=>{ loadFootball(); }, 15000);
 </body></html>`);
 });
 
-// optional root redirect
+// redirect root
 app.get('/', (_req,res)=> res.redirect('/pos'));
 
-// ---------- background loops ----------
-setInterval(seedTick, 5000);     // keep events coming
-setInterval(settleTick, 3000);   // close/result/settle
+// background loops
+setInterval(seedTick, 5000);
+setInterval(settleTick, 3000);
 
-// ---------- start ----------
+// start
 migrate()
  .then(()=> app.listen(3000, ()=> console.log('App on :3000')))
  .catch(err=> { console.error(err); process.exit(1); });
