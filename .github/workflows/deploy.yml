@@ -3,24 +3,29 @@ name: Deploy to Droplet
 on:
   push:
     branches: [ "main" ]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node (LTS)
         uses: actions/setup-node@v4
         with:
           node-version: 'lts/*'
 
-      # Optional local step; works even without package-lock.json
-      - name: Install deps locally (optional build)
+      # Optional local build step (keeps simple projects happy even without lockfile)
+      - name: Install deps locally (optional)
         run: npm install --no-audit --no-fund
 
-      # Make sure the folder exists on the Droplet
+      # Make sure the app directory exists on the Droplet
       - name: Create app dir on server (if missing)
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -30,7 +35,19 @@ jobs:
           script: |
             mkdir -p /home/deploy/apps/mastermind-bet
 
-      # Sync repo to server via rsync (requires rsync installed server-side)
+      # Ensure rsync is available on the server (needed by the next step)
+      - name: Ensure rsync installed on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            if ! command -v rsync >/dev/null 2>&1; then
+              sudo apt-get update && sudo apt-get install -y rsync
+            fi
+
+      # Sync repo to server
       - name: Upload files to server (rsync)
         uses: easingthemes/ssh-deploy@v4
         env:
@@ -41,8 +58,8 @@ jobs:
           REMOTE_USER: ${{ secrets.SSH_USER }}
           TARGET: "/home/deploy/apps/mastermind-bet"
 
-      # Install on server & (re)start with PM2
-      - name: Install deps on server & restart
+      # Install dependencies on server & (re)start with PM2
+      - name: Install deps on server & restart with PM2
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
