@@ -20,19 +20,19 @@ jobs:
         with:
           node-version: 'lts/*'
 
-      # Optional local step (ok even without package-lock.json)
+      # Optional local step (safe even without lockfile)
       - name: Install deps locally (optional)
         run: npm install --no-audit --no-fund
 
-      # Prepare SSH key file from base64 (prevents formatting issues)
-      - name: Write SSH key file
+      # Decode SSH key to a file (prevents libcrypto errors)
+      - name: Write SSH key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KEY_B64 }}" | base64 -d > ~/.ssh/mmbet_actions
           chmod 600 ~/.ssh/mmbet_actions
 
-      # Ensure app dir + rsync on server
-      - name: Prepare server (mkdir + rsync install)
+      # Ensure server is ready (dir exists and rsync installed)
+      - name: Prepare server
         run: |
           ssh -i ~/.ssh/mmbet_actions -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             mkdir -p /home/deploy/apps/mastermind-bet ;
@@ -41,7 +41,7 @@ jobs:
             fi
           "
 
-      # Rsync code to server using our key
+      # Sync repo using native rsync + our key
       - name: Rsync code to server
         run: |
           rsync -rtlDz --delete -e "ssh -i ~/.ssh/mmbet_actions -o StrictHostKeyChecking=no" ./ \
