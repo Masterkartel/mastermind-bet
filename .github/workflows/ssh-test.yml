@@ -1,0 +1,24 @@
+name: SSH Smoke Test
+
+on:
+  workflow_dispatch: {}   # run it manually from Actions tab
+
+jobs:
+  ssh-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test SSH and run a few commands
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            whoami
+            hostname -I
+            uname -a
+            which node || true
+            node -v || true
+            which pm2 || true
+            pm2 status || true
+            echo "✅ SSH OK from GitHub at $(date)"
