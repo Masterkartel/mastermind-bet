@@ -3,15 +3,27 @@ require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const crypto = require('crypto');
-const bwipjs = require('bwip-js');
-const path = require('path'); // ⟵ added
+const path = require('path');
+
+// ---- barcode lib (safe require) ----
+let bwipjs = null;
+try { bwipjs = require('bwip-js'); }
+catch (e) {
+  console.warn('bwip-js not installed; /tickets/:uid/barcode.png will serve a placeholder.');
+}
 
 const app = express();
 app.use(express.json());
-// Serve /public for logos and any static assets
+// Serve /public for static assets (logos, etc.)
 app.use(express.static(path.join(__dirname, 'public')));
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+// ---- Postgres pool (handles DO managed PG SSL) ----
+const useSSL = process.env.PGSSL === 'require' ||
+               /\bsslmode=require\b/i.test(process.env.DATABASE_URL || '');
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: useSSL ? { rejectUnauthorized: false } : undefined,
+});
 
 // Limits
 const MIN_STAKE = parseInt(process.env.MIN_STAKE_CENTS || '2000', 10); // 20 KES (cents)
@@ -179,6 +191,7 @@ function makeTicketUid() {
 }
 
 // --- endpoints ---
+// Keep health up regardless of DB state
 app.get('/health', (_req, res)=> res.json({ok:true}));
 
 // BALANCES
@@ -303,9 +316,18 @@ app.get('/cashier/tickets', needCashier, async (_req, res) => {
   res.json(rows);
 });
 
-// BARCODE PNG for a ticket UID
+// BARCODE PNG (graceful fallback if bwip-js missing)
 app.get('/tickets/:uid/barcode.png', async (req, res) => {
   const { uid } = req.params;
+  if (!bwipjs) {
+    res.set('Content-Type', 'image/svg+xml');
+    return res.send(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="380" height="60">
+         <rect width="100%" height="100%" fill="#fff"/>
+         <text x="10" y="38" font-size="20" fill="#111">${uid} (barcode disabled)</text>
+       </svg>`
+    );
+  }
   try {
     const png = await bwipjs.toBuffer({
       bcid: 'code128',
@@ -642,10 +664,19 @@ async function boot(){
 }
 boot();
 </script>
-</body></html>`);
+</body>
+</html>`);
 });
 
-// start
-migrate()
-  .then(()=> app.listen(3000, ()=> console.log('App on :3000')))
-  .catch(err=> { console.error(err); process.exit(1); });
+// ---- start server (migrate but don't block listen) ----
+async function start() {
+  try {
+    await migrate();
+    console.log('DB migrate: OK');
+  } catch (e) {
+    console.error('DB migrate FAILED:', e.message);
+  }
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => console.log(`App on :${PORT}`));
+}
+start();
