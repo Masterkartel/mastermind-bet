@@ -11,7 +11,6 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,52 +20,39 @@ jobs:
         with:
           node-version: 'lts/*'
 
-      # Optional local build step (keeps simple projects happy even without lockfile)
+      # Optional local step (ok even without package-lock.json)
       - name: Install deps locally (optional)
         run: npm install --no-audit --no-fund
 
-      # Make sure the app directory exists on the Droplet
-      - name: Create app dir on server (if missing)
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            mkdir -p /home/deploy/apps/mastermind-bet
+      # Prepare SSH key file from base64 (prevents formatting issues)
+      - name: Write SSH key file
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY_B64 }}" | base64 -d > ~/.ssh/mmbet_actions
+          chmod 600 ~/.ssh/mmbet_actions
 
-      # Ensure rsync is available on the server (needed by the next step)
-      - name: Ensure rsync installed on server
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          script: |
+      # Ensure app dir + rsync on server
+      - name: Prepare server (mkdir + rsync install)
+        run: |
+          ssh -i ~/.ssh/mmbet_actions -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+            mkdir -p /home/deploy/apps/mastermind-bet ;
             if ! command -v rsync >/dev/null 2>&1; then
-              sudo apt-get update && sudo apt-get install -y rsync
+              sudo apt-get update && sudo apt-get install -y rsync ;
             fi
+          "
 
-      # Sync repo to server
-      - name: Upload files to server (rsync)
-        uses: easingthemes/ssh-deploy@v4
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
-          ARGS: "-rtlDz --delete"
-          SOURCE: "./"
-          REMOTE_HOST: ${{ secrets.SSH_HOST }}
-          REMOTE_USER: ${{ secrets.SSH_USER }}
-          TARGET: "/home/deploy/apps/mastermind-bet"
+      # Rsync code to server using our key
+      - name: Rsync code to server
+        run: |
+          rsync -rtlDz --delete -e "ssh -i ~/.ssh/mmbet_actions -o StrictHostKeyChecking=no" ./ \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/deploy/apps/mastermind-bet
 
-      # Install dependencies on server & (re)start with PM2
-      - name: Install deps on server & restart with PM2
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            cd /home/deploy/apps/mastermind-bet
-            npm install --omit=dev --no-audit --no-fund
-            pm2 start index.js --name mastermind-bet || pm2 reload mastermind-bet
+      # Install deps on server & (re)start with PM2
+      - name: Install & restart app
+        run: |
+          ssh -i ~/.ssh/mmbet_actions -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+            cd /home/deploy/apps/mastermind-bet &&
+            npm install --omit=dev --no-audit --no-fund &&
+            pm2 start index.js --name mastermind-bet || pm2 reload mastermind-bet &&
             pm2 save
+          "
