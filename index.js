@@ -1,8 +1,9 @@
-// index.js — float engine + tickets + ledger + settle + limits
+// index.js — float engine + tickets + ledger + settle + limits + barcode/print/POS
 require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const crypto = require('crypto');
+const bwipjs = require('bwip-js'); // <-- NEW
 
 const app = express();
 app.use(express.json());
@@ -141,13 +142,13 @@ app.get('/balances', needAdmin, async (_req,res) => {
   res.json(rows);
 });
 
-// LEDGER (you can add agent/cashier-specific filters later)
+// LEDGER (admin)
 app.get('/admin/ledger', needAdmin, async (_req,res)=>{
   const { rows } = await pool.query('SELECT * FROM wallet_ledger ORDER BY created_at DESC LIMIT 50');
   res.json(rows);
 });
 
-// CASHIER: place bet with min/max stake + set potential_win (capped)
+// CASHIER: place bet with min/max stake + potential_win (capped)
 app.post('/bets/place', needCashier, async (req,res)=>{
   const stake = parseInt(req.body.stake_cents,10);
   if (!stake || stake < MIN_STAKE) {
@@ -167,7 +168,7 @@ app.post('/bets/place', needCashier, async (req,res)=>{
     const ticketUid = makeTicketUid();
     await ledger(client, cashier.id, 'debit', stake, 'stake', ticketUid, 'stake reserved');
 
-    // potential win: simple 2x for now, capped by MAX_PAYOUT
+    // potential win: simple 2x, capped by MAX_PAYOUT
     const potential = Math.min(stake * 2, MAX_PAYOUT);
 
     await client.query(
@@ -204,7 +205,7 @@ app.post('/admin/settle-ticket', needAdmin, async (req,res)=>{
       await client.query('UPDATE wallets SET balance_cents=balance_cents+$1 WHERE id=$2',[payout,cashier.id]);
       await ledger(client,cashier.id,'credit',payout,'refund',uid,'ticket cancelled');
     }
-    // LOST → payout stays 0 (stake already reserved/debited)
+    // LOST → payout stays 0
 
     await client.query(
       'UPDATE tickets SET status=$1, payout_cents=$2, settled_at=now() WHERE id=$3',
@@ -214,7 +215,7 @@ app.post('/admin/settle-ticket', needAdmin, async (req,res)=>{
     .catch(e=> res.status(400).json({error:e.message}));
 });
 
-// TICKETS: get one (frontend can render barcode + watermark color by status)
+// TICKETS: get one
 app.get('/tickets/:uid', async (req, res) => {
   const { uid } = req.params;
   const { rows } = await pool.query('SELECT * FROM tickets WHERE uid=$1', [uid]);
@@ -230,6 +231,148 @@ app.get('/cashier/tickets', needCashier, async (_req, res) => {
     [cashierId]
   );
   res.json(rows);
+});
+
+// --- NEW: BARCODE PNG for a ticket UID
+app.get('/tickets/:uid/barcode.png', async (req, res) => {
+  const { uid } = req.params;
+  try {
+    const png = await bwipjs.toBuffer({
+      bcid: 'code128',
+      text: uid,
+      scale: 3,
+      height: 10,
+      includetext: true,
+      textxalign: 'center'
+    });
+    res.set('Content-Type', 'image/png');
+    res.send(png);
+  } catch (e) {
+    res.status(400).json({ error: 'barcode failed' });
+  }
+});
+
+// --- NEW: Printable Ticket page with watermark color by status
+app.get('/tickets/:uid/print', async (req, res) => {
+  const { uid } = req.params;
+  const { rows } = await pool.query('SELECT * FROM tickets WHERE uid=$1', [uid]);
+  if (!rows[0]) return res.status(404).send('Ticket not found');
+
+  const t = rows[0];
+  const color =
+    t.status === 'WON' ? '#16a34a' :
+    t.status === 'LOST' ? '#dc2626' :
+    '#6b7280'; // PENDING/CANCELLED grey
+
+  res.set('Content-Type', 'text/html');
+  res.send(`<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>Ticket ${t.uid}</title>
+<style>
+  body{font-family:system-ui,Arial,sans-serif;padding:16px}
+  .card{width:360px;border:1px solid #e5e7eb;border-radius:12px;padding:16px;position:relative;overflow:hidden}
+  .row{display:flex;justify-content:space-between;margin:6px 0}
+  .bar{margin:12px auto;text-align:center}
+  .wm{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+      font-weight:800;font-size:52px;opacity:0.12;color:${color};transform:rotate(-18deg)}
+  .badge{display:inline-block;padding:4px 10px;border-radius:9999px;color:white;background:${color}}
+  .muted{color:#6b7280}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="wm">${t.status}</div>
+    <div class="row"><div><strong>Mastermind Bet</strong></div><div class="badge">${t.status}</div></div>
+    <div class="row"><div class="muted">Ticket</div><div>${t.uid}</div></div>
+    <div class="row"><div class="muted">Cashier</div><div>${t.cashier_id}</div></div>
+    <div class="row"><div class="muted">Stake</div><div>KES ${(t.stake_cents/100).toFixed(0)}</div></div>
+    <div class="row"><div class="muted">Potential Win</div><div>KES ${((t.potential_win_cents||0)/100).toFixed(0)}</div></div>
+    <div class="row"><div class="muted">Payout</div><div>KES ${((t.payout_cents||0)/100).toFixed(0)}</div></div>
+    <div class="bar">
+      <img src="/tickets/${t.uid}/barcode.png" alt="barcode"/>
+    </div>
+    <div class="muted" style="text-align:center;font-size:12px">Verify: mastermind-bet.com/tickets/${t.uid}</div>
+  </div>
+  <script>window.print()</script>
+</body>
+</html>`);
+});
+
+// --- NEW: Simple Cashier POS demo page
+app.get('/pos', (_req, res) => {
+  res.set('Content-Type','text/html');
+  res.send(`<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>Mastermind POS</title>
+<style>
+  body{font-family:system-ui,Arial;padding:16px;max-width:720px;margin:auto}
+  input,button{padding:10px;font-size:16px}
+  .row{display:flex;gap:8px;margin:12px 0}
+  table{width:100%;border-collapse:collapse;margin-top:12px}
+  th,td{border:1px solid #e5e7eb;padding:8px;font-size:14px}
+  .won{color:#16a34a;font-weight:700}
+  .lost{color:#dc2626;font-weight:700}
+  .cancel{color:#6b7280;font-weight:700}
+</style>
+</head>
+<body>
+  <h2>Cashier POS (Demo)</h2>
+  <div>Enter your <b>x-cashier-key</b> below (temporary):</div>
+  <div class="row">
+    <input id="key" placeholder="x-cashier-key" style="flex:1"/>
+  </div>
+
+  <h3>Place Bet</h3>
+  <div class="row">
+    <input id="stake" type="number" placeholder="Stake KES (min 20, max 1000)" />
+    <button onclick="placeBet()">Place</button>
+  </div>
+  <div id="msg"></div>
+
+  <h3>Last 20 Tickets</h3>
+  <button onclick="loadTickets()">Refresh</button>
+  <table id="t">
+    <thead><tr><th>UID</th><th>Stake</th><th>Status</th><th>Print</th></tr></thead>
+    <tbody></tbody>
+  </table>
+
+<script>
+async function placeBet(){
+  const key = document.getElementById('key').value.trim();
+  const stakeKES = parseInt(document.getElementById('stake').value||'0',10);
+  const stake_cents = stakeKES*100;
+  const res = await fetch('/bets/place',{method:'POST',
+    headers:{'Content-Type':'application/json','x-cashier-key':key},
+    body: JSON.stringify({stake_cents})
+  });
+  const data = await res.json();
+  document.getElementById('msg').textContent = JSON.stringify(data);
+  loadTickets();
+}
+async function loadTickets(){
+  const key = document.getElementById('key').value.trim();
+  const res = await fetch('/cashier/tickets',{headers:{'x-cashier-key':key}});
+  const rows = await res.json();
+  const tb = document.querySelector('#t tbody');
+  tb.innerHTML = '';
+  (rows||[]).forEach(r=>{
+    const tr = document.createElement('tr');
+    const cls = r.status==='WON'?'won':(r.status==='LOST'?'lost':'cancel');
+    tr.innerHTML = \`
+      <td>\${r.uid}</td>
+      <td>KES \${(r.stake_cents/100).toFixed(0)}</td>
+      <td class="\${cls}">\${r.status}</td>
+      <td><a href="/tickets/\${r.uid}/print" target="_blank">Print</a></td>\`;
+    tb.appendChild(tr);
+  });
+}
+</script>
+</body>
+</html>`);
 });
 
 // start
