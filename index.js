@@ -1,4 +1,4 @@
-// index.js — Mastermind Bet (float, tickets, cashier UI, odds, virtuals engine + auto-settle + team logos)
+// index.js — Mastermind Bet (wallets + tickets + barcode/print + virtuals: football, color, dogs, horses)
 require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
@@ -7,34 +7,27 @@ const bwipjs = require('bwip-js');
 
 const app = express();
 app.use(express.json());
+app.use(express.static('public')); // for /logos, /icons, etc
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
-// ---- limits (in cents) ----
 const MIN_STAKE = parseInt(process.env.MIN_STAKE_CENTS || '2000', 10);   // 20 KES
-const MAX_STAKE = 100000;   // 1,000 KES
+const MAX_STAKE = 100000;   // 1000 KES
 const MAX_PAYOUT = 2000000; // 20,000 KES
-const MIN_ODDS = 1.01;
-const MAX_ODDS = 1000;
 
-// --- helpers ---
+// ---------- helpers ----------
 async function withTxn(fn) {
   const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const result = await fn(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (e) {
-    await client.query('ROLLBACK');
-    throw e;
-  } finally {
-    client.release();
-  }
+  try { await client.query('BEGIN'); const r = await fn(client); await client.query('COMMIT'); return r; }
+  catch (e) { await client.query('ROLLBACK'); throw e; }
+  finally { client.release(); }
 }
+function now() { return new Date(); }
+function makeUid(prefix='T') { return prefix + crypto.randomBytes(6).toString('hex').toUpperCase(); }
+function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
 
+// ---------- bootstrap / migrations ----------
 async function migrate() {
-  // base schema + safe alters
   const sql = `
   CREATE TABLE IF NOT EXISTS wallets (
     id BIGSERIAL PRIMARY KEY,
@@ -57,17 +50,6 @@ async function migrate() {
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
 
-  CREATE TABLE IF NOT EXISTS transfers (
-    id BIGSERIAL PRIMARY KEY,
-    from_wallet BIGINT REFERENCES wallets(id),
-    to_wallet   BIGINT REFERENCES wallets(id),
-    amount_cents BIGINT NOT NULL CHECK (amount_cents > 0),
-    requested_by TEXT,
-    approved_by  TEXT,
-    memo TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-  );
-
   CREATE TABLE IF NOT EXISTS tickets (
     id BIGSERIAL PRIMARY KEY,
     uid TEXT UNIQUE NOT NULL,
@@ -77,46 +59,40 @@ async function migrate() {
     potential_win_cents BIGINT,
     payout_cents BIGINT,
     odds NUMERIC(6,2),
-    product_code TEXT,
-    event_id BIGINT,
-    market_code TEXT,
-    selection_code TEXT,
+    product_code TEXT,          -- FOOTBALL | COLOR | DOGS | HORSES
+    event_id BIGINT,            -- virtual event id
+    market_code TEXT,           -- e.g. 1X2, GGNG, OU25, COLOR, RACE_WIN
+    selection_code TEXT,        -- e.g. 1, X, 2 / GG / OV / RED / #1
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     settled_at TIMESTAMPTZ
   );
 
-  -- VIRTUALS
-  CREATE TABLE IF NOT EXISTS virtual_products (
-    id SERIAL PRIMARY KEY,
-    code TEXT UNIQUE NOT NULL,
-    name TEXT NOT NULL,
-    provider TEXT NOT NULL DEFAULT 'internal',
-    is_active BOOLEAN DEFAULT TRUE,
-    sort_order INT DEFAULT 0
-  );
-
+  -- virtual engine
   CREATE TABLE IF NOT EXISTS virtual_events (
     id BIGSERIAL PRIMARY KEY,
-    product_code TEXT NOT NULL REFERENCES virtual_products(code),
-    provider_event_id TEXT NOT NULL,
-    home_team TEXT,  -- store 3-4 letter team codes to reuse as logo keys
-    away_team TEXT,
+    product_code TEXT NOT NULL,     -- FOOTBALL | COLOR | DOGS | HORSES
+    league_code TEXT,               -- e.g. EPL/WEEK34 for football (display only)
+    home_team_code TEXT,
+    away_team_code TEXT,
     start_at TIMESTAMPTZ NOT NULL,
-    status TEXT NOT NULL DEFAULT 'OPEN',   -- OPEN|CLOSED|RESULTED
-    result_payload JSONB,
-    UNIQUE(product_code, provider_event_id)
+    status TEXT NOT NULL DEFAULT 'OPEN'  -- OPEN -> CLOSED -> RESULTED
   );
 
   CREATE TABLE IF NOT EXISTS virtual_markets (
     id BIGSERIAL PRIMARY KEY,
     event_id BIGINT NOT NULL REFERENCES virtual_events(id) ON DELETE CASCADE,
-    market_code TEXT NOT NULL,            -- '1X2','GGNG','OU25','RACE_WIN'
-    selection_code TEXT NOT NULL,         -- '1','X','2','GG','NG','OV','UN','#1'
-    selection_name TEXT NOT NULL,
+    market_code TEXT NOT NULL,        -- 1X2, GGNG, OU25, COLOR, RACE_WIN
+    selection_code TEXT NOT NULL,     -- 1/X/2, GG/NG, OV/UN, RED/BLACK/GREEN, #1..#8
     odds NUMERIC(6,2) NOT NULL
   );
 
-  -- seed wallets (demo)
+  CREATE TABLE IF NOT EXISTS virtual_results (
+    event_id BIGINT PRIMARY KEY REFERENCES virtual_events(id) ON DELETE CASCADE,
+    result_json JSONB NOT NULL,      -- { "1X2":"1", "GGNG":"GG", "OU25":"OV" } or { "COLOR":"RED" } or { "RACE_WIN":"#5" }
+    settled_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+
+  -- ensure house + a default agent/cashier exist (legacy)
   INSERT INTO wallets(owner_type, owner_id, currency, balance_cents)
   SELECT 'house', NULL, 'KES', 0
   WHERE NOT EXISTS (SELECT 1 FROM wallets WHERE owner_type='house' AND owner_id IS NULL);
@@ -128,26 +104,8 @@ async function migrate() {
   INSERT INTO wallets(owner_type, owner_id, currency, balance_cents)
   SELECT 'cashier', 'cashier1', 'KES', 0
   WHERE NOT EXISTS (SELECT 1 FROM wallets WHERE owner_type='cashier' AND owner_id='cashier1');
-
-  -- seed products
-  INSERT INTO virtual_products(code,name,sort_order)
-  VALUES ('EPL','EPL',1),('DOGS','Dogs',2),('HORSES','Horses',3)
-  ON CONFLICT (code) DO NOTHING;
   `;
   await pool.query(sql);
-
-  // constraints
-  await pool.query(`
-    DO $$
-    BEGIN
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='tickets_stake_min_chk') THEN
-        ALTER TABLE tickets ADD CONSTRAINT tickets_stake_min_chk CHECK (stake_cents >= 2000);
-      END IF;
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='tickets_stake_max_chk') THEN
-        ALTER TABLE tickets ADD CONSTRAINT tickets_stake_max_chk CHECK (stake_cents <= 100000);
-      END IF;
-    END$$;
-  `);
 }
 
 async function getWallet(client, ownerType, ownerId=null) {
@@ -164,7 +122,6 @@ async function getWallet(client, ownerType, ownerId=null) {
   }
   return rows[0];
 }
-
 async function ledger(client, walletId, type, amount, refType, refId, memo) {
   const bal = await client.query('SELECT balance_cents FROM wallets WHERE id=$1', [walletId]);
   const after = bal.rows[0].balance_cents;
@@ -174,7 +131,7 @@ async function ledger(client, walletId, type, amount, refType, refId, memo) {
   );
 }
 
-// --- auth (header keys for now) ---
+// ---------- auth (header keys for now) ----------
 function needAdmin(req, res, next) {
   if (req.header('x-admin-key') === process.env.ADMIN_KEY) return next();
   return res.status(401).json({error:'admin key required'});
@@ -184,203 +141,80 @@ function needAgent(req, res, next) {
   return res.status(401).json({error:'agent key required'});
 }
 function needCashier(req, res, next) {
-  if (req.header('x-cashier-key') === process.env.CASHIER_KEY) return next();
+  // legacy single-key cashier
+  if (req.header('x-cashier-key') === process.env.CASHIER_KEY) { req.cashier_code = 'cashier1'; return next(); }
   return res.status(401).json({error:'cashier key required'});
 }
 
-// --- utils ---
-function makeTicketUid() { return 'T' + crypto.randomBytes(6).toString('hex').toUpperCase(); }
-const pick = (arr)=> arr[Math.floor(Math.random()*arr.length)];
+// ---------- utils ----------
+function crestSvg(code){
+  // fallback colored badge if no real logo file
+  const colors = ['#2563eb','#10b981','#f59e0b','#ef4444','#7c3aed','#f97316'];
+  const c = colors[Math.abs(code?.split('').reduce((a,ch)=>a+ch.charCodeAt(0),0)) % colors.length];
+  return `
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect rx="4" width="20" height="20" fill="${c}"/><text x="10" y="13" font-size="10" text-anchor="middle" fill="white" font-family="Arial, sans-serif">${(code||'??').slice(0,2)}</text></svg>`;
+}
 
-// ================== CASHIER DASHBOARD / CORE ==================
+// ---------- endpoints (core) ----------
+app.get('/health', (_req,res)=> res.json({ok:true}));
 
-app.get('/health', (_req, res)=> res.json({ok:true}));
-
-// BALANCES
 app.get('/balances', needAdmin, async (_req,res) => {
   const { rows } = await pool.query('SELECT owner_type, owner_id, balance_cents FROM wallets ORDER BY owner_type, owner_id');
   res.json(rows);
 });
 
-// LEDGER (admin)
 app.get('/admin/ledger', needAdmin, async (_req,res)=>{
   const { rows } = await pool.query('SELECT * FROM wallet_ledger ORDER BY created_at DESC LIMIT 50');
   res.json(rows);
 });
 
-// CASHIER SUMMARY: float + today KPIs + limits
-app.get('/cashier/summary', needCashier, async (_req, res) => {
-  const cashierId = 'cashier1';
-  const w = await pool.query(
-    `SELECT balance_cents FROM wallets WHERE owner_type='cashier' AND owner_id=$1`,
-    [cashierId]
-  );
-  const balance_cents = w.rows[0]?.balance_cents ?? 0;
-
-  const k = await pool.query(`
-    SELECT
-      COALESCE(SUM(stake_cents),0) AS total_stake_cents,
-      COALESCE(SUM(CASE WHEN status IN ('WON','CANCELLED') THEN payout_cents ELSE 0 END),0) AS total_payout_cents,
-      COUNT(*) FILTER (WHERE status='PENDING')   AS pending_count,
-      COUNT(*) FILTER (WHERE status='WON')       AS won_count,
-      COUNT(*) FILTER (WHERE status='LOST')      AS lost_count,
-      COUNT(*) FILTER (WHERE status='CANCELLED') AS cancelled_count
-    FROM tickets
-    WHERE cashier_id=$1 AND created_at::date = CURRENT_DATE;
-  `,[cashierId]);
-
-  const kp = k.rows[0] || {};
-  res.json({
-    balance_cents,
-    limits: { min_stake_cents: MIN_STAKE, max_stake_cents: MAX_STAKE, max_payout_cents: MAX_PAYOUT },
-    today: {
-      total_stake_cents: Number(kp.total_stake_cents || 0),
-      total_payout_cents: Number(kp.total_payout_cents || 0),
-      pending_count: Number(kp.pending_count || 0),
-      won_count: Number(kp.won_count || 0),
-      lost_count: Number(kp.lost_count || 0),
-      cancelled_count: Number(kp.cancelled_count || 0)
-    }
-  });
-});
-
-// CASHIER: list last 20 tickets (include odds)
-app.get('/cashier/tickets', needCashier, async (_req, res) => {
-  const cashierId = 'cashier1';
-  const { rows } = await pool.query(
-    `SELECT uid, stake_cents, potential_win_cents, odds, status, payout_cents, created_at
-       FROM tickets
-      WHERE cashier_id=$1
-      ORDER BY created_at DESC
-      LIMIT 20`,
-    [cashierId]
-  );
-  res.json(rows);
-});
-
-// ====== VIRTUALS: PUBLIC CASHIER APIS ======
-
-app.get('/virtual/products', async (_req,res)=>{
-  const { rows } = await pool.query(`SELECT code,name,sort_order FROM virtual_products WHERE is_active=TRUE ORDER BY sort_order,code`);
-  res.json(rows);
-});
-
-app.get('/virtual/events', async (req,res)=>{
-  const product = req.query.product;
-  if (!product) return res.status(400).json({error:'product required'});
-  const { rows } = await pool.query(
-    `SELECT id, product_code, provider_event_id,
-            home_team AS home_team_code, away_team AS away_team_code,
-            start_at, status
-       FROM virtual_events
-      WHERE product_code=$1 AND start_at > now() - interval '2 minutes'
-      ORDER BY start_at ASC
-      LIMIT 30`,
-    [product]
-  );
-  res.json(rows);
-});
-
-app.get('/virtual/markets', async (req,res)=>{
-  const eventId = parseInt(req.query.event_id,10);
-  if (!eventId) return res.status(400).json({error:'event_id required'});
-  const { rows } = await pool.query(
-    `SELECT market_code, selection_code, selection_name, odds
-       FROM virtual_markets
-      WHERE event_id=$1
-      ORDER BY market_code, selection_code`,
-    [eventId]
-  );
-  res.json(rows);
-});
-
-// ========= PLACE BET =========
-// Two flows:
-// A) Virtuals: product_code+event_id+market_code+selection_code → use odds from DB
-// B) Manual: no product/event → require odds param from client
+// place bet (with odds + market info)
 app.post('/bets/place', needCashier, async (req,res)=>{
   const stake = parseInt(req.body.stake_cents,10);
-  const hasVirtual = !!(req.body.product_code && req.body.event_id && req.body.market_code && req.body.selection_code);
+  const odds = parseFloat(req.body.odds);
+  const { product_code, event_id, market_code, selection_code } = req.body;
 
-  // Validate stake limits
-  if (!Number.isFinite(stake) || stake < MIN_STAKE) {
-    return res.status(400).json({error:`min stake ${MIN_STAKE} cents (KES ${MIN_STAKE/100})`});
-  }
-  if (stake > MAX_STAKE) {
-    return res.status(400).json({error:`max stake ${MAX_STAKE/100} KES`});
-  }
+  if (!stake || stake < MIN_STAKE) return res.status(400).json({error:`min stake ${MIN_STAKE/100} KES`});
+  if (stake > MAX_STAKE) return res.status(400).json({error:`max stake ${MAX_STAKE/100} KES`});
+  if (!odds || odds < 1.01) return res.status(400).json({error:'valid odds required'});
+  if (!product_code || !market_code || !selection_code) return res.status(400).json({error:'product_code, market_code, selection_code required'});
 
   await withTxn(async (client)=>{
-    const cashier = await getWallet(client,'cashier','cashier1');
-    // lock & check balance
-    const w = await client.query('SELECT balance_cents FROM wallets WHERE id=$1 FOR UPDATE',[cashier.id]);
-    if ((w.rows[0]?.balance_cents ?? 0) < stake) throw new Error('insufficient funds');
+    const cashier = await getWallet(client,'cashier',req.cashier_code);
+    const w = await client.query('SELECT * FROM wallets WHERE id=$1 FOR UPDATE',[cashier.id]);
+    if (w.rows[0].balance_cents < stake) throw new Error('insufficient funds');
 
-    let odds, potential, ticketUid = makeTicketUid();
+    await client.query('UPDATE wallets SET balance_cents = balance_cents - $1 WHERE id=$2',[stake, cashier.id]);
 
-    if (hasVirtual) {
-      // confirm event is OPEN and selection exists
-      const evq = await client.query(
-        `SELECT id,status,start_at FROM virtual_events WHERE id=$1 FOR UPDATE`,
-        [req.body.event_id]
+    const ticketUid = makeUid('T');
+    await ledger(client, cashier.id, 'debit', stake, 'stake', ticketUid, 'stake reserved');
+
+    const potential = Math.min(Math.floor(stake * odds), MAX_PAYOUT);
+
+    // attach event if provided
+    let evId = event_id || null;
+    if (!evId) {
+      const ev = await client.query(
+        `INSERT INTO virtual_events(product_code, league_code, start_at, status) VALUES ($1,$2,now() + interval '30 seconds','OPEN') RETURNING id`,
+        [product_code, product_code==='COLOR'?'COLOR':'SIM']
       );
-      const ev = evq.rows[0];
-      if (!ev) throw new Error('virtual event not found');
-      if (ev.status !== 'OPEN') throw new Error('event closed');
-
-      const mq = await client.query(
-        `SELECT odds FROM virtual_markets 
-          WHERE event_id=$1 AND market_code=$2 AND selection_code=$3 LIMIT 1`,
-        [ev.id, req.body.market_code, req.body.selection_code]
-      );
-      if (!mq.rows[0]) throw new Error('market/selection not available');
-      odds = Number(mq.rows[0].odds);
-      if (!Number.isFinite(odds) || odds < MIN_ODDS || odds > MAX_ODDS) throw new Error('invalid odds');
-
-      potential = Math.floor(stake * odds);
-      if (potential > MAX_PAYOUT) potential = MAX_PAYOUT;
-
-      // reserve stake
-      await client.query('UPDATE wallets SET balance_cents = balance_cents - $1 WHERE id=$2',[stake, cashier.id]);
-      await ledger(client, cashier.id, 'debit', stake, 'stake', ticketUid, 'stake reserved');
-
-      await client.query(
-        `INSERT INTO tickets(uid,cashier_id,stake_cents,status,potential_win_cents,odds,
-                             product_code,event_id,market_code,selection_code)
-         VALUES ($1,$2,$3,'PENDING',$4,$5,$6,$7,$8,$9)`,
-        [ticketUid,'cashier1',stake,potential,odds,
-         req.body.product_code, ev.id, req.body.market_code, req.body.selection_code]
-      );
-
-    } else {
-      // manual odds path (legacy)
-      odds = Number(req.body.odds);
-      if (!Number.isFinite(odds) || odds < MIN_ODDS || odds > MAX_ODDS) {
-        throw new Error(`odds must be between ${MIN_ODDS} and ${MAX_ODDS}`);
-      }
-      potential = Math.floor(stake * odds);
-      if (potential > MAX_PAYOUT) potential = MAX_PAYOUT;
-
-      await client.query('UPDATE wallets SET balance_cents = balance_cents - $1 WHERE id=$2',[stake, cashier.id]);
-      await ledger(client, cashier.id, 'debit', stake, 'stake', ticketUid, 'stake reserved');
-
-      await client.query(
-        `INSERT INTO tickets(uid,cashier_id,stake_cents,status,potential_win_cents,odds)
-         VALUES ($1,$2,$3,'PENDING',$4,$5)`,
-        [ticketUid,'cashier1',stake,potential,odds]
-      );
+      evId = ev.rows[0].id;
     }
 
-    res.json({ ok:true, ticket_uid: ticketUid, stake_cents: stake, odds, potential_win_cents: potential, max_payout_cents: MAX_PAYOUT });
+    await client.query(
+      `INSERT INTO tickets(uid,cashier_id,stake_cents,status,potential_win_cents,odds,product_code,event_id,market_code,selection_code)
+       VALUES ($1,$2,$3,'PENDING',$4,$5,$6,$7,$8,$9)`,
+      [ticketUid, req.cashier_code, stake, potential, odds, product_code, evId, market_code, selection_code]
+    );
+
+    res.json({ok:true, ticket_uid: ticketUid, stake_cents: stake, odds, potential_win_cents: potential});
   }).catch(e=> res.status(400).json({error:e.message}));
 });
 
-// ADMIN: settle ticket manually (still available)
+// settle ticket (manual)
 app.post('/admin/settle-ticket', needAdmin, async (req,res)=>{
   const { uid, outcome } = req.body; // WON | LOST | CANCELLED
-  if (!uid || !['WON','LOST','CANCELLED'].includes(outcome)) {
-    return res.status(400).json({error:'uid + outcome required (WON|LOST|CANCELLED)'});
-  }
+  if (!uid || !['WON','LOST','CANCELLED'].includes(outcome)) return res.status(400).json({error:'uid + outcome required (WON|LOST|CANCELLED)'});
 
   await withTxn(async (client)=>{
     const { rows } = await client.query('SELECT * FROM tickets WHERE uid=$1 FOR UPDATE',[uid]);
@@ -392,25 +226,22 @@ app.post('/admin/settle-ticket', needAdmin, async (req,res)=>{
     let payout = 0;
 
     if (outcome === 'WON') {
-      const basePotential = t.potential_win_cents ?? Math.floor(t.stake_cents * (Number(t.odds)||2));
-      payout = Math.min(basePotential, MAX_PAYOUT);
+      const defaultPotential = Math.min(t.stake_cents * (t.odds || 2), MAX_PAYOUT);
+      payout = Math.min(t.potential_win_cents || defaultPotential, MAX_PAYOUT);
       await client.query('UPDATE wallets SET balance_cents=balance_cents+$1 WHERE id=$2',[payout,cashier.id]);
       await ledger(client,cashier.id,'credit',payout,'payout',uid,'ticket won');
     } else if (outcome === 'CANCELLED') {
-      payout = t.stake_cents; // refund stake
+      payout = t.stake_cents;
       await client.query('UPDATE wallets SET balance_cents=balance_cents+$1 WHERE id=$2',[payout,cashier.id]);
       await ledger(client,cashier.id,'credit',payout,'refund',uid,'ticket cancelled');
     }
 
-    await client.query(
-      'UPDATE tickets SET status=$1, payout_cents=$2, settled_at=now() WHERE id=$3',
-      [outcome, payout, t.id]
-    );
+    await client.query('UPDATE tickets SET status=$1, payout_cents=$2, settled_at=now() WHERE id=$3',[outcome, payout, t.id]);
   }).then(()=> res.json({ok:true, uid, outcome}))
     .catch(e=> res.status(400).json({error:e.message}));
 });
 
-// TICKETS: get one
+// get ticket
 app.get('/tickets/:uid', async (req, res) => {
   const { uid } = req.params;
   const { rows } = await pool.query('SELECT * FROM tickets WHERE uid=$1', [uid]);
@@ -418,47 +249,37 @@ app.get('/tickets/:uid', async (req, res) => {
   res.json(rows[0]);
 });
 
-// --- BARCODE PNG
+// cashier last 20
+app.get('/cashier/tickets', needCashier, async (_req, res) => {
+  const cashierId = 'cashier1';
+  const { rows } = await pool.query(
+    `SELECT uid, stake_cents, odds, product_code, market_code, selection_code,
+            potential_win_cents, status, payout_cents, created_at
+     FROM tickets WHERE cashier_id=$1 ORDER BY created_at DESC LIMIT 20`,
+    [cashierId]
+  );
+  res.json(rows);
+});
+
+// barcode
 app.get('/tickets/:uid/barcode.png', async (req, res) => {
   const { uid } = req.params;
   try {
-    const png = await bwipjs.toBuffer({
-      bcid: 'code128', text: uid, scale: 3, height: 10, includetext: true, textxalign: 'center'
-    });
-    res.set('Content-Type', 'image/png');
-    res.send(png);
-  } catch (e) {
-    res.status(400).json({ error: 'barcode failed' });
-  }
+    const png = await bwipjs.toBuffer({ bcid:'code128', text:uid, scale:3, height:10, includetext:true, textxalign:'center' });
+    res.set('Content-Type','image/png'); res.send(png);
+  } catch { res.status(400).json({ error: 'barcode failed' }); }
 });
 
-// --- Team logo (SVG) generated on the fly: /logo/AEK.svg
-app.get('/logo/:code.svg', (req, res) => {
-  const code = (req.params.code || 'FC').slice(0,4).toUpperCase();
-  const hash = Array.from(code).reduce((a,c)=> a + c.charCodeAt(0), 0);
-  const palette = ['#F59E0B','#22C55E','#3B82F6','#EC4899','#8B5CF6','#06B6D4','#EF4444','#84CC16','#F97316','#14B8A6'];
-  const bg = palette[hash % palette.length];
-  const svg =
-  `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 40 40">
-    <defs><clipPath id="r"><circle cx="20" cy="20" r="18"/></clipPath></defs>
-    <rect width="40" height="40" rx="8" fill="${bg}"/>
-    <g clip-path="url(#r)">
-      <circle cx="20" cy="20" r="18" fill="${bg}"/>
-      <text x="50%" y="55%" text-anchor="middle" font-family="system-ui,Arial" font-weight="800"
-            font-size="16" fill="#0b0f19">${code}</text>
-    </g>
-  </svg>`;
-  res.set('Content-Type','image/svg+xml').send(svg);
-});
-
-// --- Printable Ticket (shows ODDS)
+// printable ticket
 app.get('/tickets/:uid/print', async (req, res) => {
   const { uid } = req.params;
   const { rows } = await pool.query('SELECT * FROM tickets WHERE uid=$1', [uid]);
   if (!rows[0]) return res.status(404).send('Ticket not found');
   const t = rows[0];
-  const color = t.status==='WON'?'#16a34a':(t.status==='LOST'?'#dc2626':'#6b7280');
-
+  const color =
+    t.status === 'WON' ? '#16a34a' :
+    t.status === 'LOST' ? '#dc2626' :
+    '#6b7280';
   res.set('Content-Type', 'text/html');
   res.send(`<!doctype html>
 <html><head><meta charset="utf-8"/><title>Ticket ${t.uid}</title>
@@ -470,15 +291,16 @@ body{font-family:system-ui,Arial,sans-serif;padding:16px}
 .wm{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:52px;opacity:0.12;color:${color};transform:rotate(-18deg)}
 .badge{display:inline-block;padding:4px 10px;border-radius:9999px;color:white;background:${color}}
 .muted{color:#6b7280}
-</style></head>
-<body>
+</style></head><body>
 <div class="card">
   <div class="wm">${t.status}</div>
   <div class="row"><div><strong>Mastermind Bet</strong></div><div class="badge">${t.status}</div></div>
   <div class="row"><div class="muted">Ticket</div><div>${t.uid}</div></div>
-  ${t.product_code ? `<div class="row"><div class="muted">Game</div><div>${t.product_code} • ${t.market_code}/${t.selection_code}</div></div>`:''}
   <div class="row"><div class="muted">Cashier</div><div>${t.cashier_id}</div></div>
-  <div class="row"><div class="muted">Odds</div><div>${t.odds ? Number(t.odds).toFixed(2) : '—'}</div></div>
+  <div class="row"><div class="muted">Product</div><div>${t.product_code||'-'}</div></div>
+  <div class="row"><div class="muted">Market</div><div>${t.market_code||'-'}</div></div>
+  <div class="row"><div class="muted">Pick</div><div>${t.selection_code||'-'}</div></div>
+  <div class="row"><div class="muted">Odds</div><div>${t.odds?.toFixed? t.odds.toFixed(2): t.odds||'-'}</div></div>
   <div class="row"><div class="muted">Stake</div><div>KES ${(t.stake_cents/100).toFixed(0)}</div></div>
   <div class="row"><div class="muted">Potential Win</div><div>KES ${((t.potential_win_cents||0)/100).toFixed(0)}</div></div>
   <div class="row"><div class="muted">Payout</div><div>KES ${((t.payout_cents||0)/100).toFixed(0)}</div></div>
@@ -489,328 +311,438 @@ body{font-family:system-ui,Arial,sans-serif;padding:16px}
 </body></html>`);
 });
 
-// --- Cashier Dashboard / POS (desktop-first, responsive, with team logos)
+// ---------- VIRTUAL ENGINE (seed + list + result) ----------
+const CLUBS = ['ARS','CHE','LIV','MCI','MUN','TOT','EVE','WHU','NEW','AVL','BHA','LEE','LEI','WOL','CRY','SOU','BUR','FUL','BRE','BOU'];
+
+function gen1x2Odds() {
+  // simple overround ~107-110%
+  const baseH = 1.5 + Math.random()*2.2; // 1.5 - 3.7
+  const baseA = 1.5 + Math.random()*2.2;
+  const baseD = 2.8 + Math.random()*1.6;
+  const scale = 1.06 + Math.random()*0.05;
+  return {
+    '1': clamp((baseH*scale).toFixed(2), 1.15, 9.99),
+    'X': clamp((baseD*scale).toFixed(2), 1.15, 9.99),
+    '2': clamp((baseA*scale).toFixed(2), 1.15, 9.99)
+  };
+}
+function genGGNG(){ return { GG: (1.90+Math.random()*0.6).toFixed(2), NG: (1.30+Math.random()*0.5).toFixed(2) }; }
+function genOU25(){ return { OV: (1.70+Math.random()*0.9).toFixed(2), UN: (1.25+Math.random()*0.5).toFixed(2) }; }
+function genOU15(){ return { OV: (1.30+Math.random()*0.3).toFixed(2), UN: (2.00+Math.random()*0.7).toFixed(2) }; }
+function genOU05(){ return { OV: (1.15+Math.random()*0.3).toFixed(2), UN: (2.20+Math.random()*1.3).toFixed(2) }; }
+
+async function createFootballEvent(league='EPL', startsInSec=60) {
+  const home = pick(CLUBS), away = pick(CLUBS.filter(c=>c!==home));
+  const startAt = new Date(Date.now()+startsInSec*1000);
+  const ev = await pool.query(
+    `INSERT INTO virtual_events(product_code,league_code,home_team_code,away_team_code,start_at,status)
+     VALUES ('FOOTBALL',$1,$2,$3,$4,'OPEN') RETURNING id`,
+    [`${league}:WEEK`, home, away, startAt]
+  );
+  const id = ev.rows[0].id;
+  const m1 = gen1x2Odds(); const gg = genGGNG(); const ou25 = genOU25(); const ou15=genOU15(); const ou05=genOU05();
+  const ins = [];
+  for (const [k,v] of Object.entries(m1)) ins.push([id,'1X2',k,v]);
+  for (const [k,v] of Object.entries(gg)) ins.push([id,'GGNG',k,v]);
+  for (const [k,v] of Object.entries(ou25)) ins.push([id,'OU25',k,v]);
+  for (const [k,v] of Object.entries(ou15)) ins.push([id,'OU15',k,v]);
+  for (const [k,v] of Object.entries(ou05)) ins.push([id,'OU05',k,v]);
+  const textValues = ins.map((_,i)=>`($${i*4+1},$${i*4+2},$${i*4+3},$${i*4+4})`).join(',');
+  const flat = ins.flat();
+  await pool.query(`INSERT INTO virtual_markets(event_id,market_code,selection_code,odds) VALUES ${textValues}`, flat);
+  return id;
+}
+
+async function createColorEvent(startsInSec=25) {
+  const startAt = new Date(Date.now()+startsInSec*1000);
+  const ev = await pool.query(
+    `INSERT INTO virtual_events(product_code,league_code,start_at,status)
+     VALUES ('COLOR','COLOR', $1,'OPEN') RETURNING id`, [startAt]
+  );
+  const id = ev.rows[0].id;
+  const rows = [
+    [id,'COLOR','RED',  (1.95).toFixed(2)],
+    [id,'COLOR','BLACK',(1.95).toFixed(2)],
+    [id,'COLOR','GREEN',(12.00).toFixed(2)]
+  ];
+  const textValues = rows.map((_,i)=>`($${i*4+1},$${i*4+2},$${i*4+3},$${i*4+4})`).join(',');
+  await pool.query(`INSERT INTO virtual_markets(event_id,market_code,selection_code,odds) VALUES ${textValues}`, rows.flat());
+  return id;
+}
+
+async function createRaceEvent(product='DOGS', startsInSec=40) {
+  const startAt = new Date(Date.now()+startsInSec*1000);
+  const ev = await pool.query(
+    `INSERT INTO virtual_events(product_code,league_code,start_at,status)
+     VALUES ($1,$2,$3,'OPEN') RETURNING id`, [product, product, startAt]
+  );
+  const id = ev.rows[0].id;
+  const runners = Array.from({length:8}, (_,i)=> `#${i+1}`);
+  const rows = runners.map((r)=>{
+    // field odds roughly 1.7 .. 10.0
+    const o = (1.6 + Math.random()*8.4);
+    return [id,'RACE_WIN',r,o.toFixed(2)];
+  });
+  const textValues = rows.map((_,i)=>`($${i*4+1},$${i*4+2},$${i*4+3},$${i*4+4})`).join(',');
+  await pool.query(`INSERT INTO virtual_markets(event_id,market_code,selection_code,odds) VALUES ${textValues}`, rows.flat());
+  return id;
+}
+
+// seed cadence
+async function seedTick() {
+  // football: ensure ~10 OPEN events in next 2 minutes
+  const f = await pool.query(`SELECT count(*)::int c FROM virtual_events WHERE product_code='FOOTBALL' AND status='OPEN' AND start_at > now()`);
+  for (let i=f.rows[0].c; i<10; i++) await createFootballEvent('EPL', 20 + i*10);
+
+  // color: ensure 4 opens
+  const c = await pool.query(`SELECT count(*)::int c FROM virtual_events WHERE product_code='COLOR' AND status='OPEN' AND start_at > now()`);
+  for (let i=c.rows[0].c; i<4; i++) await createColorEvent(12 + i*6);
+
+  // dogs + horses: 3 each
+  const d = await pool.query(`SELECT count(*)::int c FROM virtual_events WHERE product_code='DOGS' AND status='OPEN' AND start_at > now()`);
+  for (let i=d.rows[0].c; i<3; i++) await createRaceEvent('DOGS', 25 + i*10);
+  const h = await pool.query(`SELECT count(*)::int c FROM virtual_events WHERE product_code='HORSES' AND status='OPEN' AND start_at > now()`);
+  for (let i=h.rows[0].c; i<3; i++) await createRaceEvent('HORSES', 30 + i*10);
+}
+
+// roll statuses & result events
+async function settleTick() {
+  // CLOSE events 5s before start
+  await pool.query(`UPDATE virtual_events SET status='CLOSED' WHERE status='OPEN' AND start_at < now() + INTERVAL '5 seconds'`);
+
+  // RESULT events that passed start_at
+  const { rows } = await pool.query(`SELECT * FROM virtual_events WHERE status='CLOSED' AND start_at <= now()`);
+  for (const ev of rows) {
+    let result = {};
+    if (ev.product_code === 'FOOTBALL') {
+      // random but coherent: goals 0..5 each
+      const hg = Math.floor(Math.random()*6), ag = Math.floor(Math.random()*6);
+      const oneXtwo = hg>ag ? '1' : (hg<ag ? '2' : 'X');
+      result = {
+        '1X2': oneXtwo,
+        'GGNG': (hg>0 && ag>0)?'GG':'NG',
+        'OU25': (hg+ag>2)?'OV':'UN',
+        'OU15': (hg+ag>1)?'OV':'UN',
+        'OU05': (hg+ag>0)?'OV':'UN'
+      };
+    } else if (ev.product_code === 'COLOR') {
+      result = { 'COLOR': pick(['RED','BLACK','GREEN','RED','BLACK']) }; // bias to red/black
+    } else {
+      // race
+      const win = '#'+(1+Math.floor(Math.random()*8));
+      result = { 'RACE_WIN': win };
+    }
+    await withTxn(async (client)=>{
+      await client.query('INSERT INTO virtual_results(event_id,result_json) VALUES ($1,$2)', [ev.id, result]);
+      await client.query('UPDATE virtual_events SET status=\'RESULTED\' WHERE id=$1', [ev.id]);
+
+      // settle tickets tied to this event
+      const tix = await client.query(`SELECT * FROM tickets WHERE status='PENDING' AND event_id=$1`, [ev.id]);
+      for (const t of tix.rows) {
+        const winSel = result[t.market_code];
+        const won = (winSel && winSel === t.selection_code);
+        const cashier = await getWallet(client,'cashier',t.cashier_id);
+        let payout = 0;
+        let outcome = 'LOST';
+        if (won) {
+          payout = Math.min(t.potential_win_cents || Math.floor(t.stake_cents * (t.odds||2)), MAX_PAYOUT);
+          await client.query('UPDATE wallets SET balance_cents=balance_cents+$1 WHERE id=$2',[payout,cashier.id]);
+          await ledger(client,cashier.id,'credit',payout,'payout',t.uid,'ticket won (auto)');
+          outcome = 'WON';
+        }
+        await client.query(
+          'UPDATE tickets SET status=$1, payout_cents=$2, settled_at=now() WHERE id=$3',
+          [outcome, payout, t.id]
+        );
+      }
+    });
+  }
+}
+
+// APIs for POS
+app.get('/virtual/products', (_req,res)=> {
+  res.json([
+    { code:'FOOTBALL', name:'Football' },
+    { code:'COLOR',    name:'Color' },
+    { code:'DOGS',     name:'Dogs' },
+    { code:'HORSES',   name:'Horses' },
+  ]);
+});
+
+app.get('/virtual/events', async (req,res)=>{
+  const { product } = req.query;
+  const rows = (await pool.query(
+    `SELECT * FROM virtual_events
+     WHERE ($1::text IS NULL OR product_code=$1) AND status IN ('OPEN','CLOSED')
+     ORDER BY start_at ASC LIMIT 30`, [product||null]
+  )).rows;
+  res.json(rows);
+});
+
+app.get('/virtual/markets', async (req,res)=>{
+  const { event_id } = req.query;
+  const rows = (await pool.query(`SELECT * FROM virtual_markets WHERE event_id=$1 ORDER BY id ASC`, [event_id])).rows;
+  res.json(rows);
+});
+
+// DEBUG: one-shot seed
+app.post('/admin/debug/seed', needAdmin, async (_req,res)=>{
+  await seedTick();
+  res.json({ok:true});
+});
+
+// ---------- Cashier POS (4 products) ----------
 app.get('/pos', (_req, res) => {
   res.set('Content-Type','text/html');
-  res.send(`<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Mastermind Cashier</title>
+  res.send(`<!doctype html>
+<html><head><meta charset="utf-8"/><title>Mastermind Cashier</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
 <style>
-  :root{
-    --bg:#0b0f19; --panel:#111827; --line:#1f2937; --muted:#9aa4b2; --brand:#f59e0b;
-    --ok:#22c55e; --bad:#ef4444; --text:#e5e7eb
-  }
-  *{box-sizing:border-box}
-  body{background:var(--bg);color:var(--text);font-family:system-ui,Arial; padding:16px;max-width:1200px;margin:auto}
-  input,button{padding:10px;font-size:16px;border-radius:10px;border:1px solid var(--line);background:#0f172a;color:var(--text)}
-  button{background:var(--brand);color:#111827;border:none;font-weight:800}
-  button:hover{filter:brightness(1.05)}
-  .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
-  .k{font-size:13px;color:var(--muted)} .v{font-size:22px;font-weight:800}
-  .row{display:flex;gap:8px;margin:12px 0}
-  table{width:100%;border-collapse:collapse;margin-top:12px}
-  th,td{border:1px solid var(--line);padding:10px;font-size:14px;text-align:center;background:#0f172a}
-  .won{color:var(--ok);font-weight:700} .lost{color:var(--bad);font-weight:700} .cancel{color:#9ca3af;font-weight:700}
-
-  /* Virtual tiles */
-  #v-products{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:12px}
-  .v-tile{display:flex;align-items:center;justify-content:center;background:var(--panel);color:#fff;border:1px solid var(--line);
-          border-radius:12px;padding:12px;min-height:72px;font-weight:800;letter-spacing:.3px;transition:transform .12s, box-shadow .12s, background .12s}
-  .v-tile:hover{ transform:translateY(-1px); box-shadow:0 4px 18px rgba(0,0,0,.25) }
-  .v-tile.active{ background:var(--brand); color:#111827 }
-
-  #v-events{overflow:auto;white-space:nowrap;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:#0f172a}
-  .event-pill{display:inline-flex;align-items:center;gap:6px;margin-right:8px;padding:6px 10px;border:1px solid var(--line);
-              border-radius:9999px;background:#111827;color:#fff;cursor:pointer}
-  .event-pill img{width:18px;height:18px;border-radius:4px}
-
-  @media (max-width:1000px){ .grid{grid-template-columns:repeat(2,minmax(0,1fr))} #v-products{grid-template-columns:repeat(4,minmax(0,1fr))} }
-  @media (max-width:620px){ .grid{grid-template-columns:1fr} #v-products{grid-template-columns:repeat(3,minmax(0,1fr))} th,td{padding:8px;font-size:13px} .v-tile{min-height:64px;padding:10px} }
+:root{--bg:#0b1220;--card:#0f172a;--muted:#9aa4b2;--text:#e5e7eb;--brand:#f59e0b;--ok:#16a34a;--bad:#dc2626;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Arial,sans-serif}
+.wrap{max-width:1200px;margin:0 auto;padding:16px}
+h2{margin:8px 0 12px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.card{background:var(--card);border:1px solid #1f2937;border-radius:12px;padding:12px}
+.badge{display:inline-block;background:#1f2937;border:1px solid #2a3645;border-radius:999px;padding:6px 10px;color:#cbd5e1}
+.input{background:#0b1220;border:1px solid #233043;border-radius:10px;color:#e5e7eb;padding:10px}
+.btn{background:var(--brand);border:none;border-radius:10px;color:#111;padding:10px 14px;font-weight:700;cursor:pointer}
+.row{display:flex;gap:8px;align-items:center;margin:8px 0}
+.kpi{display:flex;flex-direction:column;font-weight:700}
+.kpi small{font-weight:500;color:var(--muted)}
+.tabbar{display:flex;gap:8px;margin:10px 0}
+.tab{padding:10px 14px;border-radius:10px;background:#0e1526;border:1px solid #1c2433;color:#e5e7eb;cursor:pointer}
+.tab.active{background:#3b82f6;color:#fff;border-color:#2563eb}
+.pills{display:flex;gap:6px;overflow:auto;padding-bottom:6px}
+.pill{display:flex;gap:6px;align-items:center;background:#101827;border:1px solid #1f2937;color:#cbd5e1;border-radius:999px;padding:6px 10px;white-space:nowrap;cursor:pointer}
+.pill img{width:18px;height:18px;border-radius:4px}
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:8px;border-bottom:1px solid #1f2937;text-align:center}
+.table th{color:#cbd5e1;font-weight:600}
+.od{background:#0f172a;border:1px solid #243246;border-radius:8px;padding:6px 8px;cursor:pointer}
+.footer{position:sticky;bottom:0;background:rgba(10,17,32,0.9);backdrop-filter:blur(4px);border-top:1px solid #1f2937;padding:10px;margin-top:10px}
 </style>
 </head>
 <body>
-  <h2 style="margin:0 0 6px 0;">Cashier Dashboard</h2>
-  <div style="color:var(--muted);font-size:12px">Enter your <b>x-cashier-key</b> then use the controls.</div>
-  <div class="row"><input id="key" placeholder="x-cashier-key" style="flex:1"/></div>
+<div class="wrap">
+  <h2>Cashier Dashboard</h2>
+  <div class="row"><input id="key" class="input" placeholder="x-cashier-key" style="min-width:320px"/></div>
 
-  <div class="grid" id="cards">
-    <div class="card"><div class="k">Float Balance</div><div class="v" id="bal">KES 0</div></div>
-    <div class="card"><div class="k">Today Stake</div><div class="v" id="tstake">KES 0</div></div>
-    <div class="card"><div class="k">Today Payouts</div><div class="v" id="tpayout">KES 0</div></div>
-    <div class="card"><div class="k">Pending / Won / Lost</div><div class="v"><span id="p">0</span> / <span id="w">0</span> / <span id="l">0</span></div></div>
+  <div class="grid">
+    <div class="card"><div class="kpi"><small>Float Balance</small><div id="kpi-float">KES 0</div></div></div>
+    <div class="card"><div class="kpi"><small>Today Stake</small><div id="kpi-stake">KES 0</div></div></div>
+    <div class="card"><div class="kpi"><small>Today Payouts</small><div id="kpi-payout">KES 0</div></div></div>
+    <div class="card"><div class="kpi"><small>Pending / Won / Lost</small><div id="kpi-pl">0 / 0 / 0</div></div></div>
   </div>
 
-  <div class="card" style="margin-top:12px;">
-    <div class="k">Limits</div>
-    <div class="v" id="limits">Min 20 · Max 1000 · Max Payout 20000</div>
+  <div class="card" style="margin-top:12px">
+    <div class="badge">Limits</div>
+    <div>Min 20 - Max 1000 - Max Payout 20000</div>
   </div>
 
-  <h3 style="margin-top:18px;">Place Manual Bet</h3>
-  <div class="row">
-    <input id="stake" type="number" placeholder="Stake KES (min 20, max 1000)" />
-    <input id="odds"  type="number" step="0.01" placeholder="Odds (e.g. 1.80)" />
-    <button onclick="placeManual()">Place</button>
+  <div class="card" style="margin-top:12px">
+    <div class="tabbar">
+      <div class="tab active" data-p="FOOTBALL">Football</div>
+      <div class="tab" data-p="COLOR">Color</div>
+      <div class="tab" data-p="DOGS">Dogs</div>
+      <div class="tab" data-p="HORSES">Horses</div>
+    </div>
+
+    <div id="football">
+      <div id="evpills" class="pills"></div>
+      <table class="table" id="ftbl">
+        <thead><tr>
+          <th>#</th><th style="text-align:left">HOME</th><th style="text-align:left">AWAY</th>
+          <th>1</th><th>X</th><th>2</th><th>GG</th><th>NG</th><th>OV2.5</th><th>UN2.5</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div id="color" style="display:none">
+      <div class="row" style="gap:16px">
+        <button class="btn" style="background:#ef4444;color:#fff" onclick="placeColor('RED')">RED 1.95</button>
+        <button class="btn" style="background:#0ea5e9;color:#fff" onclick="placeColor('BLACK')">BLACK 1.95</button>
+        <button class="btn" style="background:#16a34a;color:#fff" onclick="placeColor('GREEN')">GREEN 12.00</button>
+      </div>
+      <div class="muted">New color round every ~30s</div>
+    </div>
+
+    <div id="races" style="display:none">
+      <div id="racepills" class="pills"></div>
+      <table class="table" id="rtbl">
+        <thead><tr><th>#</th><th style="text-align:left">Runner</th><th>WIN</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
-  <div id="msg" style="color:var(--muted);font-size:12px"></div>
 
-  <h3 style="margin-top:24px;">Virtual Games</h3>
-  <div id="v-products"></div>
-  <div id="v-events"></div>
-  <table id="v-odds" style="margin-top:10px">
-    <thead>
-      <tr><th>#</th><th style="text-align:left">HOME</th><th style="text-align:left">AWAY</th><th>1</th><th>X</th><th>2</th><th>GG</th><th>NG</th><th>OV2.5</th><th>UN2.5</th></tr>
-    </thead><tbody></tbody>
-  </table>
+  <div class="card" style="margin-top:12px">
+    <h3 style="margin:0 0 8px">Recent Tickets</h3>
+    <button class="btn" onclick="loadTickets()">Refresh</button>
+    <table class="table" id="t">
+      <thead><tr><th>UID</th><th>Stake</th><th>Odds</th><th>Product</th><th>Pick</th><th>Status</th><th>Print</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
 
-  <h3 style="margin-top:18px;">Recent Tickets</h3>
-  <button onclick="loadTickets()">Refresh</button>
-  <table id="t"><thead><tr><th>UID</th><th>Stake</th><th>Odds</th><th>Status</th><th>Print</th></tr></thead><tbody></tbody></table>
+  <div class="footer">
+    <div class="row">
+      <input id="manualStake" class="input" placeholder="Stake KES (min 20, max 1000)" style="width:220px">
+      <input id="manualOdds" class="input" placeholder="Odds (e.g. 2.10)" style="width:160px">
+      <button class="btn" onclick="placeManual()">Place Manual</button>
+    </div>
+  </div>
+</div>
 
 <script>
-function fmtKES(c){ return 'KES '+(Math.round((c||0)/100)).toLocaleString(); }
-async function loadSummary(){
-  const key = document.getElementById('key').value.trim(); if(!key) return;
-  const j = await (await fetch('/cashier/summary',{headers:{'x-cashier-key':key}})).json();
-  if(j.error){ document.getElementById('msg').textContent=j.error; return; }
-  document.getElementById('bal').textContent = fmtKES(j.balance_cents);
-  document.getElementById('tstake').textContent = fmtKES(j.today.total_stake_cents);
-  document.getElementById('tpayout').textContent = fmtKES(j.today.total_payout_cents);
-  document.getElementById('p').textContent = j.today.pending_count;
-  document.getElementById('w').textContent = j.today.won_count;
-  document.getElementById('l').textContent = j.today.lost_count;
-  document.getElementById('limits').textContent = \`Min \${Math.round(j.limits.min_stake_cents/100)} · Max \${Math.round(j.limits.max_stake_cents/100)} · Max Payout \${Math.round(j.limits.max_payout_cents/100)}\`;
-}
+const fmt = k => 'KES ' + (Math.round(k/100)).toString();
+
+let cashierKey = '';
+function getKey(){ if(!cashierKey){ cashierKey = document.getElementById('key').value.trim(); } return cashierKey; }
+
+document.querySelectorAll('.tab').forEach(el=>{
+  el.onclick = ()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    el.classList.add('active');
+    const p = el.dataset.p;
+    document.getElementById('football').style.display = (p==='FOOTBALL')?'block':'none';
+    document.getElementById('color').style.display    = (p==='COLOR')?'block':'none';
+    document.getElementById('races').style.display    = (p==='DOGS'||p==='HORSES')?'block':'none';
+    if (p==='FOOTBALL') loadFootball();
+    if (p==='COLOR')    {/* nothing to load; single current event */}
+    if (p==='DOGS' || p==='HORSES') loadRaces(p);
+  };
+});
+
 async function placeManual(){
-  const key = document.getElementById('key').value.trim();
-  const stakeKES = parseInt(document.getElementById('stake').value||'0',10);
-  const odds = Number(document.getElementById('odds').value||'0');
-  const res = await fetch('/bets/place',{method:'POST',headers:{'Content-Type':'application/json','x-cashier-key':key},body:JSON.stringify({stake_cents:stakeKES*100,odds})});
-  const data = await res.json(); document.getElementById('msg').textContent = JSON.stringify(data);
-  await loadSummary(); await loadTickets();
+  const stakeKES = parseInt(document.getElementById('manualStake').value||'0',10);
+  const odds = parseFloat(document.getElementById('manualOdds').value||'0');
+  const stake = stakeKES*100;
+  const res = await fetch('/bets/place',{method:'POST',
+    headers:{'Content-Type':'application/json','x-cashier-key':getKey()},
+    body: JSON.stringify({stake_cents:stake, odds, product_code:'FOOTBALL', market_code:'1X2', selection_code:'1'})
+  });
+  alert(await res.text()); loadTickets();
 }
-async function loadTickets(){
-  const key = document.getElementById('key').value.trim();
-  const rows = await (await fetch('/cashier/tickets',{headers:{'x-cashier-key':key}})).json();
-  const tb = document.querySelector('#t tbody'); tb.innerHTML='';
-  (rows||[]).forEach(r=>{
+
+// FOOTBALL
+let currentEvent = null;
+async function loadFootball(){
+  const evs = await (await fetch('/virtual/events?product=FOOTBALL')).json();
+  const pills = document.getElementById('evpills'); pills.innerHTML='';
+  evs.forEach((e,i)=>{
+    const b = document.createElement('div');
+    b.className='pill';
+    b.innerHTML = (e.home_team_code||'H') + ' vs ' + (e.away_team_code||'A') + ' • ' + new Date(e.start_at).toLocaleTimeString();
+    b.onclick=()=> showFootball(e);
+    pills.appendChild(b);
+    if(i===0) currentEvent=e;
+  });
+  if (evs[0]) showFootball(evs[0]);
+}
+async function showFootball(e){
+  currentEvent = e;
+  const m = await (await fetch('/virtual/markets?event_id='+e.id)).json();
+  const odds = (code,sel)=> {
+    const row = m.find(r=> r.market_code===code && r.selection_code===sel);
+    return row? Number(row.odds).toFixed(2) : '-';
+  };
+  const tb = document.querySelector('#ftbl tbody'); tb.innerHTML='';
+  const tr = document.createElement('tr');
+  tr.innerHTML = \`
+  <td>1</td>
+  <td style="text-align:left">\${e.home_team_code}</td>
+  <td style="text-align:left">\${e.away_team_code}</td>
+  <td class="od" onclick="pickBet(\${e.id},'FOOTBALL','1X2','1',\${odds('1X2','1')})">\${odds('1X2','1')}</td>
+  <td class="od" onclick="pickBet(\${e.id},'FOOTBALL','1X2','X',\${odds('1X2','X')})">\${odds('1X2','X')}</td>
+  <td class="od" onclick="pickBet(\${e.id},'FOOTBALL','1X2','2',\${odds('1X2','2')})">\${odds('1X2','2')}</td>
+  <td class="od" onclick="pickBet(\${e.id},'FOOTBALL','GGNG','GG',\${odds('GGNG','GG')})">\${odds('GGNG','GG')}</td>
+  <td class="od" onclick="pickBet(\${e.id},'FOOTBALL','GGNG','NG',\${odds('GGNG','NG')})">\${odds('GGNG','NG')}</td>
+  <td class="od" onclick="pickBet(\${e.id},'FOOTBALL','OU25','OV',\${odds('OU25','OV')})">\${odds('OU25','OV')}</td>
+  <td class="od" onclick="pickBet(\${e.id},'FOOTBALL','OU25','UN',\${odds('OU25','UN')})">\${odds('OU25','UN')}</td>\`;
+  tb.appendChild(tr);
+}
+
+// COLOR
+async function placeColor(sel){
+  // use the soonest OPEN color event
+  const evs = await (await fetch('/virtual/events?product=COLOR')).json();
+  const e = evs[0]; if(!e){ alert('no round'); return; }
+  const odds = sel==='GREEN'?12.00:1.95;
+  const stakeKES = parseInt(prompt('Stake KES? (min 20, max 1000)')||'0',10);
+  if(!stakeKES) return;
+  const res = await fetch('/bets/place',{method:'POST',
+    headers:{'Content-Type':'application/json','x-cashier-key':getKey()},
+    body: JSON.stringify({stake_cents:stakeKES*100, odds, product_code:'COLOR', event_id:e.id, market_code:'COLOR', selection_code:sel})
+  });
+  alert(await res.text()); loadTickets();
+}
+
+// RACES
+async function loadRaces(product){
+  const evs = await (await fetch('/virtual/events?product='+product)).json();
+  const pills = document.getElementById('racepills'); pills.innerHTML='';
+  evs.forEach((e,i)=>{
+    const b = document.createElement('div'); b.className='pill'; b.textContent = product + ' • ' + new Date(e.start_at).toLocaleTimeString();
+    b.onclick=()=> showRace(e,product); pills.appendChild(b); if(i===0) showRace(e,product);
+  });
+}
+async function showRace(e,product){
+  const data = await (await fetch('/virtual/markets?event_id='+e.id)).json();
+  const tb = document.querySelector('#rtbl tbody'); tb.innerHTML='';
+  data.filter(x=>x.market_code==='RACE_WIN').forEach((r,i)=>{
     const tr = document.createElement('tr');
-    const cls = r.status==='WON'?'won':(r.status==='LOST'?'lost':'cancel');
-    tr.innerHTML = \`<td>\${r.uid}</td><td>\${fmtKES(r.stake_cents)}</td><td>\${r.odds?Number(r.odds).toFixed(2):'—'}</td><td class="\${cls}">\${r.status}</td><td><a href="/tickets/\${r.uid}/print" target="_blank">Print</a></td>\`;
+    tr.innerHTML = \`
+      <td>\${i+1}</td>
+      <td style="text-align:left">\${r.selection_code}</td>
+      <td class="od" onclick="pickBet(\${e.id},'\${product}','RACE_WIN','\${r.selection_code}',\${Number(r.odds).toFixed(2)})">\${Number(r.odds).toFixed(2)}</td>\`;
     tb.appendChild(tr);
   });
 }
-async function vInit(){
-  const p = await (await fetch('/virtual/products')).json();
-  const c = document.getElementById('v-products'); c.innerHTML='';
-  p.forEach(prod=>{
-    const d = document.createElement('button');
-    d.textContent = prod.name;
-    d.className = 'v-tile';
-    d.onclick = ()=> { 
-      [...document.querySelectorAll('#v-products .v-tile')].forEach(x=>x.classList.remove('active'));
-      d.classList.add('active');
-      vLoadEvents(prod.code);
-    };
-    c.appendChild(d);
-  });
-}
-async function vLoadEvents(code){
-  const evs = await (await fetch('/virtual/events?product='+encodeURIComponent(code))).json();
-  const strip = document.getElementById('v-events'); strip.innerHTML='';
-  evs.forEach(e=>{
-    const b=document.createElement('div');
-    const home=e.home_team_code||'HOME', away=e.away_team_code||'AWAY';
-    const t=new Date(e.start_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-    b.className='event-pill';
-    b.innerHTML= \`
-      <img src="/logo/\${home}.svg" alt=""><span>\${home}</span>
-      <span>vs</span>
-      <img src="/logo/\${away}.svg" alt=""><span>\${away}</span>
-      <span style="color:#9aa4b2">• \${t}</span>\`;
-    b.onclick=()=>vShowOdds(e);
-    strip.appendChild(b);
-  });
-  if(evs[0]) vShowOdds(evs[0]);
-}
-async function vShowOdds(e){
-  const data = await (await fetch('/virtual/markets?event_id='+e.id)).json();
-  const tb = document.querySelector('#v-odds tbody'); tb.innerHTML='';
-  const get = (m,s)=> data.find(x=>x.market_code===m && x.selection_code===s)?.odds;
-  const home=e.home_team_code||'HOME', away=e.away_team_code||'AWAY';
-  const row = document.createElement('tr');
-  row.innerHTML = \`
-    <td>1</td>
-    <td style="text-align:left"><img src="/logo/\${home}.svg" style="width:18px;height:18px;border-radius:4px;vertical-align:middle;margin-right:6px">\${home}</td>
-    <td style="text-align:left"><img src="/logo/\${away}.svg" style="width:18px;height:18px;border-radius:4px;vertical-align:middle;margin-right:6px">\${away}</td>
-    \${['1','X','2'].map(k=> '<td style="cursor:pointer" onclick="vPick('+e.id+',\\'1X2\\',\\''+k+'\\',\\''+e.product_code+'\\')">'+(get('1X2',k)?.toFixed(2)||'-')+'</td>').join('')}
-    \${['GG','NG'].map(k=> '<td style="cursor:pointer" onclick="vPick('+e.id+',\\'GGNG\\',\\''+k+'\\',\\''+e.product_code+'\\')">'+(get('GGNG',k)?.toFixed(2)||'-')+'</td>').join('')}
-    \${['OV','UN'].map(k=> '<td style="cursor:pointer" onclick="vPick('+e.id+',\\'OU25\\',\\''+k+'\\',\\''+e.product_code+'\\')">'+(get('OU25',k)?.toFixed(2)||'-')+'</td>').join('')}
-  \`;
-  tb.appendChild(row);
-}
-async function vPick(eventId,market,sel,product){
-  const key=document.getElementById('key').value.trim();
-  const stakeKES = Number(prompt('Stake KES (20-1000):','50')||'0');
+
+async function pickBet(event_id, product_code, market_code, selection_code, odds){
+  const stakeKES = parseInt(prompt('Stake KES? (min 20, max 1000)')||'0',10);
   if(!stakeKES) return;
-  const res = await fetch('/bets/place',{method:'POST',headers:{'Content-Type':'application/json','x-cashier-key':key},body:JSON.stringify({
-    product_code:product,event_id:eventId,market_code:market,selection_code:sel,stake_cents:stakeKES*100
-  })});
-  const data = await res.json(); alert(JSON.stringify(data)); loadTickets(); loadSummary();
+  const res = await fetch('/bets/place',{method:'POST',
+    headers:{'Content-Type':'application/json','x-cashier-key':getKey()},
+    body: JSON.stringify({stake_cents: stakeKES*100, odds, product_code, event_id, market_code, selection_code})
+  });
+  alert(await res.text()); loadTickets();
 }
-document.getElementById('key').addEventListener('change',()=>{ loadSummary(); loadTickets(); });
-vInit();
+
+// list tickets
+async function loadTickets(){
+  const rows = await (await fetch('/cashier/tickets',{headers:{'x-cashier-key':getKey()}})).json();
+  const tb = document.querySelector('#t tbody'); tb.innerHTML='';
+  (rows||[]).forEach(r=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = \`
+      <td>\${r.uid}</td>
+      <td>KES \${(r.stake_cents/100).toFixed(0)}</td>
+      <td>\${(r.odds||0).toFixed? r.odds.toFixed(2): r.odds||'-'}</td>
+      <td>\${r.product_code||'-'}</td>
+      <td>\${r.market_code||'-'}/\${r.selection_code||'-'}</td>
+      <td>\${r.status}</td>
+      <td><a href="/tickets/\${r.uid}/print" target="_blank">Print</a></td>\`;
+    tb.appendChild(tr);
+  });
+}
+loadFootball(); // default
+setInterval(()=>{ loadFootball(); }, 15000);
 </script>
 </body></html>`);
 });
 
-// ================== VIRTUALS ENGINE (internal RNG) ==================
-const TEAMS = ['AEK','LIV','PSV','BAR','ROM','FCB','MCI','PSG','RMA','JUV','NAP','CHE','CEL','BEN','ZEN','BVB','MAR','ATM','BAS','MUN'];
+// optional root redirect
+app.get('/', (_req,res)=> res.redirect('/pos'));
 
-function makeOdds3Way() {
-  let a=Math.random(), b=Math.random(), c=Math.random(); const sum=a+b+c; a/=sum; b/=sum; c/=sum;
-  const margin = 1.08; // 8% margin
-  return [Math.max(1.15, margin/a), Math.max(1.15, margin/b), Math.max(1.15, margin/c)]
-    .map(v => Math.round(v*100)/100);
-}
-function makeOddsYesNo() {
-  let a=Math.random(), b=Math.random(); const s=a+b; a/=s; b/=s;
-  const margin = 1.06;
-  return [Math.max(1.10, margin/a), Math.max(1.10, margin/b)]
-    .map(v => Math.round(v*100)/100);
-}
-async function createFootballEvent(productCode, startInSec=90){
-  const home = pick(TEAMS), away = pick(TEAMS.filter(t=>t!==home));
-  const provider_event_id = crypto.randomBytes(4).toString('hex');
-  const start_at = new Date(Date.now()+startInSec*1000).toISOString();
-  const ev = await pool.query(
-    `INSERT INTO virtual_events(product_code,provider_event_id,home_team,away_team,start_at,status)
-     VALUES ($1,$2,$3,$4,$5,'OPEN') RETURNING id`,
-    [productCode, provider_event_id, home, away, start_at]
-  );
-  const eventId = ev.rows[0].id;
-  const [o1,oX,o2] = makeOdds3Way();
-  const [gg,ng]   = makeOddsYesNo();
-  const [ov,un]   = makeOddsYesNo();
+// ---------- background loops ----------
+setInterval(seedTick, 5000);     // keep events coming
+setInterval(settleTick, 3000);   // close/result/settle
 
-  await pool.query(
-    `INSERT INTO virtual_markets(event_id,market_code,selection_code,selection_name,odds) VALUES
-     ($1,'1X2','1','Home',$2),($1,'1X2','X','Draw',$3),($1,'1X2','2','Away',$4),
-     ($1,'GGNG','GG','Both Teams Score',$5),($1,'GGNG','NG','No Goal',$6),
-     ($1,'OU25','OV','Over 2.5',$7),($1,'OU25','UN','Under 2.5',$8)`,
-    [eventId,o1,oX,o2,gg,ng,ov,un]
-  );
-}
-async function createRaceEvent(productCode, startInSec=60){
-  const provider_event_id = crypto.randomBytes(4).toString('hex');
-  const start_at = new Date(Date.now()+startInSec*1000).toISOString();
-  const ev = await pool.query(
-    `INSERT INTO virtual_events(product_code,provider_event_id,start_at,status)
-     VALUES ($1,$2,$3,'OPEN') RETURNING id`,
-    [productCode, provider_event_id, start_at]
-  );
-  const eventId = ev.rows[0].id;
-  // 8 runners with random odds (win market only)
-  const runners = Array.from({length:8}, (_,i)=> '#'+(i+1));
-  let probs = runners.map(()=> Math.random());
-  const sum = probs.reduce((a,b)=>a+b,0); probs = probs.map(p=>p/sum);
-  const margin = 1.15;
-  for (let i=0;i<runners.length;i++){
-    const o = Math.max(1.10, margin / probs[i]);
-    await pool.query(
-      `INSERT INTO virtual_markets(event_id,market_code,selection_code,selection_name,odds)
-       VALUES ($1,'RACE_WIN',$2,$2,$3)`,
-      [eventId, runners[i], Math.round(o*100)/100]
-    );
-  }
-}
-async function closeAndResultEvents(){
-  // Close events that started
-  await pool.query(`UPDATE virtual_events SET status='CLOSED' WHERE status='OPEN' AND start_at <= now()`);
-
-  // Result events that are closed for > 10s
-  const { rows } = await pool.query(
-    `SELECT * FROM virtual_events WHERE status='CLOSED' AND start_at <= now() - interval '10 seconds' LIMIT 50`
-  );
-  for (const ev of rows) {
-    if (ev.product_code==='EPL') {
-      // generate football score
-      const gh = Math.random()<0.5?0:(Math.random()<0.5?1:2) + (Math.random()<0.2?1:0);
-      const ga = Math.random()<0.5?0:(Math.random()<0.5?1:2) + (Math.random()<0.2?1:0);
-      const res = {home:ev.home_team, away:ev.away_team, score:`${gh}-${ga}`};
-      await pool.query(`UPDATE virtual_events SET status='RESULTED', result_payload=$2 WHERE id=$1`, [ev.id, res]);
-      await settleFootball(ev.id, gh, ga);
-    } else {
-      // race: pick random winner
-      const { rows: mk } = await pool.query(`SELECT selection_code FROM virtual_markets WHERE event_id=$1 AND market_code='RACE_WIN'`, [ev.id]);
-      const winner = pick(mk.map(x=>x.selection_code));
-      const res = {winner};
-      await pool.query(`UPDATE virtual_events SET status='RESULTED', result_payload=$2 WHERE id=$1`, [ev.id, res]);
-      await settleRaceWin(ev.id, winner);
-    }
-  }
-}
-async function settleFootball(eventId, gh, ga){
-  const { rows: tks } = await pool.query(`SELECT * FROM tickets WHERE status='PENDING' AND event_id=$1`, [eventId]);
-  for (const t of tks) {
-    let outcome = 'LOST';
-    if (t.market_code==='1X2') {
-      const r = gh>ga?'1':(gh<ga?'2':'X');
-      if (t.selection_code===r) outcome='WON';
-    } else if (t.market_code==='GGNG') {
-      const r = (gh>0 && ga>0)?'GG':'NG';
-      if (t.selection_code===r) outcome='WON';
-    } else if (t.market_code==='OU25') {
-      const tot = gh+ga; const r = tot>2?'OV':'UN';
-      if (t.selection_code===r) outcome='WON';
-    }
-    await settleTicketByOutcome(t, outcome);
-  }
-}
-async function settleRaceWin(eventId, winner){
-  const { rows: tks } = await pool.query(`SELECT * FROM tickets WHERE status='PENDING' AND event_id=$1`, [eventId]);
-  for (const t of tks) {
-    const outcome = (t.market_code==='RACE_WIN' && t.selection_code===winner) ? 'WON' : 'LOST';
-    await settleTicketByOutcome(t, outcome);
-  }
-}
-async function settleTicketByOutcome(t, outcome){
-  await withTxn(async (client)=>{
-    const cashier = await getWallet(client,'cashier',t.cashier_id);
-    let payout = 0;
-    if (outcome==='WON') {
-      const base = t.potential_win_cents ?? Math.floor(t.stake_cents * (Number(t.odds)||2));
-      payout = Math.min(base, MAX_PAYOUT);
-      await client.query('UPDATE wallets SET balance_cents=balance_cents+$1 WHERE id=$2',[payout,cashier.id]);
-      await ledger(client,cashier.id,'credit',payout,'payout',t.uid,'auto-settle win');
-    } else if (outcome==='CANCELLED') {
-      payout = t.stake_cents;
-      await client.query('UPDATE wallets SET balance_cents=balance_cents+$1 WHERE id=$2',[payout,cashier.id]);
-      await ledger(client,cashier.id,'credit',payout,'refund',t.uid,'auto-settle cancel');
-    }
-    await client.query(`UPDATE tickets SET status=$1, payout_cents=$2, settled_at=now() WHERE id=$3`,
-      [outcome, payout, t.id]);
-  });
-}
-
-// scheduler: every 5s ensure pipeline + settle results
-async function schedulerTick(){
-  // ensure we have a few upcoming events per product
-  const { rows: prods } = await pool.query(`SELECT code FROM virtual_products WHERE is_active=TRUE ORDER BY sort_order`);
-  for (const p of prods) {
-    const { rows: cnt } = await pool.query(
-      `SELECT COUNT(*)::int AS n FROM virtual_events WHERE product_code=$1 AND start_at > now() AND status='OPEN'`,
-      [p.code]
-    );
-    if (cnt[0].n < 5) {
-      if (p.code==='EPL') await createFootballEvent('EPL', 60 + Math.floor(Math.random()*60));
-      else await createRaceEvent(p.code, 45 + Math.floor(Math.random()*45));
-    }
-  }
-  await closeAndResultEvents();
-}
-setInterval(()=> schedulerTick().catch(console.error), 5000);
-
-// start
+// ---------- start ----------
 migrate()
-  .then(()=> app.listen(3000, ()=> console.log('App on :3000')))
-  .catch(err=> { console.error(err); process.exit(1); });
+ .then(()=> app.listen(3000, ()=> console.log('App on :3000')))
+ .catch(err=> { console.error(err); process.exit(1); });
