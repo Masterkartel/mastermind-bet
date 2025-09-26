@@ -1,12 +1,15 @@
-// index.js — wallets, tickets, odds, product tabs, barcode/print, POS
+// index.js — wallets, tickets, odds, product tabs, barcode/print, POS, Virtual UI + Club Lists
 require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const crypto = require('crypto');
 const bwipjs = require('bwip-js');
+const path = require('path'); // ⟵ added
 
 const app = express();
 app.use(express.json());
+// Serve /public for logos and any static assets
+app.use(express.static(path.join(__dirname, 'public')));
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
@@ -15,6 +18,35 @@ const MIN_STAKE = parseInt(process.env.MIN_STAKE_CENTS || '2000', 10); // 20 KES
 const MAX_STAKE = 100000;   // 1,000 KES (cents)
 const MAX_PAYOUT = 2000000; // 20,000 KES (cents)
 const PRODUCTS = new Set(['FOOTBALL', 'COLOR', 'DOGS', 'HORSES']);
+
+// ------- Club lists for UI/CSV (from your screenshots) -------
+const CLUBS = {
+  EPL: [
+    ['MUN','Manchester United'], ['TOT','Tottenham Hotspur'], ['EVE','Everton'], ['CHE','Chelsea'],
+    ['NEW','Newcastle United'], ['WOL','Wolverhampton Wanderers'], ['LIV','Liverpool'], ['ARS','Arsenal'],
+    ['NOT','Nottingham Forest'], ['SOU','Southampton'], ['BOU','Bournemouth'], ['CRY','Crystal Palace'],
+    ['LEI','Leicester City'], ['ASV','Aston Villa'], ['WHU','West Ham United'], ['BRN','Brentford'],
+    ['BRI','Brighton & Hove Albion'], ['LED','Leeds United'], ['FUL','Fulham'], ['MCI','Manchester City']
+  ],
+  LIGA: [
+    ['CAD','Cádiz'], ['RVA','Rayo Vallecano'], ['VIL','Villarreal'], ['SEV','Sevilla'], ['ATM','Atlético Madrid'],
+    ['GRO','Girona'], ['ESP','Espanyol'], ['ELC','Elche'], ['MAL','Mallorca'], ['FCB','Barcelona'],
+    ['RMA','Real Madrid'], ['GET','Getafe'], ['ATH','Athletic Club'], ['OSA','Osasuna'],
+    ['CEL','Celta Vigo'], ['BET','Real Betis'], ['VAL','Valencia'], ['RSO','Real Sociedad'], ['ALM','Almería']
+  ],
+  CHAMPIONS: [
+    ['BRU','Club Brugge'], ['PSG','Paris Saint-Germain'], ['MAD','Atlético Madrid'], ['GAL','Galatasaray'],
+    ['OLY','Olympiacos'], ['BAY','Bayern Munich'], ['TOT','Tottenham Hotspur'], ['RSB','Red Star Belgrade']
+  ],
+  CHAMPS_CUP: [
+    ['PSV','PSV Eindhoven'], ['AEK','AEK Athens'], ['MCI','Manchester City'], ['BEN','Benfica'],
+    ['RMA','Real Madrid'], ['FCB','Barcelona'], ['MUN','Manchester United'], ['BAR','Barcelona'],
+    ['MAR','Marseille'], ['BAS','FC Basel'], ['NAP','Napoli'], ['ZEN','Zenit'],
+    ['ROM','AS Roma'], ['JUV','Juventus'], ['PSG','Paris Saint-Germain'], ['ATM','Atlético Madrid'],
+    ['LIV','Liverpool'], ['CHE','Chelsea'], ['BVB','Borussia Dortmund'], ['CEL','Celtic']
+  ],
+  COLOR: []
+};
 
 // --- helpers ---
 async function withTxn(fn) {
@@ -80,11 +112,11 @@ async function migrate() {
 
   -- New columns for single-pick MVP (added safely if missing)
   ALTER TABLE tickets ADD COLUMN IF NOT EXISTS odds NUMERIC(7,3);
-  ALTER TABLE tickets ADD COLUMN IF NOT EXISTS product TEXT;              -- FOOTBALL|COLOR|DOGS|HORSES
-  ALTER TABLE tickets ADD COLUMN IF NOT EXISTS event_code TEXT;           -- e.g. 'WEEK34#AEK-LIV'
-  ALTER TABLE tickets ADD COLUMN IF NOT EXISTS market_code TEXT;          -- e.g. '1X2' or 'OV2.5'
-  ALTER TABLE tickets ADD COLUMN IF NOT EXISTS selection_code TEXT;       -- e.g. '1'|'X'|'2'|'OV'|'UN'|'GG'|'NG'
-  ALTER TABLE tickets ADD COLUMN IF NOT EXISTS pick_label TEXT;           -- friendly label printed
+  ALTER TABLE tickets ADD COLUMN IF NOT EXISTS product TEXT;
+  ALTER TABLE tickets ADD COLUMN IF NOT EXISTS event_code TEXT;
+  ALTER TABLE tickets ADD COLUMN IF NOT EXISTS market_code TEXT;
+  ALTER TABLE tickets ADD COLUMN IF NOT EXISTS selection_code TEXT;
+  ALTER TABLE tickets ADD COLUMN IF NOT EXISTS pick_label TEXT;
 
   CREATE INDEX IF NOT EXISTS idx_tickets_cashier_created ON tickets(cashier_id, created_at DESC);
 
@@ -290,7 +322,7 @@ app.get('/tickets/:uid/barcode.png', async (req, res) => {
   }
 });
 
-// Printable Ticket page with watermark color by status and odds/product info
+// Printable Ticket page
 app.get('/tickets/:uid/print', async (req, res) => {
   const { uid } = req.params;
   const { rows } = await pool.query('SELECT * FROM tickets WHERE uid=$1', [uid]);
@@ -342,7 +374,7 @@ app.get('/tickets/:uid/print', async (req, res) => {
 </html>`);
 });
 
-// Simple Cashier POS page (dark, responsive). Manual place supports odds + product tab.
+// Simple Cashier POS page
 app.get('/pos', (_req, res) => {
   res.set('Content-Type','text/html');
   res.send(`<!doctype html>
@@ -467,20 +499,150 @@ async function loadTickets(){
   tb.innerHTML = '';
   (rows||[]).forEach(r=>{
     const tr = document.createElement('tr');
-    tr.innerHTML = \`
-      <td>\${r.uid}</td>
-      <td>\${fmtKES(r.stake_cents)}</td>
-      <td>\${r.odds ? Number(r.odds).toFixed(2) : '-'}</td>
-      <td><span class="badge">\${r.product||'-'}</span></td>
-      <td>\${r.pick_label||r.selection_code||'-'}</td>
-      <td>\${r.status}</td>
-      <td><a href="/tickets/\${r.uid}/print" target="_blank">Print</a></td>\`;
+    tr.innerHTML =
+      '<td>'+r.uid+'</td>'+
+      '<td>'+fmtKES(r.stake_cents)+'</td>'+
+      '<td>'+(r.odds ? Number(r.odds).toFixed(2) : '-')+'</td>'+
+      '<td><span class="badge">'+(r.product||'-')+'</span></td>'+
+      '<td>'+(r.pick_label||r.selection_code||'-')+'</td>'+
+      '<td>'+r.status+'</td>'+
+      '<td><a href="/tickets/'+r.uid+'/print" target="_blank">Print</a></td>';
     tb.appendChild(tr);
   });
 }
 </script>
 </body>
 </html>`);
+});
+
+// ---------- CLUB LISTS API + CSV ----------
+app.get('/clubs.json', (_req, res) => {
+  res.json({ leagues: Object.keys(CLUBS), clubs: CLUBS });
+});
+
+app.get('/clubs.csv', (req, res) => {
+  const league = (req.query.league || 'EPL').toUpperCase();
+  const list = CLUBS[league] || [];
+  const rows = [['league','code','name','suggested_logo_filename']]
+    .concat(list.map(([c,n]) => [league, c, n, (c.toLowerCase()+'.png')]));
+  const csv = rows.map(r => r.map(x => '"' + String(x).replace(/"/g,'\\"') + '"').join(',')).join('\n');
+  res.set('Content-Type','text/csv');
+  res.set('Content-Disposition', 'attachment; filename="'+league.toLowerCase()+'_clubs.csv"');
+  res.send(csv);
+});
+
+// ---------- Frontend: Virtual odds-like page ----------
+app.get('/virtual', (_req, res) => {
+  res.set('Content-Type','text/html');
+  res.send(`<!doctype html>
+<html><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Mastermind — Virtual Sports</title>
+<style>
+:root{--bg:#0b0f19;--panel:#121826;--panel2:#0e1526;--muted:#9aa4b2;--text:#e6edf3;--line:#1d2640;--brand:#f59e0b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:1360px;margin:0 auto;padding:16px}.row{display:flex;gap:16px}.left{flex:1}.right{width:310px}
+.topbar{display:flex;align-items:center;gap:10px;justify-content:space-between;margin-bottom:12px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}.tab{padding:8px 12px;border-radius:9999px;background:#10192e;border:1px solid var(--line);cursor:pointer}
+.tab.active{background:#1f2937}.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px}
+table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid var(--line);font-size:14px}
+th{font-weight:700;text-transform:uppercase;color:#c8d1dd;font-size:12px;background:#0f1629;position:sticky;top:0}
+.league{display:flex;align-items:center;gap:10px;font-weight:700}.badge{background:#0f1629;border:1px solid #223155;padding:4px 8px;border-radius:9999px;font-size:12px}
+.pill{display:inline-flex;align-items:center;justify-content:center;min-width:46px;height:36px;border-radius:8px;background:#0f1629;border:1px solid #1d2846}
+.col-odds{display:grid;grid-template-columns:repeat(10,1fr);gap:8px}.muted{color:var(--muted)}
+.sidehdr{display:flex;justify-content:space-between;align-items:center}.ticket-row{display:grid;grid-template-columns:1fr 68px 68px;gap:8px;padding:8px;border-bottom:1px solid var(--line);font-size:12px}
+details{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:12px}
+summary{cursor:pointer;font-weight:700}.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.chip{padding:6px 10px;border-radius:9999px;background:#0f1629;border:1px solid #223155;font-size:12px}
+.btn{background:var(--brand);color:#111;font-weight:800;border:none;border-radius:10px;padding:8px 12px;cursor:pointer}.sel{background:#0f1629;border:1px solid #223155;color:var(--text);border-radius:10px;padding:8px}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="tabs" id="leagueTabs"></div>
+      <div style="display:flex;gap:12px"><div class="panel">BRONZE JACKPOT <b>1,120 KSh</b></div></div>
+    </div>
+    <div class="row">
+      <div class="left">
+        <div class="panel">
+          <table><thead>
+            <tr><th>#</th><th>Match</th><th>MAIN</th><th>OVER/UNDER</th><th>1X2 OV/UN 1.5</th><th>1X2 OV/UN 2.5</th><th>GG</th><th>NG</th><th>OV 2.5</th><th>UN 2.5</th></tr>
+          </thead><tbody id="fixtureBody"></tbody></table>
+        </div>
+        <details><summary>Club lists — download CSV for logos</summary>
+          <div style="display:flex;gap:8px;margin:8px 0"><select class="sel" id="leagueSelect"></select><a id="csvBtn" class="btn">Download CSV</a></div>
+          <div class="chips" id="clubChips"></div>
+        </details>
+      </div>
+      <div class="right">
+        <div class="panel">
+          <div class="sidehdr"><h3>FASTBET</h3><span class="badge">Recent</span></div>
+          <div class="ticket-row" style="font-weight:700;color:#cbd5e1"><div>Ticket Nº</div><div>Stake</div><div>Payout</div></div>
+          <div id="fastbet"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+<script>
+const FIXTURES = {
+  EPL: [['MUN','TOT'],['EVE','CHE'],['NEW','WOL'],['LIV','ARS'],['NOT','SOU'],['BOU','CRY'],['LEI','ASV'],['WHU','BRN'],['BRI','LED'],['FUL','MCI']],
+  LIGA: [['CAD','RVA'],['VIL','SEV'],['ATM','GRO'],['ESP','ELC'],['MAL','FCB'],['RMA','GET'],['ATH','OSA'],['CEL','BET'],['VAL','RSO'],['VAL','ALM']],
+  CHAMPIONS: [['BRU','PSG'],['MAD','GAL'],['OLY','BAY'],['TOT','RSB']],
+  CHAMPS_CUP: [['PSV','AEK'],['MCI','BEN'],['RMA','FCB'],['MUN','BAR'],['MAR','BAS'],['NAP','ZEN'],['ROM','JUV'],['PSG','ATM'],['LIV','CHE'],['BVB','CEL']],
+  COLOR: []
+};
+let CLUBS = {}; let currentLeague = 'EPL';
+const tabsEl = document.getElementById('leagueTabs');
+const fixBody = document.getElementById('fixtureBody');
+const chips = document.getElementById('clubChips');
+const leagueSelect = document.getElementById('leagueSelect');
+const csvBtn = document.getElementById('csvBtn');
+
+function randomOdd(min, max){ return (Math.random()*(max-min)+min).toFixed(2); }
+function colOdds3(){ return '<div class="pill">'+randomOdd(1.4,6)+'</div><div class="pill">'+randomOdd(2,4)+'</div><div class="pill">'+randomOdd(1.4,6)+'</div>'; }
+function colOdds2(){ return '<div class="pill">'+randomOdd(1.2,3)+'</div><div class="pill">'+randomOdd(1.2,3)+'</div>'; }
+function renderFixtures(){
+  fixBody.innerHTML = '';
+  if(currentLeague==='COLOR'){ fixBody.innerHTML = '<tr><td>—</td><td class="league">COLOR GAME</td><td colspan="8" class="muted">Use the Color screen for matched numbers / winning color, etc.</td></tr>'; return; }
+  (FIXTURES[currentLeague]||[]).forEach((p,i)=>{
+    const h=p[0], a=p[1];
+    fixBody.insertAdjacentHTML('beforeend',
+      '<tr><td>'+(i+1)+'</td>'+
+      '<td class="league"><span class="badge">'+h+'</span> vs <span class="badge">'+a+'</span></td>'+
+      '<td class="col-odds">'+colOdds3()+'</td>'+
+      '<td class="col-odds">'+colOdds2()+'</td>'+
+      '<td class="col-odds">'+colOdds3()+'</td>'+
+      '<td class="col-odds">'+colOdds3()+'</td>'+
+      '<td><div class="pill">'+randomOdd(1.5,2.4)+'</div></td>'+
+      '<td><div class="pill">'+randomOdd(1.4,2.1)+'</div></td>'+
+      '<td><div class="pill">'+randomOdd(1.4,2.5)+'</div></td>'+
+      '<td><div class="pill">'+randomOdd(1.3,2)+'</div></td></tr>');
+  });
+}
+function renderTabs(leagues){
+  tabsEl.innerHTML = '';
+  leagues.forEach(function(k){
+    var b=document.createElement('button'); b.className='tab'+(k===currentLeague?' active':''); b.textContent=k.replace('_',' ');
+    b.onclick=function(){ currentLeague=k; renderTabs(leagues); mountClubs(); renderFixtures(); };
+    tabsEl.appendChild(b);
+  });
+}
+function mountClubs(){
+  var list = CLUBS[currentLeague]||[];
+  leagueSelect.innerHTML = Object.keys(CLUBS).map(function(k){return '<option '+(k===currentLeague?'selected':'')+'>'+k+'</option>';}).join('');
+  chips.innerHTML = list.length? list.map(function(x){return '<span class="chip">'+x[0]+' — '+x[1]+'</span>';}).join('') : '<span class="muted">No clubs in this category.</span>';
+  csvBtn.href = '/clubs.csv?league='+encodeURIComponent(currentLeague);
+}
+async function boot(){
+  const r = await fetch('/clubs.json'); const j = await r.json(); CLUBS = j.clubs;
+  renderTabs(Object.keys(CLUBS)); renderFixtures(); mountClubs();
+  leagueSelect.onchange = function(){ currentLeague = leagueSelect.value; renderTabs(Object.keys(CLUBS)); renderFixtures(); mountClubs(); };
+  document.getElementById('fastbet').innerHTML = ['211691562843,20 KSh,0 KSh','211930677135,20 KSh,74.46 KSh','214239016892,20 KSh,0 KSh','213176356142,40 KSh,143.88 KSh']
+    .map(function(x){ var a=x.split(','); return '<div class="ticket-row"><div class="muted">'+a[0]+'</div><div>'+a[1]+'</div><div>'+a[2]+'</div></div>'; }).join('');
+}
+boot();
+</script>
+</body></html>`);
 });
 
 // start
