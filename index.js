@@ -1,4 +1,4 @@
-// index.js — Mastermind Bet (float, tickets, cashier UI, odds, virtuals engine + auto-settle)
+// index.js — Mastermind Bet (float, tickets, cashier UI, odds, virtuals engine + auto-settle + team logos)
 require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
@@ -99,7 +99,7 @@ async function migrate() {
     id BIGSERIAL PRIMARY KEY,
     product_code TEXT NOT NULL REFERENCES virtual_products(code),
     provider_event_id TEXT NOT NULL,
-    home_team TEXT,
+    home_team TEXT,  -- store 3-4 letter team codes to reuse as logo keys
     away_team TEXT,
     start_at TIMESTAMPTZ NOT NULL,
     status TEXT NOT NULL DEFAULT 'OPEN',   -- OPEN|CLOSED|RESULTED
@@ -192,7 +192,7 @@ function needCashier(req, res, next) {
 function makeTicketUid() { return 'T' + crypto.randomBytes(6).toString('hex').toUpperCase(); }
 const pick = (arr)=> arr[Math.floor(Math.random()*arr.length)];
 
-// ========== CASHIER DASHBOARD / CORE ==========
+// ================== CASHIER DASHBOARD / CORE ==================
 
 app.get('/health', (_req, res)=> res.json({ok:true}));
 
@@ -269,7 +269,9 @@ app.get('/virtual/events', async (req,res)=>{
   const product = req.query.product;
   if (!product) return res.status(400).json({error:'product required'});
   const { rows } = await pool.query(
-    `SELECT id, product_code, provider_event_id, home_team, away_team, start_at, status
+    `SELECT id, product_code, provider_event_id,
+            home_team AS home_team_code, away_team AS away_team_code,
+            start_at, status
        FROM virtual_events
       WHERE product_code=$1 AND start_at > now() - interval '2 minutes'
       ORDER BY start_at ASC
@@ -430,6 +432,25 @@ app.get('/tickets/:uid/barcode.png', async (req, res) => {
   }
 });
 
+// --- Team logo (SVG) generated on the fly: /logo/AEK.svg
+app.get('/logo/:code.svg', (req, res) => {
+  const code = (req.params.code || 'FC').slice(0,4).toUpperCase();
+  const hash = Array.from(code).reduce((a,c)=> a + c.charCodeAt(0), 0);
+  const palette = ['#F59E0B','#22C55E','#3B82F6','#EC4899','#8B5CF6','#06B6D4','#EF4444','#84CC16','#F97316','#14B8A6'];
+  const bg = palette[hash % palette.length];
+  const svg =
+  `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 40 40">
+    <defs><clipPath id="r"><circle cx="20" cy="20" r="18"/></clipPath></defs>
+    <rect width="40" height="40" rx="8" fill="${bg}"/>
+    <g clip-path="url(#r)">
+      <circle cx="20" cy="20" r="18" fill="${bg}"/>
+      <text x="50%" y="55%" text-anchor="middle" font-family="system-ui,Arial" font-weight="800"
+            font-size="16" fill="#0b0f19">${code}</text>
+    </g>
+  </svg>`;
+  res.set('Content-Type','image/svg+xml').send(svg);
+});
+
 // --- Printable Ticket (shows ODDS)
 app.get('/tickets/:uid/print', async (req, res) => {
   const { uid } = req.params;
@@ -468,28 +489,48 @@ body{font-family:system-ui,Arial,sans-serif;padding:16px}
 </body></html>`);
 });
 
-// --- Cashier Dashboard / POS (kept minimal; your earlier fancy dashboard still works)
+// --- Cashier Dashboard / POS (desktop-first, responsive, with team logos)
 app.get('/pos', (_req, res) => {
   res.set('Content-Type','text/html');
-  res.send(`<!doctype html><html><head><meta charset="utf-8"/><title>Mastermind Cashier</title>
+  res.send(`<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Mastermind Cashier</title>
 <style>
-  :root{--line:#e5e7eb;--ok:#16a34a;--bad:#dc2626;--muted:#6b7280}
-  body{font-family:system-ui,Arial;padding:16px;max-width:980px;margin:auto}
-  input,button{padding:10px;font-size:16px}
+  :root{
+    --bg:#0b0f19; --panel:#111827; --line:#1f2937; --muted:#9aa4b2; --brand:#f59e0b;
+    --ok:#22c55e; --bad:#ef4444; --text:#e5e7eb
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,Arial; padding:16px;max-width:1200px;margin:auto}
+  input,button{padding:10px;font-size:16px;border-radius:10px;border:1px solid var(--line);background:#0f172a;color:var(--text)}
+  button{background:var(--brand);color:#111827;border:none;font-weight:800}
+  button:hover{filter:brightness(1.05)}
   .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
-  .card{border:1px solid var(--line);border-radius:12px;padding:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
   .k{font-size:13px;color:var(--muted)} .v{font-size:22px;font-weight:800}
   .row{display:flex;gap:8px;margin:12px 0}
   table{width:100%;border-collapse:collapse;margin-top:12px}
-  th,td{border:1px solid var(--line);padding:8px;font-size:14px;text-align:center}
-  .won{color:var(--ok);font-weight:700} .lost{color:var(--bad);font-weight:700} .cancel{color:#6b7280;font-weight:700}
-  @media (max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-  @media (max-width:600px){.grid{grid-template-columns:1fr}}
-  .pill{display:inline-block;background:#111827;color:#fff;border-radius:999px;padding:4px 10px;font-size:12px}
-</style></head>
+  th,td{border:1px solid var(--line);padding:10px;font-size:14px;text-align:center;background:#0f172a}
+  .won{color:var(--ok);font-weight:700} .lost{color:var(--bad);font-weight:700} .cancel{color:#9ca3af;font-weight:700}
+
+  /* Virtual tiles */
+  #v-products{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:12px}
+  .v-tile{display:flex;align-items:center;justify-content:center;background:var(--panel);color:#fff;border:1px solid var(--line);
+          border-radius:12px;padding:12px;min-height:72px;font-weight:800;letter-spacing:.3px;transition:transform .12s, box-shadow .12s, background .12s}
+  .v-tile:hover{ transform:translateY(-1px); box-shadow:0 4px 18px rgba(0,0,0,.25) }
+  .v-tile.active{ background:var(--brand); color:#111827 }
+
+  #v-events{overflow:auto;white-space:nowrap;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:#0f172a}
+  .event-pill{display:inline-flex;align-items:center;gap:6px;margin-right:8px;padding:6px 10px;border:1px solid var(--line);
+              border-radius:9999px;background:#111827;color:#fff;cursor:pointer}
+  .event-pill img{width:18px;height:18px;border-radius:4px}
+
+  @media (max-width:1000px){ .grid{grid-template-columns:repeat(2,minmax(0,1fr))} #v-products{grid-template-columns:repeat(4,minmax(0,1fr))} }
+  @media (max-width:620px){ .grid{grid-template-columns:1fr} #v-products{grid-template-columns:repeat(3,minmax(0,1fr))} th,td{padding:8px;font-size:13px} .v-tile{min-height:64px;padding:10px} }
+</style>
+</head>
 <body>
-  <h2>Cashier Dashboard</h2>
-  <div style="color:#6b7280;font-size:12px">Enter your <b>x-cashier-key</b> then use the controls.</div>
+  <h2 style="margin:0 0 6px 0;">Cashier Dashboard</h2>
+  <div style="color:var(--muted);font-size:12px">Enter your <b>x-cashier-key</b> then use the controls.</div>
   <div class="row"><input id="key" placeholder="x-cashier-key" style="flex:1"/></div>
 
   <div class="grid" id="cards">
@@ -510,14 +551,16 @@ app.get('/pos', (_req, res) => {
     <input id="odds"  type="number" step="0.01" placeholder="Odds (e.g. 1.80)" />
     <button onclick="placeManual()">Place</button>
   </div>
-  <div id="msg" style="color:#6b7280;font-size:12px"></div>
+  <div id="msg" style="color:var(--muted);font-size:12px"></div>
 
   <h3 style="margin-top:24px;">Virtual Games</h3>
-  <div id="v-products" style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-bottom:10px;"></div>
-  <div id="v-events" style="overflow:auto;white-space:nowrap;border:1px solid #e5e7eb;border-radius:8px;padding:6px 8px;"></div>
-  <table id="v-odds"><thead>
-    <tr><th>#</th><th>HOME</th><th>AWAY</th><th>1</th><th>X</th><th>2</th><th>GG</th><th>NG</th><th>OV2.5</th><th>UN2.5</th></tr>
-  </thead><tbody></tbody></table>
+  <div id="v-products"></div>
+  <div id="v-events"></div>
+  <table id="v-odds" style="margin-top:10px">
+    <thead>
+      <tr><th>#</th><th style="text-align:left">HOME</th><th style="text-align:left">AWAY</th><th>1</th><th>X</th><th>2</th><th>GG</th><th>NG</th><th>OV2.5</th><th>UN2.5</th></tr>
+    </thead><tbody></tbody>
+  </table>
 
   <h3 style="margin-top:18px;">Recent Tickets</h3>
   <button onclick="loadTickets()">Refresh</button>
@@ -562,8 +605,12 @@ async function vInit(){
   p.forEach(prod=>{
     const d = document.createElement('button');
     d.textContent = prod.name;
-    d.style='padding:10px;border:1px solid #e5e7eb;border-radius:8px;background:#111827;color:#fff;font-weight:700';
-    d.onclick = ()=> vLoadEvents(prod.code);
+    d.className = 'v-tile';
+    d.onclick = ()=> { 
+      [...document.querySelectorAll('#v-products .v-tile')].forEach(x=>x.classList.remove('active'));
+      d.classList.add('active');
+      vLoadEvents(prod.code);
+    };
     c.appendChild(d);
   });
 }
@@ -571,9 +618,15 @@ async function vLoadEvents(code){
   const evs = await (await fetch('/virtual/events?product='+encodeURIComponent(code))).json();
   const strip = document.getElementById('v-events'); strip.innerHTML='';
   evs.forEach(e=>{
-    const b=document.createElement('button');
-    b.textContent=(e.home_team||'HOME')+' vs '+(e.away_team||'AWAY')+' @ '+new Date(e.start_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-    b.style='margin-right:8px;padding:6px 10px;border:1px solid #e5e7eb;border-radius:9999px';
+    const b=document.createElement('div');
+    const home=e.home_team_code||'HOME', away=e.away_team_code||'AWAY';
+    const t=new Date(e.start_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    b.className='event-pill';
+    b.innerHTML= \`
+      <img src="/logo/\${home}.svg" alt=""><span>\${home}</span>
+      <span>vs</span>
+      <img src="/logo/\${away}.svg" alt=""><span>\${away}</span>
+      <span style="color:#9aa4b2">• \${t}</span>\`;
     b.onclick=()=>vShowOdds(e);
     strip.appendChild(b);
   });
@@ -583,9 +636,12 @@ async function vShowOdds(e){
   const data = await (await fetch('/virtual/markets?event_id='+e.id)).json();
   const tb = document.querySelector('#v-odds tbody'); tb.innerHTML='';
   const get = (m,s)=> data.find(x=>x.market_code===m && x.selection_code===s)?.odds;
+  const home=e.home_team_code||'HOME', away=e.away_team_code||'AWAY';
   const row = document.createElement('tr');
   row.innerHTML = \`
-    <td>1</td><td>\${e.home_team||'HOME'}</td><td>\${e.away_team||'AWAY'}</td>
+    <td>1</td>
+    <td style="text-align:left"><img src="/logo/\${home}.svg" style="width:18px;height:18px;border-radius:4px;vertical-align:middle;margin-right:6px">\${home}</td>
+    <td style="text-align:left"><img src="/logo/\${away}.svg" style="width:18px;height:18px;border-radius:4px;vertical-align:middle;margin-right:6px">\${away}</td>
     \${['1','X','2'].map(k=> '<td style="cursor:pointer" onclick="vPick('+e.id+',\\'1X2\\',\\''+k+'\\',\\''+e.product_code+'\\')">'+(get('1X2',k)?.toFixed(2)||'-')+'</td>').join('')}
     \${['GG','NG'].map(k=> '<td style="cursor:pointer" onclick="vPick('+e.id+',\\'GGNG\\',\\''+k+'\\',\\''+e.product_code+'\\')">'+(get('GGNG',k)?.toFixed(2)||'-')+'</td>').join('')}
     \${['OV','UN'].map(k=> '<td style="cursor:pointer" onclick="vPick('+e.id+',\\'OU25\\',\\''+k+'\\',\\''+e.product_code+'\\')">'+(get('OU25',k)?.toFixed(2)||'-')+'</td>').join('')}
@@ -607,30 +663,20 @@ vInit();
 </body></html>`);
 });
 
-// ========== VIRTUALS ENGINE (internal RNG) ==========
-// Creates events, sets odds, results, and auto-settles tickets.
-
+// ================== VIRTUALS ENGINE (internal RNG) ==================
 const TEAMS = ['AEK','LIV','PSV','BAR','ROM','FCB','MCI','PSG','RMA','JUV','NAP','CHE','CEL','BEN','ZEN','BVB','MAR','ATM','BAS','MUN'];
 
 function makeOdds3Way() {
-  // random probabilities with small house margin
-  let a = Math.random(), b = Math.random(), c = Math.random();
-  const sum = a+b+c;
-  a/=sum; b/=sum; c/=sum;
+  let a=Math.random(), b=Math.random(), c=Math.random(); const sum=a+b+c; a/=sum; b/=sum; c/=sum;
   const margin = 1.08; // 8% margin
-  return [
-    Math.max(1.15, (margin/a)), // 1
-    Math.max(1.15, (margin/b)), // X
-    Math.max(1.15, (margin/c))  // 2
-  ].map(v => Math.round(v*100)/100);
+  return [Math.max(1.15, margin/a), Math.max(1.15, margin/b), Math.max(1.15, margin/c)]
+    .map(v => Math.round(v*100)/100);
 }
 function makeOddsYesNo() {
-  let a = Math.random(), b = Math.random(); const sum=a+b; a/=sum; b/=sum;
+  let a=Math.random(), b=Math.random(); const s=a+b; a/=s; b/=s;
   const margin = 1.06;
-  return [
-    Math.max(1.10, (margin/a)), // YES/GG or OV
-    Math.max(1.10, (margin/b))  // NO/NG or UN
-  ].map(v => Math.round(v*100)/100);
+  return [Math.max(1.10, margin/a), Math.max(1.10, margin/b)]
+    .map(v => Math.round(v*100)/100);
 }
 async function createFootballEvent(productCode, startInSec=90){
   const home = pick(TEAMS), away = pick(TEAMS.filter(t=>t!==home));
@@ -648,7 +694,7 @@ async function createFootballEvent(productCode, startInSec=90){
 
   await pool.query(
     `INSERT INTO virtual_markets(event_id,market_code,selection_code,selection_name,odds) VALUES
-     ($1,'1X2','1','Home', $2),($1,'1X2','X','Draw',$3),($1,'1X2','2','Away',$4),
+     ($1,'1X2','1','Home',$2),($1,'1X2','X','Draw',$3),($1,'1X2','2','Away',$4),
      ($1,'GGNG','GG','Both Teams Score',$5),($1,'GGNG','NG','No Goal',$6),
      ($1,'OU25','OV','Over 2.5',$7),($1,'OU25','UN','Under 2.5',$8)`,
     [eventId,o1,oX,o2,gg,ng,ov,un]
@@ -665,7 +711,6 @@ async function createRaceEvent(productCode, startInSec=60){
   const eventId = ev.rows[0].id;
   // 8 runners with random odds (win market only)
   const runners = Array.from({length:8}, (_,i)=> '#'+(i+1));
-  // make normalized probabilities then convert to odds with margin
   let probs = runners.map(()=> Math.random());
   const sum = probs.reduce((a,b)=>a+b,0); probs = probs.map(p=>p/sum);
   const margin = 1.15;
@@ -705,7 +750,6 @@ async function closeAndResultEvents(){
   }
 }
 async function settleFootball(eventId, gh, ga){
-  // fetch tickets
   const { rows: tks } = await pool.query(`SELECT * FROM tickets WHERE status='PENDING' AND event_id=$1`, [eventId]);
   for (const t of tks) {
     let outcome = 'LOST';
@@ -748,7 +792,7 @@ async function settleTicketByOutcome(t, outcome){
   });
 }
 
-// scheduler: every 15s create upcoming events; every 5s close/result & settle
+// scheduler: every 5s ensure pipeline + settle results
 async function schedulerTick(){
   // ensure we have a few upcoming events per product
   const { rows: prods } = await pool.query(`SELECT code FROM virtual_products WHERE is_active=TRUE ORDER BY sort_order`);
