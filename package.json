@@ -4,9 +4,10 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
+    "start": "node index.js",
     "dev": "node index.js",
     "db:init": "psql \"$DATABASE_URL\" -f db/schema.sql",
-    "seed:football": "node scripts/seed_football.js",
+    "seed:football": "node scripts/seed_football_advanced.js",
     "seed:races": "node scripts/seed_races.js",
     "seed:colors": "node scripts/seed_colors.js",
     "seed:all": "npm run seed:football && npm run seed:races && npm run seed:colors"
