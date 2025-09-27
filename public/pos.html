@@ -104,186 +104,247 @@
 </main>
 
 <script>
-const $ = s => document.querySelector(s);
-let slip = []; // {selection_id,label,price}
-
+var $ = function(s){ return document.querySelector(s); };
 function fmt(n){ return Number(n).toFixed(2); }
-async function api(url,opts){ const r=await fetch(url,opts); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+function api(url,opts){ return fetch(url,opts||{}).then(function(r){ if(!r.ok) return r.text().then(function(t){throw new Error(t)}); return r.json(); }); }
+
+var slip = []; // {selection_id,label,price}
 
 function renderSlip(){
-  const ul = $('#slip');
-  ul.innerHTML = slip.map((l,i)=>`
-    <li>
-      <span>${l.label}</span>
-      <span>@ ${l.price} <button data-i="${i}" class="rm">×</button></span>
-    </li>
-  `).join('');
-  const stake = Number($('#stake').value||0);
-  const odd = slip.reduce((a,x)=>a*Number(x.price),1);
-  let potential = stake * odd;
+  var ul = $('#slip');
+  ul.innerHTML = slip.map(function(l,i){
+    return '<li><span>'+l.label+'</span><span>@ '+l.price+' <button data-i="'+i+'" class="rm">×</button></span></li>';
+  }).join('');
+  var stake = Number(($('#stake').value||0));
+  var odd = slip.reduce(function(a,x){ return a*Number(x.price); },1);
+  var potential = stake * odd;
   if (potential>20000) potential = 20000;
   $('#potential').textContent = fmt(potential);
 }
 function clearSlip(){ slip=[]; renderSlip(); }
 
-async function placeTicket(){
-  const stake = Number($('#stake').value||0);
+function placeTicket(){
+  var stake = Number($('#stake').value||0);
   if (stake<20 || stake>1000){ alert('Stake must be 20–1000 KES'); return; }
   if (!slip.length){ alert('Add at least one selection'); return; }
-  try{
-    const res = await api('/api/tickets',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ stake, items: slip.map(x=>({selection_id:x.selection_id})) })
-    });
-    // simple receipt
-    $('#printArea').innerHTML = `
-      <div class="card" style="background:#fff;color:#111">
-        <h3 style="margin:0 0 6px 0">Mastermind Bet</h3>
-        <div>Ticket: <b>${res.ticket_id}</b></div>
-        <div>Stake: KES ${fmt(res.stake)}</div>
-        <div>Potential: KES ${fmt(res.potential_payout)}</div>
-      </div>`;
+  api('/api/tickets',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ stake: stake, items: slip.map(function(x){return {selection_id:x.selection_id};}) })
+  }).then(function(res){
+    $('#printArea').innerHTML =
+      '<div class="card" style="background:#fff;color:#111">'+
+        '<h3 style="margin:0 0 6px 0">Mastermind Bet</h3>'+
+        '<div>Ticket: <b>'+res.ticket_id+'</b></div>'+
+        '<div>Stake: KES '+fmt(res.stake)+'</div>'+
+        '<div>Potential: KES '+fmt(res.potential_payout)+'</div>'+
+      '</div>';
     clearSlip();
-  }catch(e){ alert('Ticket failed: '+e.message); }
+  }).catch(function(e){ alert('Ticket failed: '+e.message); });
 }
 
 /* ---------- LOADERS ---------- */
-async function loadFootball(code){
-  const fx = await api(`/api/fixtures?competition_code=${encodeURIComponent(code)}`);
-  const box = $('#list');
-  box.innerHTML = `<h3 style="margin:8px 0">Football • ${code}</h3>` +
-    fx.map(f=>`
-      <div class="fixture">
-        <div>${new Date(f.start_time).toLocaleString([], {hour:'2-digit',minute:'2-digit'})}</div>
-        <div><strong>${f.home}</strong> vs <strong>${f.away}</strong></div>
-        <div><button class="pill" data-fx="${f.id}">Markets</button></div>
-      </div>`).join('');
+function loadFootball(code){
+  api('/api/fixtures?competition_code='+encodeURIComponent(code)).then(function(fx){
+    var box = $('#list');
+    box.innerHTML = '<h3 style="margin:8px 0">Football • '+code+'</h3>' +
+      fx.map(function(f){
+        return '<div class="fixture">'+
+          '<div>'+new Date(f.start_time).toLocaleString([], {hour:'2-digit',minute:'2-digit'})+'</div>'+
+          '<div><strong>'+f.home+'</strong> vs <strong>'+f.away+'</strong></div>'+
+          '<div><button class="pill" data-fx="'+f.id+'">Markets</button></div>'+
+        '</div>';
+      }).join('');
 
-  // click to load markets
-  box.querySelectorAll('[data-fx]').forEach(b=>{
-    b.onclick = async ()=>{
-      const sel = await api(`/api/selections?fixture_id=${b.dataset.fx}`);
-      const marketsByLabel = {};
-      sel.forEach(s => (marketsByLabel[s.label] ||= []).push(s));
-      const mkHtml = Object.entries(marketsByLabel).map(([label,arr])=>`
-        <div class="market">
-          <div><strong>${label}</strong></div>
-          <div>
-            ${arr.map(s=>`<span class="pill" data-sid="${s.id}" data-label="${label}:${s.name}" data-price="${s.price}">
-              ${s.name} @ ${s.price}
-            </span>`).join('')}
-          </div>
-        </div>`).join('');
-      b.parentElement.insertAdjacentHTML('beforeend', `<div style="margin-top:6px">${mkHtml}</div>`);
-      // attach clicks
-      b.parentElement.querySelectorAll('[data-sid]').forEach(p=>{
-        p.onclick=()=>{
-          const sid = Number(p.dataset.sid);
-          if (!slip.some(x=>x.selection_id===sid)){
+    // click to load markets
+    var buttons = box.querySelectorAll('[data-fx]');
+    for (var i=0;i<buttons.length;i++){
+      (function(b){
+        b.onclick = function(){
+          api('/api/selections?fixture_id='+b.dataset.fx).then(function(sel){
+            var marketsByLabel = {};
+            for (var j=0;j<sel.length;j++){
+              var s=sel[j]; (marketsByLabel[s.label] = marketsByLabel[s.label] || []).push(s);
+            }
+            var mkHtml = Object.keys(marketsByLabel).map(function(label){
+              var arr = marketsByLabel[label];
+              return '<div class="market">'+
+                '<div><strong>'+label+'</strong></div>'+
+                '<div>'+arr.map(function(s){
+                  return '<span class="pill" data-sid="'+s.id+'" data-label="'+label+':'+s.name+'" data-price="'+s.price+'">'+
+                    s.name+' @ '+s.price+
+                  '</span>';
+                }).join('')+'</div>'+
+              '</div>';
+            }).join('');
+            b.parentNode.insertAdjacentHTML('beforeend','<div style="margin-top:6px">'+mkHtml+'</div>');
+            var pills = b.parentNode.querySelectorAll('[data-sid]');
+            for (var k=0;k<pills.length;k++){
+              (function(p){
+                p.onclick=function(){
+                  var sid = Number(p.dataset.sid);
+                  var exists = slip.some(function(x){ return x.selection_id===sid; });
+                  if (!exists){
+                    slip.push({ selection_id:sid, label:p.dataset.label, price:p.dataset.price });
+                    renderSlip();
+                  }
+                };
+              })(pills[k]);
+            }
+            b.remove();
+          });
+        };
+      })(buttons[i]);
+    }
+  });
+}
+
+/* === COLORS with TIMER & TWO MARKETS === */
+function loadColors(){
+  api('/api/colors/draws/latest').then(function(data){
+    var box = $('#list');
+    if(!data){ box.innerHTML='<div class="muted">No scheduled draw.</div>'; return; }
+
+    // robust grouping even if label not present
+    var picks = data.picks || [];
+    var groups = { 'WINNING COLOR':[], 'NUMBER OF COLORS':[] };
+    for (var i=0;i<picks.length;i++){
+      var p = picks[i];
+      var label = p.label || ((p.color==='RED'||p.color==='GREEN'||p.color==='BLUE'||p.color==='YELLOW') ? 'WINNING COLOR':'NUMBER OF COLORS');
+      groups[label].push(p);
+    }
+
+    var endsAt = new Date(data.draw.start_time).getTime();
+    function two(n){ return String(n).padStart(2,'0'); }
+    function fmtTimer(sec){ sec = Math.max(0,sec); return two(Math.floor(sec/60))+':'+two(sec%60); }
+    function remain(){ return Math.floor((endsAt - Date.now())/1000); }
+
+    function colorBall(name){
+      var cls = (name==='RED'?'red':(name==='GREEN'?'green':(name==='BLUE'?'blue':'yellow')));
+      return '<span class="ball '+cls+'">'+name.charAt(0)+'</span> <span class="ball-label">'+name+'</span>';
+    }
+
+    box.innerHTML =
+      '<h3 style="margin:8px 0;display:flex;align-items:center;gap:10px">'+
+        'Color Pool — Draw #'+data.draw.draw_no+
+        '<span id="drawTimer" class="badge" style="padding:4px 8px">--:--</span>'+
+      '</h3>'+
+
+      '<div class="market"><div><strong>WINNING COLOR</strong></div><div>'+
+        groups['WINNING COLOR'].map(function(p){
+          return '<span class="pill" data-sid="'+p.id+'" data-label="WINNING COLOR:'+p.color+'" data-price="'+p.price+'">'+
+            colorBall(p.color)+' @ '+p.price+
+          '</span>';
+        }).join('')+
+      '</div></div>'+
+
+      '<div class="market"><div><strong>NUMBER OF COLORS</strong></div><div>'+
+        groups['NUMBER OF COLORS'].map(function(p){
+          return '<span class="pill" data-sid="'+p.id+'" data-label="NUMBER OF COLORS:'+p.color+'" data-price="'+p.price+'">'+
+            p.color+' @ '+p.price+
+          '</span>';
+        }).join('')+
+      '</div></div>';
+
+    var pills = box.querySelectorAll('[data-sid]');
+    for (var k=0;k<pills.length;k++){
+      (function(p){
+        p.onclick=function(){
+          var sid = Number(p.dataset.sid);
+          var exists = slip.some(function(x){ return x.selection_id===sid; });
+          if (!exists){
             slip.push({ selection_id:sid, label:p.dataset.label, price:p.dataset.price });
             renderSlip();
           }
         };
-      });
-      b.remove(); // prevent duplicate blocks
-    };
+      })(pills[k]);
+    }
+
+    var timerEl = document.getElementById('drawTimer');
+    (function tick(){
+      var s = remain();
+      timerEl.textContent = fmtTimer(s);
+      if (s<=0){ setTimeout(loadColors,1000); return; }
+      setTimeout(tick, 500);
+    })();
   });
 }
 
-async function loadColors(){
-  const data = await api('/api/colors/draws/latest');
-  const box = $('#list');
-  const picks = data?.picks||[];
-  const colorBall = (name) => {
-    const cls = name==='RED'?'red':name==='GREEN'?'green':name==='BLUE'?'blue':'yellow';
-    return `<span class="ball ${cls}">${name[0]}</span> <span class="ball-label">${name}</span>`;
-  };
-  box.innerHTML = `
-    <h3 style="margin:8px 0">Color Pool — Draw #${data?.draw?.draw_no??'-'}</h3>
-    <div class="market">
-      <div><strong>Pick Color</strong></div>
-      <div>
-        ${picks.map(p=>`
-          <span class="pill" data-sid="${p.id}" data-label="COLOR:${p.color}" data-price="${p.price}">
-            ${colorBall(p.color)} @ ${p.price}
-          </span>`).join('')}
-      </div>
-    </div>`;
-  box.querySelectorAll('[data-sid]').forEach(p=>{
-    p.onclick=()=>{
-      const sid = Number(p.dataset.sid);
-      if (!slip.some(x=>x.selection_id===sid)){
-        slip.push({ selection_id:sid, label:p.dataset.label, price:p.dataset.price });
-        renderSlip();
-      }
-    };
-  });
-}
+function loadRaces(type){ // DOG or HORSE
+  api('/api/races?type='+encodeURIComponent(type)).then(function(races){
+    var box = $('#list');
+    box.innerHTML = '<h3 style="margin:8px 0">'+(type==='DOG'?'Dogs':'Horses')+' — Upcoming</h3>'+
+      races.map(function(r){
+        return '<div class="fixture">'+
+          '<div>'+r.track+' • R'+r.race_no+'</div>'+
+          '<div>'+new Date(r.start_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})+'</div>'+
+          '<div><button class="pill" data-r="'+r.id+'">Win & Forecast</button></div>'+
+        '</div>';
+      }).join('');
 
-async function loadRaces(type){ // DOG or HORSE
-  const races = await api(`/api/races?type=${type}`);
-  const box = $('#list');
-  box.innerHTML = `<h3 style="margin:8px 0">${type==='DOG'?'Dogs':'Horses'} — Upcoming</h3>` +
-    races.map(r=>`
-      <div class="fixture">
-        <div>${r.track} • R${r.race_no}</div>
-        <div>${new Date(r.start_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
-        <div><button class="pill" data-r="${r.id}">Win & Forecast</button></div>
-      </div>`).join('');
-  box.querySelectorAll('[data-r]').forEach(b=>{
-    b.onclick = async ()=>{
-      const sel = await api(`/api/selections?race_event_id=${b.dataset.r}`);
-      const by = {};
-      sel.forEach(s => (by[s.label] ||= []).push(s));
-      const mkHtml = Object.entries(by).map(([label,arr])=>`
-        <div class="market">
-          <div><strong>${label}</strong></div>
-          <div>
-            ${arr.map(s=>`<span class="pill" data-sid="${s.id}" data-label="${label}:${s.name}" data-price="${s.price}">
-              ${s.name} @ ${s.price}
-            </span>`).join('')}
-          </div>
-        </div>`).join('');
-      b.parentElement.insertAdjacentHTML('beforeend', `<div style="margin-top:6px">${mkHtml}</div>`);
-      b.parentElement.querySelectorAll('[data-sid]').forEach(p=>{
-        p.onclick=()=>{
-          const sid = Number(p.dataset.sid);
-          if (!slip.some(x=>x.selection_id===sid)){
-            slip.push({ selection_id:sid, label:p.dataset.label, price:p.dataset.price });
-            renderSlip();
-          }
+    var buttons = box.querySelectorAll('[data-r]');
+    for (var i=0;i<buttons.length;i++){
+      (function(b){
+        b.onclick=function(){
+          api('/api/selections?race_event_id='+b.dataset.r).then(function(sel){
+            var by = {};
+            for (var j=0;j<sel.length;j++){ var s=sel[j]; (by[s.label]=by[s.label]||[]).push(s); }
+            var mkHtml = Object.keys(by).map(function(label){
+              var arr=by[label];
+              return '<div class="market"><div><strong>'+label+'</strong></div><div>'+
+                arr.map(function(s){
+                  return '<span class="pill" data-sid="'+s.id+'" data-label="'+label+':'+s.name+'" data-price="'+s.price+'">'+
+                    s.name+' @ '+s.price+
+                  '</span>';
+                }).join('')+
+              '</div></div>';
+            }).join('');
+            b.parentNode.insertAdjacentHTML('beforeend','<div style="margin-top:6px">'+mkHtml+'</div>');
+            var pills = b.parentNode.querySelectorAll('[data-sid]');
+            for (var k=0;k<pills.length;k++){
+              (function(p){
+                p.onclick=function(){
+                  var sid = Number(p.dataset.sid);
+                  var exists = slip.some(function(x){ return x.selection_id===sid; });
+                  if (!exists){
+                    slip.push({ selection_id:sid, label:p.dataset.label, price:p.dataset.price });
+                    renderSlip();
+                  }
+                };
+              })(pills[k]);
+            }
+            b.remove();
+          });
         };
-      });
-      b.remove();
-    };
+      })(buttons[i]);
+    }
   });
 }
 
 /* ---------- TILE ROUTER ---------- */
 function activateTile(el){
-  document.querySelectorAll('.tile').forEach(t=>t.classList.remove('active'));
+  var tiles = document.querySelectorAll('.tile');
+  for (var i=0;i<tiles.length;i++) tiles[i].classList.remove('active');
   el.classList.add('active');
-  const kind = el.dataset.kind, code = el.dataset.code;
+  var kind = el.dataset.kind, code = el.dataset.code;
   if (kind==='FOOTBALL') loadFootball(code);
   if (kind==='COLOR') loadColors();
   if (kind==='RACE') loadRaces(code);
 }
 
-document.getElementById('tiles').addEventListener('click', (e)=>{
-  const t = e.target.closest('.tile'); if(!t) return;
+document.getElementById('tiles').addEventListener('click', function(e){
+  var t = e.target.closest('.tile'); if(!t) return;
   activateTile(t);
 });
 
 /* events */
-document.addEventListener('click', e=>{
+document.addEventListener('click', function(e){
   if (e.target.id==='place') placeTicket();
   if (e.target.id==='clear') clearSlip();
   if (e.target.classList.contains('rm')){ slip.splice(Number(e.target.dataset.i),1); renderSlip(); }
   if (e.target.id==='reprint'){
-    const id = $('#codeLookup').value.trim();
+    var id = $('#codeLookup').value.trim();
     if(!id) return;
-    // Simple lookup (adapt if you later add a GET /api/tickets/:id)
-    $('#printArea').innerHTML = `<div class="muted">Reprint placeholder for Ticket ${id}</div>`;
+    $('#printArea').innerHTML = '<div class="muted">Reprint placeholder for Ticket '+id+'</div>';
   }
 });
 document.getElementById('stake').addEventListener('input', renderSlip);
