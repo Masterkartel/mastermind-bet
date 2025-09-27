@@ -15,8 +15,11 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
 
-      - name: Ensure host is known
-        run: ssh-keyscan -H ${{ secrets.DO_SSH_HOST }} >> ~/.ssh/known_hosts
+      - name: Refresh droplet host key
+        run: |
+          ssh-keygen -R ${{ secrets.DO_SSH_HOST }} || true
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.DO_SSH_HOST }} >> ~/.ssh/known_hosts
 
       - name: Diagnostics
         run: |
