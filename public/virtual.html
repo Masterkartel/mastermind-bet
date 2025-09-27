@@ -2,116 +2,146 @@
 <html>
 <head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Virtual Sports</title>
+<title>Mastermind — Virtuals</title>
 <style>
-body{margin:0;background:#0b1220;color:#e2e8f0;font-family:system-ui,Arial}
-header{display:flex;gap:10px;align-items:center;padding:10px 12px;background:#0f172a;border-bottom:1px solid #1f2937;position:sticky;top:0}
-.tab{padding:8px 12px;border-radius:9999px;background:#111827;border:1px solid #334155;cursor:pointer}
-.tab.active{background:#ef4444;border-color:#ef4444}
-.wrap{display:grid;grid-template-columns:1fr 320px;gap:12px;padding:12px}
-@media(max-width:1000px){.wrap{grid-template-columns:1fr}}
-.panel{background:#0f172a;border:1px solid #1f2937;border-radius:12px;padding:10px}
-.league-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
-.league{padding:6px 10px;border-radius:10px;background:#111827;border:1px solid #334155;cursor:pointer}
-.league.active{background:#1d4ed8;border-color:#1d4ed8}
-.tbl{width:100%;border-collapse:collapse}.tbl th,.tbl td{border-bottom:1px solid #223048;padding:6px 8px;font-size:14px}
-.btn-odd{display:inline-block;min-width:52px;text-align:center;background:#111827;border:1px solid #334155;border-radius:8px;padding:6px 8px;margin:2px;cursor:pointer}
-.btn-odd:hover{outline:2px solid #f59e0b}
-.right{position:sticky;top:56px;height:max-content}
-.key{width:100%;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0b1528;color:#e2e8f0}
-.tiny{font-size:12px}
+:root{
+  --bg:#0b1220; --panel:#0f172a; --line:#1f2937; --text:#e2e8f0; --tile:#111827;
+  --accent:#f59e0b;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Arial}
+header{position:sticky;top:0;background:#0c1426;border-bottom:1px solid var(--line);padding:12px 16px;z-index:10}
+h1{margin:0;font-size:18px}
+.wrap{display:grid;grid-template-columns:1fr 340px;gap:12px;padding:12px}
+@media(max-width:1024px){.wrap{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px}
+.tiles{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:10px;margin-bottom:10px}
+@media(max-width:1200px){.tiles{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:600px){.tiles{grid-template-columns:repeat(2,1fr)}}
+.tile{cursor:pointer;border:1px solid #223048;background:var(--tile);border-radius:16px;padding:12px;display:flex;gap:10px;align-items:center;transition:transform .12s ease, box-shadow .12s ease}
+.tile:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.tile.active{outline:2px solid var(--accent)}
+.tbl{width:100%;border-collapse:collapse}
+.tbl th,.tbl td{border-bottom:1px solid #223048;padding:6px 8px;font-size:14px}
+.btn-odd{display:inline-block;min-width:52px;text-align:center;background:#0b1528;border:1px solid #334155;border-radius:8px;padding:6px 8px;margin:2px;cursor:pointer}
+.btn-odd:hover{outline:2px solid var(--accent)}
+/* glossy balls */
+.ball{width:38px;height:38px;border-radius:999px;display:inline-grid;place-items:center;font:700 14px/1 system-ui;color:#fff;margin-right:6px;border:1px solid rgba(0,0,0,.3);box-shadow:inset 0 -8px 14px rgba(0,0,0,.35), inset 0 10px 18px rgba(255,255,255,.12), 0 3px 8px rgba(0,0,0,.45)}
+.ball-label{font-size:11px;margin-left:4px;color:#cfd6e6}
+.ball.red{background:radial-gradient(circle at 30% 25%, #ff8a8a, #d71d1d 55%, #8b1111)}
+.ball.green{background:radial-gradient(circle at 30% 25%, #79ffb5, #10b981 55%, #0a5e46)}
+.ball.blue{background:radial-gradient(circle at 30% 25%, #8ac7ff, #2563eb 55%, #163986)}
+.ball.yellow{background:radial-gradient(circle at 30% 25%, #ffe99a, #f59e0b 55%, #7a4e02)}
+.tiny{font-size:12px;color:#9fb0c8}
 </style>
 </head>
 <body>
-<header>
-  <span class="tab active" data-prod="FOOTBALL">Football</span>
-  <span class="tab" data-prod="COLOR">Color</span>
-  <span class="tab" data-prod="DOGS">Dogs</span>
-  <span class="tab" data-prod="HORSES">Horses</span>
-  <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-    <span>Cashier key:</span><input id="key" class="key" placeholder="x-cashier-key" style="max-width:260px"/>
-  </div>
-</header>
+<header><h1>Mastermind Virtuals</h1></header>
 
 <div class="wrap">
-  <div class="panel"><div id="content"></div></div>
-  <div class="right">
-    <div class="panel">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <strong>Fastbet</strong><button id="refresh" class="tab">Refresh</button>
+  <div class="panel">
+    <!-- Tiles -->
+    <div id="tiles" class="tiles">
+      <div class="tile active" data-kind="FOOTBALL" data-code="EPL"><strong>EPL</strong></div>
+      <div class="tile" data-kind="FOOTBALL" data-code="UCL"><strong>UCL</strong></div>
+      <div class="tile" data-kind="FOOTBALL" data-code="LALIGA"><strong>LaLiga</strong></div>
+      <div class="tile" data-kind="COLOR" data-code="COLOR">
+        <div class="ball red">●</div><div class="ball green">●</div><div class="ball blue">●</div><div class="ball yellow">●</div>
+        <span class="ball-label">Color Pool</span>
       </div>
-      <div id="tickets" class="tiny"></div>
+      <div class="tile" data-kind="RACE" data-code="DOG"><strong>Dogs</strong></div>
+      <div class="tile" data-kind="RACE" data-code="HORSE"><strong>Horses</strong></div>
     </div>
+
+    <div id="content"></div>
+  </div>
+
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <strong>Fastbet</strong><button id="refresh" class="tile" style="padding:6px 10px">Refresh</button>
+    </div>
+    <div id="tickets" class="tiny" style="margin-top:8px">Your quick slips will appear here (demo).</div>
   </div>
 </div>
 
 <script>
-let PROD='FOOTBALL';
-document.querySelectorAll("header .tab").forEach(t=>t.onclick=()=>{
-  document.querySelectorAll("header .tab").forEach(x=>x.classList.remove("active"));
-  t.classList.add("active"); PROD=t.dataset.prod; render();
-});
-function fmt(t){ const s=Math.max(0,Math.floor((t-Date.now())/1000));
-  return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
-async function fetchJSON(u){ const r=await fetch(u); return r.json(); }
-function cellOdd(o,cb){ const a=document.createElement('span'); a.className='btn-odd'; a.textContent=o.toFixed?o.toFixed(2):o; a.onclick=cb; return a; }
+const $ = s=>document.querySelector(s);
 
-async function render(){
-  const box=document.getElementById('content'); box.innerHTML='';
-  if(PROD==='FOOTBALL'){
-    const st=await fetchJSON('/virtual/state'); const leagues=st.leagues||[];
-    const nav=document.createElement('div'); nav.className='league-tabs';
-    leagues.forEach((L,i)=>{
-      const b=document.createElement('span');
-      b.className='league'+(i===0?' active':''); b.dataset.code=L.code;
-      b.textContent=L.code+' • R'+L.round+' • '+fmt(L.endsAt);
-      b.onclick=()=>{ nav.querySelectorAll('.league').forEach(x=>x.classList.remove('active')); b.classList.add('active'); loadLeague(L.code); };
-      nav.appendChild(b);
-    });
-    box.appendChild(nav);
-    if(leagues[0]) loadLeague(leagues[0].code);
+async function api(u){ const r=await fetch(u); return r.json(); }
+function btnOdd(o,cb){ const b=document.createElement('span'); b.className='btn-odd'; b.textContent=o.toFixed?o.toFixed(2):o; b.onclick=cb; return b; }
 
-    async function loadLeague(code){
-      const data=await fetchJSON('/virtual/league/'+code);
-      const t=document.createElement('table'); t.className='tbl';
-      t.innerHTML='<thead><tr><th>#</th><th>Match</th><th>1</th><th>X</th><th>2</th><th>GG</th><th>NG</th><th>OV 2.5</th><th>UN 2.5</th></tr></thead><tbody></tbody>';
-      const tb=t.querySelector('tbody');
-      (data.fixtures||[]).forEach(f=>{
-        const tr=document.createElement('tr'); const label=f.home+' vs '+f.away;
-        const m1=f.markets['1X2'], gg=f.markets['GG/NG'], ou=f.markets['1X2 OV/UN 2.5'];
-        tr.innerHTML='<td>'+f.id+'</td><td>'+label+'</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>';
-        tb.appendChild(tr);
-        const key=document.getElementById('key').value.trim();
-        tr.children[2].appendChild(cellOdd(m1['1'], ()=>place(label,'1X2','1',m1['1'],key,'FOOTBALL',data,f)));
-        tr.children[3].appendChild(cellOdd(m1['X'], ()=>place(label,'1X2','X',m1['X'],key,'FOOTBALL',data,f)));
-        tr.children[4].appendChild(cellOdd(m1['2'], ()=>place(label,'1X2','2',m1['2'],key,'FOOTBALL',data,f)));
-        tr.children[5].appendChild(cellOdd(gg['GG'], ()=>place(label,'GG/NG','GG',gg['GG'],key,'FOOTBALL',data,f)));
-        tr.children[6].appendChild(cellOdd(gg['NG'], ()=>place(label,'GG/NG','NG',gg['NG'],key,'FOOTBALL',data,f)));
-        tr.children[7].appendChild(cellOdd(ou['OV2.5'], ()=>place(label,'1X2 OV/UN 2.5','OV2.5',ou['OV2.5'],key,'FOOTBALL',data,f)));
-        tr.children[8].appendChild(cellOdd(ou['UN2.5'], ()=>place(label,'1X2 OV/UN 2.5','UN2.5',ou['UN2.5'],key,'FOOTBALL',data,f)));
-      });
-      box.appendChild(t);
+async function showFootball(code){
+  const box=$('#content'); box.innerHTML='';
+  const fx=await api(`/api/fixtures?competition_code=${code}`);
+  if(!fx.length){ box.textContent='No fixtures yet.'; return; }
+  const t=document.createElement('table'); t.className='tbl';
+  t.innerHTML='<thead><tr><th>#</th><th>Match</th><th>1</th><th>X</th><th>2</th></tr></thead><tbody></tbody>';
+  const tb=t.querySelector('tbody');
+  for (const f of fx){
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${f.id}</td><td>${f.home} vs ${f.away}</td><td></td><td></td><td></td>`;
+    tb.appendChild(tr);
+    const sel=await api(`/api/selections?fixture_id=${f.id}`);
+    const oneXtwo=sel.filter(s=>s.label==='1X2');
+    const get = name=>oneXtwo.find(x=>x.name===name)?.price||'-';
+    tr.children[2].appendChild(btnOdd(get('Home'),()=>alert('Add to slip (demo)')));
+    tr.children[3].appendChild(btnOdd(get('Draw'),()=>alert('Add to slip (demo)')));
+    tr.children[4].appendChild(btnOdd(get('Away'),()=>alert('Add to slip (demo)')));
+  }
+  box.appendChild(t);
+}
+
+async function showColor(){
+  const box=$('#content'); box.innerHTML='';
+  const data=await api('/api/colors/draws/latest');
+  if(!data){ box.textContent='No scheduled draw.'; return; }
+  const picks=data.picks||[];
+  const grid=document.createElement('div');
+  picks.forEach(p=>{
+    const span=document.createElement('span'); span.className='btn-odd';
+    const c=p.color;
+    const dot = `<span class="ball ${c==='RED'?'red':c==='GREEN'?'green':c==='BLUE'?'blue':'yellow'}">${c[0]}</span><span class="ball-label">${c}</span>`;
+    span.innerHTML=dot+' @ '+p.price;
+    span.onclick=()=>alert(`Pick ${c} @ ${p.price} (demo)`);
+    grid.appendChild(span);
+  });
+  box.appendChild(grid);
+}
+
+async function showRaces(type){
+  const box=$('#content'); box.innerHTML='';
+  const races=await api(`/api/races?type=${type}`);
+  if(!races.length){ box.textContent='No races yet.'; return; }
+  for (const r of races){
+    const wrap=document.createElement('div'); wrap.className='panel'; wrap.style.marginBottom='8px';
+    wrap.innerHTML=`<div><strong>${r.track}</strong> • R${r.race_no} — ${new Date(r.start_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>`;
+    const sel=await api(`/api/selections?race_event_id=${r.id}`);
+    const by={}; sel.forEach(s=>(by[s.label] ||= []).push(s));
+    for (const [label,arr] of Object.entries(by)){
+      const row=document.createElement('div'); row.style.marginTop='6px';
+      row.innerHTML=`<div style="margin-bottom:4px"><b>${label}</b></div>`;
+      arr.forEach(s=> row.appendChild(btnOdd(s.price,()=>alert(`Pick ${s.name} @ ${s.price} (demo)`))));
+      wrap.appendChild(row);
     }
-  } else {
-    const p=document.createElement('div');
-    p.innerHTML='<div class="panel">Simple '+PROD+' view placeholder. Betting buttons go here.</div>';
-    box.appendChild(p);
+    box.appendChild(wrap);
   }
 }
 
-async function place(label,market,sel,odds,key,product,data,fixture){
-  const stakeKES = 20; // default stake for quick demo
-  const res = await fetch('/bets/place',{
-    method:'POST', headers:{'Content-Type':'application/json','x-cashier-key':key},
-    body: JSON.stringify({
-      stake_cents: stakeKES*100, odds, product,
-      event_code: (data.code||'')+'#'+fixture.home+'-'+fixture.away,
-      market_code: market, selection_code: sel, pick_label: label+' • '+market+' • '+sel
-    })
-  });
-  const out=await res.json(); alert(JSON.stringify(out,null,2));
+function activate(el){
+  document.querySelectorAll('.tile').forEach(x=>x.classList.remove('active'));
+  el.classList.add('active');
+  const kind=el.dataset.kind, code=el.dataset.code;
+  if(kind==='FOOTBALL') showFootball(code);
+  if(kind==='COLOR') showColor();
+  if(kind==='RACE') showRaces(code);
 }
-render();
+
+document.getElementById('tiles').addEventListener('click', e=>{
+  const t=e.target.closest('.tile'); if(!t) return;
+  activate(t);
+});
+
+activate(document.querySelector('.tile.active'));
 </script>
 </body>
 </html>
