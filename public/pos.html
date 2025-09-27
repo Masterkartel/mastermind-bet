@@ -1,185 +1,216 @@
-mkdir -p public
-cat > public/pos.html <<'HTML'
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Mastermind — Cashier</title>
-<link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
+<meta charset="utf-8" />
+<title>Mastermind Cashier</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
-  :root{ --brand:#f59e0b; --line:#e5e7eb; --text:#0f172a; --muted:#64748b; }
-  body{font-family:system-ui,Segoe UI,Roboto,Ubuntu,Inter,sans-serif;margin:0;background:#fff;color:var(--text)}
-  header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line)}
-  .wrap{display:grid;grid-template-columns: 2fr 1fr; gap:16px; padding:16px}
-  .card{border:1px solid var(--line);border-radius:12px;padding:12px}
-  .fixtures{max-height:58vh;overflow:auto}
-  .fixture{display:flex;align-items:center;justify-content:space-between;border-bottom:1px dashed var(--line);padding:8px 0}
-  .sel button{margin-left:6px}
-  .betslip .line{display:flex;justify-content:space-between;align-items:center;border-bottom:1px dashed var(--line);padding:6px 0}
-  .stake{display:flex;gap:8px;align-items:center;margin-top:10px}
-  .btn{background:var(--brand);color:#111;padding:8px 12px;border-radius:10px;border:none;cursor:pointer;font-weight:700}
-  .btn:disabled{opacity:.5;cursor:not-allowed}
-  .ticket{position:relative;border:1px dashed var(--line);padding:10px;border-radius:12px;margin-top:10px}
-  .ticket::after{content:attr(data-status);position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-    font-weight:900;font-size:42px;opacity:.08;transform:rotate(-20deg);pointer-events:none;color:#64748b}
-  .ticket.won::after{color:#16a34a;opacity:.12}
-  .ticket.lost::after{color:#ef4444;opacity:.1}
-  #barcode{margin:6px 0}
-  .history{display:flex;gap:8px;margin-top:10px}
-  .pill{border:1px solid var(--line);border-radius:999px;padding:4px 10px;color:var(--muted)}
-  @media (max-width:900px){ .wrap{grid-template-columns:1fr} }
+  body { font-family: system-ui, Arial, sans-serif; margin:0; background:#0f172a; color:#e2e8f0; }
+  header { padding:12px 16px; background:#111827; display:flex; gap:12px; align-items:center; }
+  header h1 { margin:0; font-size:18px; }
+  main { display:grid; grid-template-columns: 2fr 1fr; gap:12px; padding:12px; }
+  .card { background:#111827; border:1px solid #1f2937; border-radius:12px; padding:12px; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  button, input, select { background:#0b1220; color:#e5e7eb; border:1px solid #243047; border-radius:8px; padding:8px 10px; }
+  button.primary { background:#14532d; border-color:#14532d; }
+  button.danger { background:#7f1d1d; border-color:#7f1d1d; }
+  .fixture { display:flex; justify-content:space-between; padding:8px; border:1px dashed #243047; border-radius:8px; margin-bottom:8px; }
+  .market { margin:8px 0; }
+  .pill { display:inline-block; padding:6px 8px; border:1px solid #374151; border-radius:999px; margin:4px 6px 0 0; cursor:pointer; }
+  .pill:hover { background:#1f2937; }
+  .betslip li { display:flex; justify-content:space-between; margin:6px 0; }
+  .receipt { background:#fff; color:#111; padding:16px; border-radius:8px; }
+  .watermark { position:relative; }
+  .watermark::after {
+    content: attr(data-status);
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    font: 700 48px/1 system-ui;
+    color: rgba(16,185,129,0.18); /* green */
+    letter-spacing:4px; transform: rotate(-18deg);
+    pointer-events:none;
+  }
+  .barcode { display:block; margin:8px auto; }
+  .muted { color:#6b7280; }
 </style>
-</head>
-<body>
+
 <header>
-  <strong>MASTERMIND — Cashier</strong>
-  <div class="pill">Stake: 20–1000 KES · Max payout 20,000 KES</div>
+  <h1>Mastermind Cashier</h1>
+  <button id="seed">Seed Sample</button>
+  <div class="muted">Min KES 20 • Max KES 1000 • Max payout KES 20000</div>
 </header>
 
-<div class="wrap">
-  <div class="card">
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-      <label>League:</label>
+<main>
+  <section class="card">
+    <div class="row">
       <select id="league">
-        <option>EPL</option><option>UCL</option><option>LALIGA</option><option>CHAMPS_CUP</option>
+        <option value="EPL">EPL</option>
+        <option value="UCL">Champions League</option>
+        <option value="LALIGA">La Liga</option>
       </select>
-      <button class="btn" id="refresh">Refresh</button>
-      <button class="btn" id="seed">Seed sample</button>
+      <button id="refresh">Refresh fixtures</button>
     </div>
-    <div class="fixtures" id="fixtures"></div>
-  </div>
+    <div id="fixtures"></div>
+    <div id="markets"></div>
+  </section>
 
-  <div class="card betslip">
-    <h3>Bet Slip</h3>
-    <div id="lines"></div>
-    <div class="stake">
-      <label for="stake">Stake (KES):</label>
-      <input id="stake" type="number" min="20" max="1000" value="50" style="width:100px"/>
-      <button class="btn" id="place" disabled>Place Ticket</button>
+  <section class="card">
+    <h3>Betslip</h3>
+    <ul id="slip" class="betslip"></ul>
+    <div class="row">
+      <input id="stake" type="number" min="20" max="1000" step="1" placeholder="Stake (KES)" />
+      <div>Potential: <strong id="potential">0.00</strong> KES</div>
     </div>
-    <div id="payout" style="margin-top:6px;color:var(--muted)"></div>
-
-    <div id="ticketOut"></div>
-
-    <div class="history">
-      <input id="code" placeholder="Enter ticket code" style="flex:1;padding:8px;border-radius:10px;border:1px solid var(--line)"/>
-      <button class="btn" id="reprint">Find / Reprint</button>
+    <div class="row" style="margin-top:8px;">
+      <button class="primary" id="place">Place Ticket</button>
+      <button class="danger" id="clear">Clear</button>
     </div>
-  </div>
-</div>
 
-<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+    <hr style="border-color:#1f2937; margin:12px 0;" />
+
+    <div class="row">
+      <input id="codeLookup" placeholder="Enter ticket code (MM-...)" />
+      <button id="reprint">Find / Reprint</button>
+    </div>
+
+    <div id="printArea" style="margin-top:12px;"></div>
+  </section>
+</main>
+
 <script>
-const fixturesDiv = document.getElementById('fixtures');
-const leagueSel = document.getElementById('league');
-const linesDiv = document.getElementById('lines');
-const payoutDiv = document.getElementById('payout');
-const stakeInput = document.getElementById('stake');
-const placeBtn = document.getElementById('place');
-const ticketOut = document.getElementById('ticketOut');
-let betLines = []; // {selection_id, price, label}
+const $ = sel => document.querySelector(sel);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+
+let slip = []; // {selection_id, label, price}
+
+function fmt(n){ return Number(n).toFixed(2); }
+
+async function api(url, opts){ const r = await fetch(url, opts); if(!r.ok) throw new Error(await r.text()); return r.json(); }
 
 async function loadFixtures(){
-  fixturesDiv.innerHTML = 'Loading...';
-  const r = await fetch(`/api/fixtures?league=${leagueSel.value}`);
-  const fixtures = await r.json();
-  if (!fixtures.length){ fixturesDiv.innerHTML = 'No open fixtures. Click SEED SAMPLE.'; return; }
-  fixturesDiv.innerHTML = '';
+  const league = $('#league').value;
+  const data = await api(`/api/fixtures?league=${encodeURIComponent(league)}`);
+  const box = $('#fixtures');
+  box.innerHTML = '<h3>Fixtures</h3>' + data.map(f => `
+    <div class="fixture">
+      <div>${new Date(f.kickoff_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
+      <div><strong>${f.home_code}</strong> vs <strong>${f.away_code}</strong></div>
+      <div><button data-fx="${f.id}" class="loadMarkets">Markets</button></div>
+    </div>
+  `).join('');
+}
 
-  for (const f of fixtures){
-    const wrap = document.createElement('div'); wrap.className='fixture';
-    wrap.innerHTML = `<div><strong>${f.home_code}</strong> vs <strong>${f.away_code}</strong><br>
-      <small>${new Date(f.kickoff_at).toLocaleTimeString()}</small></div>
-      <div class="sel" id="sel-${f.id}"></div>`;
-    fixturesDiv.appendChild(wrap);
+async function loadMarkets(fixtureId){
+  const data = await api(`/api/fixtures/${fixtureId}/markets`);
+  const box = $('#markets');
+  box.innerHTML = '<h3>Markets</h3>' + data.map(m => `
+    <div class="market">
+      <div><strong>${m.market}</strong></div>
+      <div>
+        ${m.selections.map(s => `
+          <span class="pill" data-sel="${s.selection_id}" data-label="${m.market}:${s.code}" data-price="${s.price}">
+            ${s.code} @ ${s.price}
+          </span>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
 
-    const mr = await fetch(`/api/fixtures/${f.id}/markets`); const markets = await mr.json();
-    const selDiv = wrap.querySelector(`#sel-${f.id}`);
-    for (const m of markets){
-      for (const s of m.selections){
-        const btn = document.createElement('button');
-        btn.className='btn'; btn.style.padding='6px 8px';
-        btn.textContent = `${m.market}:${s.code} @${Number(s.price).toFixed(2)}`;
-        btn.onclick = ()=> addLine(s.selection_id, Number(s.price), `${f.home_code} vs ${f.away_code} · ${m.market} ${s.code}`);
-        selDiv.appendChild(btn);
-      }
-    }
+function renderSlip(){
+  const ul = $('#slip');
+  ul.innerHTML = slip.map((l,i)=>`
+    <li>
+      <span>${l.label}</span>
+      <span>@ ${l.price} <button data-i="${i}" class="rm">×</button></span>
+    </li>
+  `).join('');
+
+  const stake = Number($('#stake').value || 0);
+  const odd = slip.reduce((a,x)=>a*Number(x.price),1);
+  let potential = stake * odd;
+  if (potential > 20000) potential = 20000; // hard cap displayed
+  $('#potential').textContent = fmt(potential);
+}
+
+function clearSlip(){ slip = []; renderSlip(); }
+
+async function placeTicket(){
+  const stake = Number($('#stake').value || 0);
+  if (stake < 20 || stake > 1000) { alert('Stake must be between 20 and 1000 KES'); return; }
+  if (!slip.length) { alert('Add at least one selection'); return; }
+
+  const body = {
+    stake_kes: stake,
+    lines: slip.map(x => ({ selection_id: x.selection_id }))
+  };
+  try {
+    const r = await api('/api/tickets', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    printTicket(r.code);
+    clearSlip();
+  } catch (e) {
+    alert('Ticket failed: ' + e.message);
   }
 }
 
-function renderLines(){
-  linesDiv.innerHTML='';
-  betLines.forEach((l,idx)=>{
-    const d = document.createElement('div'); d.className='line';
-    d.innerHTML = `<div>${idx+1}. ${l.label}</div><div>@${l.price.toFixed(2)} <button data-i="${idx}">✖</button></div>`;
-    d.querySelector('button').onclick = ev => { betLines.splice(Number(ev.target.dataset.i),1); compute(); };
-    linesDiv.appendChild(d);
-  });
-  compute();
-}
-
-function addLine(id, price, label){
-  betLines.push({selection_id:id, price, label});
-  renderLines();
-}
-
-function compute(){
-  let acc = betLines.reduce((a,b)=>a*b.price,1);
-  const stake = Number(stakeInput.value||0);
-  let potential = stake * acc;
-  if (potential > 20000) potential = 20000; // hard cap
-  payoutDiv.textContent = betLines.length ? `Accumulator: x${acc.toFixed(2)} · Potential win: KES ${potential.toFixed(2)}` : '';
-  placeBtn.disabled = !(betLines.length && stake>=20 && stake<=1000);
-}
-stakeInput.oninput = compute;
-
-document.getElementById('refresh').onclick = loadFixtures;
-document.getElementById('seed').onclick = async ()=>{
-  await fetch('/admin/seed-sample',{method:'POST'});
-  loadFixtures();
-};
-
-placeBtn.onclick = async ()=>{
-  const stake = Number(stakeInput.value);
-  const body = { stake_kes: stake, lines: betLines.map(l=>({selection_id:l.selection_id})) };
-  const r = await fetch('/api/tickets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const j = await r.json();
-  if (!j.ok){ alert(j.error||'Failed'); return; }
-  showTicket(j.code, stake, j.potential_kes);
-  betLines=[]; renderLines();
-};
-
-function showTicket(code, stake, potential){
-  ticketOut.innerHTML = `
-    <div class="ticket pending" data-status="PENDING" id="tkt">
-      <h3>MASTERMIND BET</h3>
-      <div>Ticket: <strong>${code}</strong></div>
-      <svg id="barcode"></svg>
+async function printTicket(code){
+  const r = await api(`/api/tickets/${encodeURIComponent(code)}`);
+  const area = $('#printArea');
+  area.innerHTML = `
+    <div class="receipt watermark" data-status="${r.status}">
+      <h3 style="margin:0 0 8px 0;">Mastermind Bet</h3>
+      <div class="muted">${new Date(r.created_at).toLocaleString()}</div>
+      <div style="margin-top:8px;"><strong>Ticket:</strong> ${r.code}</div>
+      <img class="barcode" src="/barcode/${encodeURIComponent(r.code)}" alt="barcode" />
       <hr/>
-      ${betLines.map((l,i)=>`<div>${i+1}. ${l.label} @${l.price.toFixed(2)}</div>`).join('')}
+      <div><strong>Stake:</strong> KES ${Number(r.stake_kes).toFixed(2)}</div>
+      <div><strong>Potential:</strong> KES ${Number(r.potential_kes).toFixed(2)}</div>
       <hr/>
-      <div>Stake: KES ${stake.toFixed(2)}</div>
-      <div>Potential: KES ${Number(potential).toFixed(2)}</div>
-      <div>Status: PENDING</div>
-      <button class="btn" onclick="window.print()">Print</button>
+      <div><strong>Lines</strong></div>
+      <ul>
+        ${r.lines.map(l => `<li>${l.market} — ${l.pick} @ ${l.price}</li>`).join('')}
+      </ul>
+      <div class="muted">Status watermark will turn <span style="color:#10b981;font-weight:700;">WON</span> when settled.</div>
     </div>`;
-  JsBarcode("#barcode", code, {format:"CODE128", width:2, height:40, displayValue:false});
+  window.print && window.print();
 }
 
-// History / reprint
-document.getElementById('reprint').onclick = async ()=>{
-  const code = document.getElementById('code').value.trim();
-  if (!code) return;
-  const r = await fetch('/api/tickets/'+code);
-  if(!r.ok){ alert('Not found'); return; }
-  const t = await r.json();
-  betLines = t.lines.map(x=>({selection_id:null, price:Number(x.price), label:`${x.market} ${x.pick}`}));
-  renderLines();
-  showTicket(t.code, t.stake_cents/100, t.potential_win_cents/100);
-};
+// events
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('loadMarkets')) {
+    loadMarkets(e.target.dataset.fx);
+  }
+  if (e.target.classList.contains('pill')) {
+    const sel = e.target.dataset.sel;
+    const exists = slip.some(x => x.selection_id === sel);
+    if (!exists) {
+      slip.push({
+        selection_id: sel,
+        label: e.target.dataset.label,
+        price: e.target.dataset.price
+      });
+      renderSlip();
+    }
+  }
+  if (e.target.id === 'clear') clearSlip();
+  if (e.target.classList.contains('rm')) {
+    slip.splice(Number(e.target.dataset.i),1);
+    renderSlip();
+  }
+  if (e.target.id === 'place') placeTicket();
+  if (e.target.id === 'refresh') loadFixtures();
+  if (e.target.id === 'seed') {
+    fetch('/admin/seed-sample', { method:'POST' }).then(loadFixtures);
+  }
+  if (e.target.id === 'reprint') {
+    const code = $('#codeLookup').value.trim();
+    if (code) printTicket(code);
+  }
+});
+
+document.getElementById('stake').addEventListener('input', renderSlip);
+
+// init
 loadFixtures();
+renderSlip();
 </script>
-</body>
 </html>
-HTML
