@@ -23,17 +23,19 @@ h1{margin:0;font-size:18px}
 .tile.active{outline:2px solid var(--accent)}
 .tbl{width:100%;border-collapse:collapse}
 .tbl th,.tbl td{border-bottom:1px solid #223048;padding:6px 8px;font-size:14px}
-.btn-odd{display:inline-block;min-width:52px;text-align:center;background:#0b1528;border:1px solid #334155;border-radius:8px;padding:6px 8px;margin:2px;cursor:pointer}
+.btn-odd{display:inline-block;min-width:58px;text-align:center;background:#0b1528;border:1px solid #334155;border-radius:8px;padding:6px 8px;margin:2px;cursor:pointer}
 .btn-odd:hover{outline:2px solid var(--accent)}
 /* glossy balls */
-.ball{width:38px;height:38px;border-radius:999px;display:inline-grid;place-items:center;font:700 14px/1 system-ui;color:#fff;margin-right:6px;border:1px solid rgba(0,0,0,.3);box-shadow:inset 0 -8px 14px rgba(0,0,0,.35), inset 0 10px 18px rgba(255,255,255,.12), 0 3px 8px rgba(0,0,0,.45)}
+.ball{width:34px;height:34px;border-radius:999px;display:inline-grid;place-items:center;font:700 14px/1 system-ui;color:#fff;margin-right:6px;border:1px solid rgba(0,0,0,.3);box-shadow:inset 0 -8px 14px rgba(0,0,0,.35), inset 0 10px 18px rgba(255,255,255,.12), 0 3px 8px rgba(0,0,0,.45)}
 .ball-label{font-size:11px;margin-left:4px;color:#cfd6e6}
 .ball.red{background:radial-gradient(circle at 30% 25%, #ff8a8a, #d71d1d 55%, #8b1111)}
 .ball.green{background:radial-gradient(circle at 30% 25%, #79ffb5, #10b981 55%, #0a5e46)}
 .ball.blue{background:radial-gradient(circle at 30% 25%, #8ac7ff, #2563eb 55%, #163986)}
 .ball.yellow{background:radial-gradient(circle at 30% 25%, #ffe99a, #f59e0b 55%, #7a4e02)}
-.tiny{font-size:12px;color:#9fb0c8}
-.badge{font-size:12px;border:1px solid #2a3b60;padding:2px 6px;border-radius:999px;color:#bcd}
+.clock{font-weight:700;color:#9fb0c8}
+.tabbar{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 10px}
+.tab{padding:6px 10px;border-radius:999px;border:1px solid #334155;background:#111827;cursor:pointer}
+.tab.active{background:#ef4444;border-color:#ef4444}
 </style>
 </head>
 <body>
@@ -61,197 +63,187 @@ h1{margin:0;font-size:18px}
     <div style="display:flex;justify-content:space-between;align-items:center">
       <strong>Fastbet</strong><button id="refresh" class="tile" style="padding:6px 10px">Refresh</button>
     </div>
-    <div id="tickets" class="tiny" style="margin-top:8px">Your quick slips will appear here.</div>
+    <div id="tickets" class="clock" style="margin-top:8px">—</div>
   </div>
 </div>
 
 <script>
-(function(){
-  var $ = function(s){ return document.querySelector(s); };
-  function api(u){ return fetch(u).then(function(r){ return r.json(); }); }
-  function btnOdd(o,cb){
-    var b=document.createElement('span');
-    b.className='btn-odd';
-    b.textContent=(typeof o==='number' && o.toFixed)?o.toFixed(2):o;
-    b.onclick=cb; return b;
-  }
-  function short(x){ return String(x||'').toUpperCase().slice(0,3); }
+const $ = s=>document.querySelector(s);
+function api(u){ return fetch(u).then(r=>r.json()); }
+function btnOdd(o,cb){ const b=document.createElement('span'); b.className='btn-odd'; b.textContent=(typeof o==='number'&&o.toFixed)?o.toFixed(2):o; b.onclick=cb; return b; }
+function cd(t){ const s=Math.max(0,Math.floor((t-Date.now())/1000)); return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
 
-  /* ===== Football with tabs ===== */
-  function showFootball(code){
-    var box=$('#content'); box.innerHTML='';
+/* ---------- FOOTBALL TABLE WITH TABS ---------- */
+const TABS = [
+  { name:'MAIN', cols:['1','X','2','1X','12','X2','GG','NG','OV2.5','UN2.5'], map:(m)=>({
+    '1':m['1X2']?.Home,'X':m['1X2']?.Draw,'2':m['1X2']?.Away,
+    '1X':m['1X12X2']?.['1X'],'12':m['1X12X2']?.['12'],'X2':m['1X12X2']?.['X2'],
+    'GG':m['GG/NG']?.GG,'NG':m['GG/NG']?.NG,'OV2.5':m['OV/UN 2.5']?.OV2.5,'UN2.5':m['OV/UN 2.5']?.UN2.5
+  })},
+  { name:'OVER/UNDER', cols:['OV1.5','UN1.5','OV2.5','UN2.5'], map:(m)=>({
+    'OV1.5':m['OV/UN 1.5']?.OV1.5,'UN1.5':m['OV/UN 1.5']?.UN1.5,'OV2.5':m['OV/UN 2.5']?.OV2.5,'UN2.5':m['OV/UN 2.5']?.UN2.5
+  })},
+  { name:'HOME OV/UN', cols:['OV0.5(H)','UN0.5(H)','OV1.5(H)','UN1.5(H)','OV2.5(H)','UN2.5(H)'], map:(m)=>({
+    'OV0.5(H)':m['HOME OV/UN']?.['OV0.5'],'UN0.5(H)':m['HOME OV/UN']?.['UN0.5'],
+    'OV1.5(H)':m['HOME OV/UN']?.['OV1.5'],'UN1.5(H)':m['HOME OV/UN']?.['UN1.5'],
+    'OV2.5(H)':m['HOME OV/UN']?.['OV2.5'],'UN2.5(H)':m['HOME OV/UN']?.['UN2.5']
+  })},
+  { name:'AWAY OV/UN', cols:['OV0.5(A)','UN0.5(A)','OV1.5(A)','UN1.5(A)','OV2.5(A)','UN2.5(A)'], map:(m)=>({
+    'OV0.5(A)':m['AWAY OV/UN']?.['OV0.5'],'UN0.5(A)':m['AWAY OV/UN']?.['UN0.5'],
+    'OV1.5(A)':m['AWAY OV/UN']?.['OV1.5'],'UN1.5(A)':m['AWAY OV/UN']?.['UN1.5'],
+    'OV2.5(A)':m['AWAY OV/UN']?.['OV2.5'],'UN2.5(A)':m['AWAY OV/UN']?.['UN2.5']
+  })},
+  { name:'1X2 OV/UN 1.5', cols:['1+OV1.5','X+OV1.5','2+OV1.5','1+UN1.5','X+UN1.5','2+UN1.5'], map:(m)=>m['1X2 OV/UN 1.5']||{} },
+  { name:'1X2 OV/UN 2.5', cols:['1+OV2.5','X+OV2.5','2+OV2.5','1+UN2.5','X+UN2.5','2+UN2.5'], map:(m)=>m['1X2 OV/UN 2.5']||{} },
+];
 
-    // header line + timer to earliest kickoff in this league
-    var header=document.createElement('div'); header.style.cssText='display:flex;align-items:center;gap:10px;margin:6px 0';
-    header.innerHTML='<strong>League • '+code+'</strong> <span id="kickTimer" class="badge">--:--</span>';
-    box.appendChild(header);
+async function showFootball(code){
+  const box=$('#content'); box.innerHTML='';
+  const state=await api('/virtual/state'); // for timers
+  let endsAt = Date.now()+180000-(Date.now()%180000);
+  const lg = (state.leagues||[]).find(l=>l.code===code);
+  if(lg) endsAt = lg.endsAt;
 
-    var tabs = ['MAIN','OVER/UNDER','HOME OV/UN','AWAY OV/UN','1X2 OV/UN 1.5','1X2 OV/UN 2.5'];
-    var active = 'MAIN';
+  const head=document.createElement('div');
+  head.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center">
+    <h3 style="margin:8px 0">${code} • League</h3><div class="clock" id="fb-clock">--:--</div></div>
+    <div class="tabbar" id="fb-tabs"></div>
+    <div id="fb-wrap"></div>`;
+  box.appendChild(head);
+  setInterval(()=>$('#fb-clock').textContent=cd(endsAt),500);
 
-    var tabBar = document.createElement('div'); tabBar.className='tiles';
-    tabs.forEach(function(t){
-      var el=document.createElement('div');
-      el.className='tile'+(t===active?' active':'');
-      el.textContent=t;
-      el.onclick=function(){
-        active=t;
-        renderTable();
-        var kids=tabBar.querySelectorAll('.tile'); for (var i=0;i<kids.length;i++) kids[i].classList.remove('active');
-        el.classList.add('active');
-      };
-      tabBar.appendChild(el);
-    });
-    box.appendChild(tabBar);
+  const league=await api('/virtual/league/'+encodeURIComponent(code)); // fixtures + markets
+  const tabs=$('#fb-tabs');
+  TABS.forEach((t,i)=>{
+    const b=document.createElement('span'); b.className='tab'+(i===0?' active':''); b.textContent=t.name;
+    b.onclick=()=>{ tabs.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); b.classList.add('active'); render(t); };
+    tabs.appendChild(b);
+  });
+  render(TABS[0]);
 
-    var fixtures=[];
-    function nextKickTimer(){
-      if(!fixtures.length) return;
-      var soon = Math.min.apply(null, fixtures.map(function(f){ return new Date(f.start_time).getTime(); }));
-      var el=document.getElementById('kickTimer');
-      function two(n){ return String(n).padStart(2,'0'); }
-      function tick(){
-        var s = Math.max(0, Math.floor((soon - Date.now())/1000));
-        el.textContent = two(Math.floor(s/60))+':'+two(s%60);
-        setTimeout(tick, 500);
-      }
-      tick();
-    }
+  function render(t){
+    const wrap=$('#fb-wrap'); wrap.innerHTML='';
+    const tbl=document.createElement('table'); tbl.className='tbl';
+    tbl.innerHTML='<thead><tr><th>#</th><th>Match</th>'+t.cols.map(c=>'<th>'+c+'</th>').join('')+'</tr></thead><tbody></tbody>';
+    const tb=tbl.querySelector('tbody');
 
-    function colPrice(by, label, name){
-      var a = by[label] || [];
-      for (var i=0;i<a.length;i++) if (a[i].name===name) return a[i].price;
-      return '-';
-    }
+    (league.fixtures||[]).forEach((f,idx)=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML='<td>'+(idx+1)+'</td><td>'+f.home.slice(0,3).toUpperCase()+' vs '+f.away.slice(0,3).toUpperCase()+'</td>'+t.cols.map(()=>'<td></td>').join('');
+      tb.appendChild(tr);
 
-    function renderTable(){
-      var old = box.querySelector('table'); if (old) old.remove();
-      var t=document.createElement('table'); t.className='tbl';
-      var headerCols='';
-      if (active==='MAIN') headerCols='<th>1</th><th>X</th><th>2</th><th>1X</th><th>12</th><th>X2</th><th>GG</th><th>NG</th>';
-      if (active==='OVER/UNDER') headerCols='<th>OV1.5</th><th>UN1.5</th><th>OV2.5</th><th>UN2.5</th>';
-      if (active==='HOME OV/UN') headerCols='<th>H OV0.5</th><th>H UN0.5</th><th>H OV1.5</th><th>H UN1.5</th><th>H OV2.5</th><th>H UN2.5</th>';
-      if (active==='AWAY OV/UN') headerCols='<th>A OV0.5</th><th>A UN0.5</th><th>A OV1.5</th><th>A UN1.5</th><th>A OV2.5</th><th>A UN2.5</th>';
-      if (active==='1X2 OV/UN 1.5') headerCols='<th>1+OV1.5</th><th>X+OV1.5</th><th>2+OV1.5</th><th>1+UN1.5</th><th>X+UN1.5</th><th>2+UN1.5</th>';
-      if (active==='1X2 OV/UN 2.5') headerCols='<th>1+OV2.5</th><th>X+OV2.5</th><th>2+OV2.5</th><th>1+UN2.5</th><th>X+UN2.5</th><th>2+UN2.5</th>';
-      t.innerHTML='<thead><tr><th>#</th><th>Match</th>'+headerCols+'</tr></thead><tbody></tbody>';
-      var tb=t.querySelector('tbody');
-
-      fixtures.forEach(function(f,idx){
-        var tr=document.createElement('tr');
-        tr.innerHTML='<td>'+(idx+1)+'</td><td>'+short(f.home)+' vs '+short(f.away)+'</td>';
-        tb.appendChild(tr);
-
-        fetch('/api/selections?fixture_id='+f.id).then(function(r){return r.json();}).then(function(sel){
-          var by={}; for (var i=0;i<sel.length;i++){ var s=sel[i]; (by[s.label]=by[s.label]||[]).push(s); }
-          function add(val){
-            var td=document.createElement('td');
-            td.appendChild(btnOdd(val, function(){}));
-            tr.appendChild(td);
-          }
-          if (active==='MAIN'){
-            add(colPrice(by,'1X2','Home'));
-            add(colPrice(by,'1X2','Draw'));
-            add(colPrice(by,'1X2','Away'));
-            add(colPrice(by,'DOUBLE CHANCE','1X'));
-            add(colPrice(by,'DOUBLE CHANCE','12'));
-            add(colPrice(by,'DOUBLE CHANCE','X2'));
-            add(colPrice(by,'GG/NG','GG'));
-            add(colPrice(by,'GG/NG','NG'));
-          }
-          if (active==='OVER/UNDER'){
-            add(colPrice(by,'OV/UN 1.5','OV1.5')); add(colPrice(by,'OV/UN 1.5','UN1.5'));
-            add(colPrice(by,'OV/UN 2.5','OV2.5')); add(colPrice(by,'OV/UN 2.5','UN2.5'));
-          }
-          if (active==='HOME OV/UN'){
-            add(colPrice(by,'HOME OV/UN 0.5','H OV0.5')); add(colPrice(by,'HOME OV/UN 0.5','H UN0.5'));
-            add(colPrice(by,'HOME OV/UN 1.5','H OV1.5')); add(colPrice(by,'HOME OV/UN 1.5','H UN1.5'));
-            add(colPrice(by,'HOME OV/UN 2.5','H OV2.5')); add(colPrice(by,'HOME OV/UN 2.5','H UN2.5'));
-          }
-          if (active==='AWAY OV/UN'){
-            add(colPrice(by,'AWAY OV/UN 0.5','A OV0.5')); add(colPrice(by,'AWAY OV/UN 0.5','A UN0.5'));
-            add(colPrice(by,'AWAY OV/UN 1.5','A OV1.5')); add(colPrice(by,'AWAY OV/UN 1.5','A UN1.5'));
-            add(colPrice(by,'AWAY OV/UN 2.5','A OV2.5')); add(colPrice(by,'AWAY OV/UN 2.5','A UN2.5'));
-          }
-          if (active==='1X2 OV/UN 1.5'){
-            ['1+OV1.5','X+OV1.5','2+OV1.5','1+UN1.5','X+UN1.5','2+UN1.5'].forEach(function(k){ add(colPrice(by,'1X2 OV/UN 1.5',k)); });
-          }
-          if (active==='1X2 OV/UN 2.5'){
-            ['1+OV2.5','X+OV2.5','2+OV2.5','1+UN2.5','X+UN2.5','2+UN2.5'].forEach(function(k){ add(colPrice(by,'1X2 OV/UN 2.5',k)); });
-          }
-        });
-      });
-
-      box.appendChild(t);
-    }
-
-    // load fixtures then render + timer
-    api('/api/fixtures?competition_code='+encodeURIComponent(code)).then(function(fx){
-      fixtures = fx || [];
-      renderTable();
-      nextKickTimer();
-    });
-  }
-
-  /* ===== Colors (simple link to POS page behavior kept) ===== */
-  function showColor(){
-    var box=$('#content'); box.innerHTML='';
-    api('/api/colors/draws/latest').then(function(data){
-      if(!data){ box.textContent='No scheduled draw.'; return; }
-      var picks = data.picks || [];
-      var grid=document.createElement('div');
-      picks.forEach(function(p){
-        var span=document.createElement('span'); span.className='btn-odd';
-        var c=p.color;
-        var cls=(c==='RED'?'red':(c==='GREEN'?'green':(c==='BLUE'?'blue':'yellow')));
-        var dot = '<span class="ball '+cls+'">'+c.charAt(0)+'</span><span class="ball-label">'+c+'</span>';
-        span.innerHTML=dot+' @ '+p.price;
-        grid.appendChild(span);
-      });
-      box.appendChild(grid);
-    });
-  }
-
-  function showRaces(type){
-    var box=$('#content'); box.innerHTML='';
-    api('/api/races?type='+encodeURIComponent(type)).then(function(races){
-      if(!races || !races.length){ box.textContent='No races yet.'; return; }
-      races.forEach(function(r){
-        var wrap=document.createElement('div'); wrap.className='panel'; wrap.style.marginBottom='8px';
-        wrap.innerHTML='<div><strong>'+r.track+'</strong> • R'+r.race_no+' — '+new Date(r.start_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})+'</div>';
-        api('/api/selections?race_event_id='+r.id).then(function(sel){
-          var by={}; for (var i=0;i<sel.length;i++){ var s=sel[i]; (by[s.label] ||= []).push(s); }
-          Object.keys(by).forEach(function(label){
-            var row=document.createElement('div'); row.style.marginTop='6px';
-            row.innerHTML='<div style="margin-bottom:4px"><b>'+label+'</b></div>';
-            by[label].forEach(function(s){
-              row.appendChild(btnOdd(s.price,function(){}));
-            });
-            wrap.appendChild(row);
-          });
-        });
-        box.appendChild(wrap);
+      const m=t.map(f.markets||{});
+      t.cols.forEach((name,i)=>{
+        const val=m[name];
+        if (typeof val==='number'){
+          tr.children[i+2].appendChild(btnOdd(val,()=>{}));
+        } else {
+          tr.children[i+2].appendChild(btnOdd('-',()=>{}));
+          tr.children[i+2].firstChild.style.opacity=.5;
+        }
       });
     });
+    wrap.appendChild(tbl);
+  }
+}
+
+/* ---------- COLOR with WIN/NUM & TIMER ---------- */
+async function showColor(){
+  const box=$('#content'); box.innerHTML='';
+  const d=await api('/virtual/colors');
+  if(!d){ box.textContent='No scheduled draw.'; return; }
+  const head=document.createElement('div');
+  head.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center">
+      <h3 style="margin:8px 0">Color Pool — Draw #${d.draw_no}</h3>
+      <div class="clock" id="col-clock">--:--</div>
+    </div>`;
+  box.appendChild(head);
+  const endsAt=new Date(d.starts_at).getTime(); setInterval(()=>$('#col-clock').textContent=cd(endsAt),500);
+
+  const latest = await api('/api/colors/draws/latest');
+  const sel = await api(`/api/selections?color_draw_id=${latest.draw.id}`);
+  const by={}; sel.forEach(s=>(by[s.label] ||= []).push(s));
+
+  function row(label, arr, render){
+    if(!arr||!arr.length) return;
+    const p=document.createElement('div'); p.className='panel'; p.style.marginTop='8px';
+    p.innerHTML='<div style="margin-bottom:6px"><strong>'+label+'</strong></div><div></div>';
+    const body=p.lastElementChild;
+    arr.forEach(s=> body.appendChild(render(s)));
+    box.appendChild(p);
   }
 
-  function activate(el){
-    var tiles=document.querySelectorAll('.tile');
-    for (var i=0;i<tiles.length;i++) tiles[i].classList.remove('active');
-    el.classList.add('active');
-    var kind=el.getAttribute('data-kind'), code=el.getAttribute('data-code');
-    if(kind==='FOOTBALL') showFootball(code);
-    if(kind==='COLOR') showColor();
-    if(kind==='RACE') showRaces(code);
-  }
-
-  document.getElementById('tiles').addEventListener('click', function(e){
-    var t=e.target.closest('.tile'); if(!t) return; activate(t);
+  row('WINNING COLOR', by['WINNING COLOR'] || d.picks, (s)=>{
+    const c=(s.color||s.name), cls=c==='RED'?'red':c==='GREEN'?'green':c==='BLUE'?'blue':'yellow';
+    const el=document.createElement('span'); el.className='btn-odd';
+    el.innerHTML=`<span class="ball ${cls}">${c[0]}</span> @ ${s.price}`;
+    return el;
   });
 
-  // initial load
-  activate(document.querySelector('.tile.active'));
-})();
+  row('NUMBER OF COLORS', by['NUMBER OF COLORS'], (s)=>{
+    const el=document.createElement('span'); el.className='btn-odd'; el.textContent=s.name+' @ '+s.price; return el;
+  });
+}
+
+/* ---------- RACES with TABS & TIMER ---------- */
+const R_TABS=['MAIN','FORECAST','QUINELLA','TRICAST'];
+async function showRaces(type){
+  const box=$('#content'); box.innerHTML='';
+  const races=await api('/api/races?type='+encodeURIComponent(type));
+  if(!races.length){ box.textContent='No races yet.'; return; }
+  const r=races[0]; const endsAt=new Date(r.start_time).getTime();
+
+  const head=document.createElement('div');
+  head.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center">
+      <h3 style="margin:8px 0">${type==='DOG'?'Dogs':'Horses'} — ${r.track} • R${r.race_no}</h3>
+      <div class="clock" id="race-clock">--:--</div>
+    </div>
+    <div class="tabbar" id="rtabs"></div>
+    <div id="rwrap"></div>`;
+  box.appendChild(head);
+  setInterval(()=>$('#race-clock').textContent=cd(endsAt),500);
+
+  const all=await api('/api/selections?race_event_id='+r.id);
+  const by={}; all.forEach(s=>(by[s.label] ||= []).push(s));
+
+  const tabs=$('#rtabs');
+  R_TABS.forEach((nm,i)=>{
+    const b=document.createElement('span'); b.className='tab'+(i===0?' active':''); b.textContent=nm;
+    b.onclick=()=>{ tabs.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); b.classList.add('active'); render(nm); };
+    tabs.appendChild(b);
+  });
+  render('MAIN');
+
+  function render(which){
+    const wrap=$('#rwrap'); wrap.innerHTML='';
+    function row(label, arr){
+      if(!arr||!arr.length) return;
+      const p=document.createElement('div'); p.className='panel'; p.style.marginTop='8px';
+      p.innerHTML='<div style="margin-bottom:6px"><strong>'+label+'</strong></div><div></div>';
+      const body=p.lastElementChild;
+      arr.forEach(s=> body.appendChild(btnOdd(s.price,()=>{})));
+      wrap.appendChild(p);
+    }
+    if (which==='MAIN'){ row('WINNER',by['WINNER']); row('PLACE',by['PLACE']); row('SHOW',by['SHOW']); }
+    if (which==='FORECAST'){ row('FORECAST',by['FORECAST']); }
+    if (which==='QUINELLA'){ row('QUINELLA',by['QUINELLA']); }
+    if (which==='TRICAST'){ row('TRICAST',by['TRICAST']); }
+  }
+}
+
+/* ---------- Router ---------- */
+function activate(el){
+  document.querySelectorAll('.tile').forEach(x=>x.classList.remove('active'));
+  el.classList.add('active');
+  const kind=el.dataset.kind, code=el.dataset.code;
+  if(kind==='FOOTBALL') showFootball(code);
+  if(kind==='COLOR') showColor();
+  if(kind==='RACE') showRaces(code);
+}
+document.getElementById('tiles').addEventListener('click', e=>{
+  const t=e.target.closest('.tile'); if(!t) return; activate(t);
+});
+activate(document.querySelector('.tile.active'));
 </script>
 </body>
 </html>
