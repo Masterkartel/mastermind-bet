@@ -65,83 +65,119 @@ h1{margin:0;font-size:18px}
 </div>
 
 <script>
-const $ = s=>document.querySelector(s);
-
-async function api(u){ const r=await fetch(u); return r.json(); }
-function btnOdd(o,cb){ const b=document.createElement('span'); b.className='btn-odd'; b.textContent=o.toFixed?o.toFixed(2):o; b.onclick=cb; return b; }
-
-async function showFootball(code){
-  const box=$('#content'); box.innerHTML='';
-  const fx=await api(`/api/fixtures?competition_code=${code}`);
-  if(!fx.length){ box.textContent='No fixtures yet.'; return; }
-  const t=document.createElement('table'); t.className='tbl';
-  t.innerHTML='<thead><tr><th>#</th><th>Match</th><th>1</th><th>X</th><th>2</th></tr></thead><tbody></tbody>';
-  const tb=t.querySelector('tbody');
-  for (const f of fx){
-    const tr=document.createElement('tr');
-    tr.innerHTML=`<td>${f.id}</td><td>${f.home} vs ${f.away}</td><td></td><td></td><td></td>`;
-    tb.appendChild(tr);
-    const sel=await api(`/api/selections?fixture_id=${f.id}`);
-    const oneXtwo=sel.filter(s=>s.label==='1X2');
-    const get = name=>oneXtwo.find(x=>x.name===name)?.price||'-';
-    tr.children[2].appendChild(btnOdd(get('Home'),()=>alert('Add to slip (demo)')));
-    tr.children[3].appendChild(btnOdd(get('Draw'),()=>alert('Add to slip (demo)')));
-    tr.children[4].appendChild(btnOdd(get('Away'),()=>alert('Add to slip (demo)')));
+(function(){
+  var $ = function(s){ return document.querySelector(s); };
+  function api(u){ return fetch(u).then(function(r){ return r.json(); }); }
+  function btnOdd(o,cb){
+    var b=document.createElement('span');
+    b.className='btn-odd';
+    b.textContent=(typeof o==='number' && o.toFixed)?o.toFixed(2):o;
+    b.onclick=cb; return b;
   }
-  box.appendChild(t);
-}
 
-async function showColor(){
-  const box=$('#content'); box.innerHTML='';
-  const data=await api('/api/colors/draws/latest');
-  if(!data){ box.textContent='No scheduled draw.'; return; }
-  const picks=data.picks||[];
-  const grid=document.createElement('div');
-  picks.forEach(p=>{
-    const span=document.createElement('span'); span.className='btn-odd';
-    const c=p.color;
-    const dot = `<span class="ball ${c==='RED'?'red':c==='GREEN'?'green':c==='BLUE'?'blue':'yellow'}">${c[0]}</span><span class="ball-label">${c}</span>`;
-    span.innerHTML=dot+' @ '+p.price;
-    span.onclick=()=>alert(`Pick ${c} @ ${p.price} (demo)`);
-    grid.appendChild(span);
+  function showFootball(code){
+    var box=$('#content'); box.innerHTML='';
+    api('/api/fixtures?competition_code='+encodeURIComponent(code)).then(function(fx){
+      if(!fx || !fx.length){ box.textContent='No fixtures yet.'; return; }
+      var t=document.createElement('table'); t.className='tbl';
+      t.innerHTML='<thead><tr><th>#</th><th>Match</th><th>1</th><th>X</th><th>2</th><th>GG</th><th>NG</th><th>OV2.5</th><th>UN2.5</th></tr></thead><tbody></tbody>';
+      var tb=t.querySelector('tbody');
+
+      function findPrice(arr, name){
+        if(!arr){ return '-'; }
+        for (var i=0;i<arr.length;i++){ if(arr[i].name===name) return arr[i].price; }
+        return '-';
+      }
+
+      fx.forEach(function(f){
+        var tr=document.createElement('tr');
+        tr.innerHTML='<td>'+f.id+'</td><td>'+f.home+' vs '+f.away+'</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>';
+        tb.appendChild(tr);
+
+        api('/api/selections?fixture_id='+f.id).then(function(sel){
+          var byLabel = {};
+          for (var i=0;i<sel.length;i++){
+            var s=sel[i]; if(!byLabel[s.label]) byLabel[s.label]=[]; byLabel[s.label].push(s);
+          }
+          var oneXtwo = byLabel['1X2'];
+          var ggnng   = byLabel['GG/NG'];
+          var ou      = byLabel['1X2 OV/UN 2.5'];
+
+          tr.children[2].appendChild(btnOdd(findPrice(oneXtwo,'Home'), function(){ alert('Add to slip (demo)'); }));
+          tr.children[3].appendChild(btnOdd(findPrice(oneXtwo,'Draw'), function(){ alert('Add to slip (demo)'); }));
+          tr.children[4].appendChild(btnOdd(findPrice(oneXtwo,'Away'), function(){ alert('Add to slip (demo)'); }));
+
+          tr.children[5].appendChild(btnOdd(findPrice(ggnng,'GG'), function(){ alert('Add to slip (demo)'); }));
+          tr.children[6].appendChild(btnOdd(findPrice(ggnng,'NG'), function(){ alert('Add to slip (demo)'); }));
+
+          tr.children[7].appendChild(btnOdd(findPrice(ou,'OV2.5'), function(){ alert('Add to slip (demo)'); }));
+          tr.children[8].appendChild(btnOdd(findPrice(ou,'UN2.5'), function(){ alert('Add to slip (demo)'); }));
+        });
+      });
+
+      box.appendChild(t);
+    });
+  }
+
+  function showColor(){
+    var box=$('#content'); box.innerHTML='';
+    api('/api/colors/draws/latest').then(function(data){
+      if(!data){ box.textContent='No scheduled draw.'; return; }
+      var picks = data.picks || [];
+      var grid=document.createElement('div');
+      picks.forEach(function(p){
+        var span=document.createElement('span'); span.className='btn-odd';
+        var c=p.color;
+        var cls=(c==='RED'?'red':(c==='GREEN'?'green':(c==='BLUE'?'blue':'yellow')));
+        var dot = '<span class="ball '+cls+'">'+c.charAt(0)+'</span><span class="ball-label">'+c+'</span>';
+        span.innerHTML=dot+' @ '+p.price;
+        span.onclick=function(){ alert('Pick '+c+' @ '+p.price+' (demo)'); };
+        grid.appendChild(span);
+      });
+      box.appendChild(grid);
+    });
+  }
+
+  function showRaces(type){
+    var box=$('#content'); box.innerHTML='';
+    api('/api/races?type='+encodeURIComponent(type)).then(function(races){
+      if(!races || !races.length){ box.textContent='No races yet.'; return; }
+      races.forEach(function(r){
+        var wrap=document.createElement('div'); wrap.className='panel'; wrap.style.marginBottom='8px';
+        wrap.innerHTML='<div><strong>'+r.track+'</strong> • R'+r.race_no+' — '+new Date(r.start_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})+'</div>';
+        api('/api/selections?race_event_id='+r.id).then(function(sel){
+          var by={}; for (var i=0;i<sel.length;i++){ var s=sel[i]; if(!by[s.label]) by[s.label]=[]; by[s.label].push(s); }
+          Object.keys(by).forEach(function(label){
+            var row=document.createElement('div'); row.style.marginTop='6px';
+            row.innerHTML='<div style="margin-bottom:4px"><b>'+label+'</b></div>';
+            by[label].forEach(function(s){
+              row.appendChild(btnOdd(s.price, function(){ alert('Pick '+s.name+' @ '+s.price+' (demo)'); }));
+            });
+            wrap.appendChild(row);
+          });
+        });
+        box.appendChild(wrap);
+      });
+    });
+  }
+
+  function activate(el){
+    var tiles=document.querySelectorAll('.tile');
+    for (var i=0;i<tiles.length;i++) tiles[i].classList.remove('active');
+    el.classList.add('active');
+    var kind=el.getAttribute('data-kind'), code=el.getAttribute('data-code');
+    if(kind==='FOOTBALL') showFootball(code);
+    if(kind==='COLOR') showColor();
+    if(kind==='RACE') showRaces(code);
+  }
+
+  document.getElementById('tiles').addEventListener('click', function(e){
+    var t=e.target.closest('.tile'); if(!t) return; activate(t);
   });
-  box.appendChild(grid);
-}
 
-async function showRaces(type){
-  const box=$('#content'); box.innerHTML='';
-  const races=await api(`/api/races?type=${type}`);
-  if(!races.length){ box.textContent='No races yet.'; return; }
-  for (const r of races){
-    const wrap=document.createElement('div'); wrap.className='panel'; wrap.style.marginBottom='8px';
-    wrap.innerHTML=`<div><strong>${r.track}</strong> • R${r.race_no} — ${new Date(r.start_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>`;
-    const sel=await api(`/api/selections?race_event_id=${r.id}`);
-    const by={}; sel.forEach(s=>(by[s.label] ||= []).push(s));
-    for (const [label,arr] of Object.entries(by)){
-      const row=document.createElement('div'); row.style.marginTop='6px';
-      row.innerHTML=`<div style="margin-bottom:4px"><b>${label}</b></div>`;
-      arr.forEach(s=> row.appendChild(btnOdd(s.price,()=>alert(`Pick ${s.name} @ ${s.price} (demo)`))));
-      wrap.appendChild(row);
-    }
-    box.appendChild(wrap);
-  }
-}
-
-function activate(el){
-  document.querySelectorAll('.tile').forEach(x=>x.classList.remove('active'));
-  el.classList.add('active');
-  const kind=el.dataset.kind, code=el.dataset.code;
-  if(kind==='FOOTBALL') showFootball(code);
-  if(kind==='COLOR') showColor();
-  if(kind==='RACE') showRaces(code);
-}
-
-document.getElementById('tiles').addEventListener('click', e=>{
-  const t=e.target.closest('.tile'); if(!t) return;
-  activate(t);
-});
-
-activate(document.querySelector('.tile.active'));
+  // initial load
+  activate(document.querySelector('.tile.active'));
+})();
 </script>
 </body>
 </html>
