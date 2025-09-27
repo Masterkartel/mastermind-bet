@@ -33,6 +33,7 @@ h1{margin:0;font-size:18px}
 .ball.blue{background:radial-gradient(circle at 30% 25%, #8ac7ff, #2563eb 55%, #163986)}
 .ball.yellow{background:radial-gradient(circle at 30% 25%, #ffe99a, #f59e0b 55%, #7a4e02)}
 .tiny{font-size:12px;color:#9fb0c8}
+.badge{font-size:12px;border:1px solid #2a3b60;padding:2px 6px;border-radius:999px;color:#bcd}
 </style>
 </head>
 <body>
@@ -60,7 +61,7 @@ h1{margin:0;font-size:18px}
     <div style="display:flex;justify-content:space-between;align-items:center">
       <strong>Fastbet</strong><button id="refresh" class="tile" style="padding:6px 10px">Refresh</button>
     </div>
-    <div id="tickets" class="tiny" style="margin-top:8px">Your quick slips will appear here (demo).</div>
+    <div id="tickets" class="tiny" style="margin-top:8px">Your quick slips will appear here.</div>
   </div>
 </div>
 
@@ -74,51 +75,125 @@ h1{margin:0;font-size:18px}
     b.textContent=(typeof o==='number' && o.toFixed)?o.toFixed(2):o;
     b.onclick=cb; return b;
   }
+  function short(x){ return String(x||'').toUpperCase().slice(0,3); }
 
+  /* ===== Football with tabs ===== */
   function showFootball(code){
     var box=$('#content'); box.innerHTML='';
-    api('/api/fixtures?competition_code='+encodeURIComponent(code)).then(function(fx){
-      if(!fx || !fx.length){ box.textContent='No fixtures yet.'; return; }
+
+    // header line + timer to earliest kickoff in this league
+    var header=document.createElement('div'); header.style.cssText='display:flex;align-items:center;gap:10px;margin:6px 0';
+    header.innerHTML='<strong>League • '+code+'</strong> <span id="kickTimer" class="badge">--:--</span>';
+    box.appendChild(header);
+
+    var tabs = ['MAIN','OVER/UNDER','HOME OV/UN','AWAY OV/UN','1X2 OV/UN 1.5','1X2 OV/UN 2.5'];
+    var active = 'MAIN';
+
+    var tabBar = document.createElement('div'); tabBar.className='tiles';
+    tabs.forEach(function(t){
+      var el=document.createElement('div');
+      el.className='tile'+(t===active?' active':'');
+      el.textContent=t;
+      el.onclick=function(){
+        active=t;
+        renderTable();
+        var kids=tabBar.querySelectorAll('.tile'); for (var i=0;i<kids.length;i++) kids[i].classList.remove('active');
+        el.classList.add('active');
+      };
+      tabBar.appendChild(el);
+    });
+    box.appendChild(tabBar);
+
+    var fixtures=[];
+    function nextKickTimer(){
+      if(!fixtures.length) return;
+      var soon = Math.min.apply(null, fixtures.map(function(f){ return new Date(f.start_time).getTime(); }));
+      var el=document.getElementById('kickTimer');
+      function two(n){ return String(n).padStart(2,'0'); }
+      function tick(){
+        var s = Math.max(0, Math.floor((soon - Date.now())/1000));
+        el.textContent = two(Math.floor(s/60))+':'+two(s%60);
+        setTimeout(tick, 500);
+      }
+      tick();
+    }
+
+    function colPrice(by, label, name){
+      var a = by[label] || [];
+      for (var i=0;i<a.length;i++) if (a[i].name===name) return a[i].price;
+      return '-';
+    }
+
+    function renderTable(){
+      var old = box.querySelector('table'); if (old) old.remove();
       var t=document.createElement('table'); t.className='tbl';
-      t.innerHTML='<thead><tr><th>#</th><th>Match</th><th>1</th><th>X</th><th>2</th><th>GG</th><th>NG</th><th>OV2.5</th><th>UN2.5</th></tr></thead><tbody></tbody>';
+      var headerCols='';
+      if (active==='MAIN') headerCols='<th>1</th><th>X</th><th>2</th><th>1X</th><th>12</th><th>X2</th><th>GG</th><th>NG</th>';
+      if (active==='OVER/UNDER') headerCols='<th>OV1.5</th><th>UN1.5</th><th>OV2.5</th><th>UN2.5</th>';
+      if (active==='HOME OV/UN') headerCols='<th>H OV0.5</th><th>H UN0.5</th><th>H OV1.5</th><th>H UN1.5</th><th>H OV2.5</th><th>H UN2.5</th>';
+      if (active==='AWAY OV/UN') headerCols='<th>A OV0.5</th><th>A UN0.5</th><th>A OV1.5</th><th>A UN1.5</th><th>A OV2.5</th><th>A UN2.5</th>';
+      if (active==='1X2 OV/UN 1.5') headerCols='<th>1+OV1.5</th><th>X+OV1.5</th><th>2+OV1.5</th><th>1+UN1.5</th><th>X+UN1.5</th><th>2+UN1.5</th>';
+      if (active==='1X2 OV/UN 2.5') headerCols='<th>1+OV2.5</th><th>X+OV2.5</th><th>2+OV2.5</th><th>1+UN2.5</th><th>X+UN2.5</th><th>2+UN2.5</th>';
+      t.innerHTML='<thead><tr><th>#</th><th>Match</th>'+headerCols+'</tr></thead><tbody></tbody>';
       var tb=t.querySelector('tbody');
 
-      function findPrice(arr, name){
-        if(!arr){ return '-'; }
-        for (var i=0;i<arr.length;i++){ if(arr[i].name===name) return arr[i].price; }
-        return '-';
-      }
-
-      fx.forEach(function(f){
+      fixtures.forEach(function(f,idx){
         var tr=document.createElement('tr');
-        tr.innerHTML='<td>'+f.id+'</td><td>'+f.home+' vs '+f.away+'</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>';
+        tr.innerHTML='<td>'+(idx+1)+'</td><td>'+short(f.home)+' vs '+short(f.away)+'</td>';
         tb.appendChild(tr);
 
-        api('/api/selections?fixture_id='+f.id).then(function(sel){
-          var byLabel = {};
-          for (var i=0;i<sel.length;i++){
-            var s=sel[i]; if(!byLabel[s.label]) byLabel[s.label]=[]; byLabel[s.label].push(s);
+        fetch('/api/selections?fixture_id='+f.id).then(function(r){return r.json();}).then(function(sel){
+          var by={}; for (var i=0;i<sel.length;i++){ var s=sel[i]; (by[s.label]=by[s.label]||[]).push(s); }
+          function add(val){
+            var td=document.createElement('td');
+            td.appendChild(btnOdd(val, function(){}));
+            tr.appendChild(td);
           }
-          var oneXtwo = byLabel['1X2'];
-          var ggnng   = byLabel['GG/NG'];
-          var ou      = byLabel['1X2 OV/UN 2.5'];
-
-          tr.children[2].appendChild(btnOdd(findPrice(oneXtwo,'Home'), function(){ alert('Add to slip (demo)'); }));
-          tr.children[3].appendChild(btnOdd(findPrice(oneXtwo,'Draw'), function(){ alert('Add to slip (demo)'); }));
-          tr.children[4].appendChild(btnOdd(findPrice(oneXtwo,'Away'), function(){ alert('Add to slip (demo)'); }));
-
-          tr.children[5].appendChild(btnOdd(findPrice(ggnng,'GG'), function(){ alert('Add to slip (demo)'); }));
-          tr.children[6].appendChild(btnOdd(findPrice(ggnng,'NG'), function(){ alert('Add to slip (demo)'); }));
-
-          tr.children[7].appendChild(btnOdd(findPrice(ou,'OV2.5'), function(){ alert('Add to slip (demo)'); }));
-          tr.children[8].appendChild(btnOdd(findPrice(ou,'UN2.5'), function(){ alert('Add to slip (demo)'); }));
+          if (active==='MAIN'){
+            add(colPrice(by,'1X2','Home'));
+            add(colPrice(by,'1X2','Draw'));
+            add(colPrice(by,'1X2','Away'));
+            add(colPrice(by,'DOUBLE CHANCE','1X'));
+            add(colPrice(by,'DOUBLE CHANCE','12'));
+            add(colPrice(by,'DOUBLE CHANCE','X2'));
+            add(colPrice(by,'GG/NG','GG'));
+            add(colPrice(by,'GG/NG','NG'));
+          }
+          if (active==='OVER/UNDER'){
+            add(colPrice(by,'OV/UN 1.5','OV1.5')); add(colPrice(by,'OV/UN 1.5','UN1.5'));
+            add(colPrice(by,'OV/UN 2.5','OV2.5')); add(colPrice(by,'OV/UN 2.5','UN2.5'));
+          }
+          if (active==='HOME OV/UN'){
+            add(colPrice(by,'HOME OV/UN 0.5','H OV0.5')); add(colPrice(by,'HOME OV/UN 0.5','H UN0.5'));
+            add(colPrice(by,'HOME OV/UN 1.5','H OV1.5')); add(colPrice(by,'HOME OV/UN 1.5','H UN1.5'));
+            add(colPrice(by,'HOME OV/UN 2.5','H OV2.5')); add(colPrice(by,'HOME OV/UN 2.5','H UN2.5'));
+          }
+          if (active==='AWAY OV/UN'){
+            add(colPrice(by,'AWAY OV/UN 0.5','A OV0.5')); add(colPrice(by,'AWAY OV/UN 0.5','A UN0.5'));
+            add(colPrice(by,'AWAY OV/UN 1.5','A OV1.5')); add(colPrice(by,'AWAY OV/UN 1.5','A UN1.5'));
+            add(colPrice(by,'AWAY OV/UN 2.5','A OV2.5')); add(colPrice(by,'AWAY OV/UN 2.5','A UN2.5'));
+          }
+          if (active==='1X2 OV/UN 1.5'){
+            ['1+OV1.5','X+OV1.5','2+OV1.5','1+UN1.5','X+UN1.5','2+UN1.5'].forEach(function(k){ add(colPrice(by,'1X2 OV/UN 1.5',k)); });
+          }
+          if (active==='1X2 OV/UN 2.5'){
+            ['1+OV2.5','X+OV2.5','2+OV2.5','1+UN2.5','X+UN2.5','2+UN2.5'].forEach(function(k){ add(colPrice(by,'1X2 OV/UN 2.5',k)); });
+          }
         });
       });
 
       box.appendChild(t);
+    }
+
+    // load fixtures then render + timer
+    api('/api/fixtures?competition_code='+encodeURIComponent(code)).then(function(fx){
+      fixtures = fx || [];
+      renderTable();
+      nextKickTimer();
     });
   }
 
+  /* ===== Colors (simple link to POS page behavior kept) ===== */
   function showColor(){
     var box=$('#content'); box.innerHTML='';
     api('/api/colors/draws/latest').then(function(data){
@@ -131,7 +206,6 @@ h1{margin:0;font-size:18px}
         var cls=(c==='RED'?'red':(c==='GREEN'?'green':(c==='BLUE'?'blue':'yellow')));
         var dot = '<span class="ball '+cls+'">'+c.charAt(0)+'</span><span class="ball-label">'+c+'</span>';
         span.innerHTML=dot+' @ '+p.price;
-        span.onclick=function(){ alert('Pick '+c+' @ '+p.price+' (demo)'); };
         grid.appendChild(span);
       });
       box.appendChild(grid);
@@ -146,12 +220,12 @@ h1{margin:0;font-size:18px}
         var wrap=document.createElement('div'); wrap.className='panel'; wrap.style.marginBottom='8px';
         wrap.innerHTML='<div><strong>'+r.track+'</strong> • R'+r.race_no+' — '+new Date(r.start_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})+'</div>';
         api('/api/selections?race_event_id='+r.id).then(function(sel){
-          var by={}; for (var i=0;i<sel.length;i++){ var s=sel[i]; if(!by[s.label]) by[s.label]=[]; by[s.label].push(s); }
+          var by={}; for (var i=0;i<sel.length;i++){ var s=sel[i]; (by[s.label] ||= []).push(s); }
           Object.keys(by).forEach(function(label){
             var row=document.createElement('div'); row.style.marginTop='6px';
             row.innerHTML='<div style="margin-bottom:4px"><b>'+label+'</b></div>';
             by[label].forEach(function(s){
-              row.appendChild(btnOdd(s.price, function(){ alert('Pick '+s.name+' @ '+s.price+' (demo)'); }));
+              row.appendChild(btnOdd(s.price,function(){}));
             });
             wrap.appendChild(row);
           });
