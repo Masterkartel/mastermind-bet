@@ -2,11 +2,10 @@
 require('dotenv').config();
 const { Pool } = require('pg');
 
-function makeConfig() {
+function cfg() {
   if (process.env.DATABASE_URL) {
     return { connectionString: process.env.DATABASE_URL, ssl: false };
   }
-  // fallback to discrete vars if DATABASE_URL is missing
   return {
     host: process.env.PGHOST || '127.0.0.1',
     port: Number(process.env.PGPORT || 5432),
@@ -17,9 +16,5 @@ function makeConfig() {
   };
 }
 
-const pool = new Pool(makeConfig());
-
-module.exports = {
-  query: (text, params) => pool.query(text, params),
-  pool,
-};
+const pool = new Pool(cfg());
+module.exports = { query: (t,p)=>pool.query(t,p), pool };
