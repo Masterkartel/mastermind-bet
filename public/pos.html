@@ -25,8 +25,12 @@
   .tile.active{outline:2px solid var(--accent)}
   .badge{font-size:12px;border:1px solid #2a3b60;padding:2px 6px;border-radius:999px;color:#bcd}
   .big{font-weight:700}
+  /* sections */
+  .tabbar{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 10px}
+  .tab{padding:6px 10px;border-radius:999px;border:1px solid #334155;background:#111827;cursor:pointer}
+  .tab.active{background:#ef4444;border-color:#ef4444}
   /* fixtures + pills */
-  .fixture{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px dashed #26334d;border-radius:12px;padding:8px 10px;margin-bottom:8px}
+  .fixture{display:grid;grid-template-columns:86px 1fr auto;gap:12px;align-items:center;border:1px dashed #26334d;border-radius:12px;padding:8px 10px;margin-bottom:8px}
   .market{margin:8px 0}
   .pill{display:inline-block;padding:8px 10px;border:1px solid #334155;border-radius:10px;margin:4px 6px 0 0;cursor:pointer;background:#0b1528}
   .pill:hover{outline:2px solid var(--accent)}
@@ -45,6 +49,9 @@
   .ball.green{background:radial-gradient(circle at 30% 25%, #79ffb5, #10b981 55%, #0a5e46)}
   .ball.blue{background:radial-gradient(circle at 30% 25%, #8ac7ff, #2563eb 55%, #163986)}
   .ball.yellow{background:radial-gradient(circle at 30% 25%, #ffe99a, #f59e0b 55%, #7a4e02)}
+  /* mini clock */
+  .clock{font-weight:700;color:#9fb0c8}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 </style>
 
 <header class="gloss">
@@ -58,23 +65,23 @@
     <!-- Tiles -->
     <div id="tiles" class="tiles">
       <div class="tile active" data-kind="FOOTBALL" data-code="EPL">
-        <div class="big">EPL</div><span class="badge">1X2 • GG/NG</span>
+        <div class="big">EPL</div><span class="badge">Main + O/U + more</span>
       </div>
       <div class="tile" data-kind="FOOTBALL" data-code="UCL">
-        <div class="big">UCL</div><span class="badge">1X2 • GG/NG</span>
+        <div class="big">UCL</div><span class="badge">Main + O/U + more</span>
       </div>
       <div class="tile" data-kind="FOOTBALL" data-code="LALIGA">
-        <div class="big">LaLiga</div><span class="badge">1X2 • GG/NG</span>
+        <div class="big">LaLiga</div><span class="badge">Main + O/U + more</span>
       </div>
       <div class="tile" data-kind="COLOR" data-code="COLOR">
         <div class="ball red">●</div><div class="ball green">●</div><div class="ball blue">●</div><div class="ball yellow">●</div>
         <span class="ball-label">Color Pool</span>
       </div>
       <div class="tile" data-kind="RACE" data-code="DOG">
-        <div class="big">Dogs</div><span class="badge">Win • Forecast</span>
+        <div class="big">Dogs</div><span class="badge">Main • Forecast • Quinella • Tricast</span>
       </div>
       <div class="tile" data-kind="RACE" data-code="HORSE">
-        <div class="big">Horses</div><span class="badge">Win • Forecast</span>
+        <div class="big">Horses</div><span class="badge">Main • Forecast • Quinella • Tricast</span>
       </div>
     </div>
 
@@ -86,17 +93,17 @@
   <section class="card">
     <h3 style="margin-top:0">Betslip</h3>
     <ul id="slip" class="betslip"></ul>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <div class="row">
       <input id="stake" type="number" min="20" max="1000" step="1" placeholder="Stake (KES)" />
       <div>Potential: <strong id="potential">0.00</strong> KES</div>
     </div>
-    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+    <div class="row" style="margin-top:10px">
       <button class="primary" id="place">Place Ticket</button>
       <button class="danger" id="clear">Clear</button>
     </div>
     <hr style="border-color:#1f2937;margin:12px 0">
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <input id="codeLookup" placeholder="Enter ticket code (MM-...)" />
+    <div class="row">
+      <input id="codeLookup" placeholder="Enter ticket code (id)" />
       <button id="reprint">Find / Reprint</button>
     </div>
     <div id="printArea" style="margin-top:12px"></div>
@@ -104,247 +111,287 @@
 </main>
 
 <script>
-var $ = function(s){ return document.querySelector(s); };
-function fmt(n){ return Number(n).toFixed(2); }
-function api(url,opts){ return fetch(url,opts||{}).then(function(r){ if(!r.ok) return r.text().then(function(t){throw new Error(t)}); return r.json(); }); }
+const $ = s => document.querySelector(s);
+let slip = []; // {selection_id,label,price}
 
-var slip = []; // {selection_id,label,price}
+function fmt(n){ return Number(n).toFixed(2); }
+async function api(url,opts){ const r=await fetch(url,opts); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+function countdownText(targetMs){
+  const s = Math.max(0, Math.floor((targetMs - Date.now())/1000));
+  const mm = String(Math.floor(s/60)).padStart(2,'0');
+  const ss = String(s%60).padStart(2,'0');
+  return mm+':'+ss;
+}
 
 function renderSlip(){
-  var ul = $('#slip');
-  ul.innerHTML = slip.map(function(l,i){
-    return '<li><span>'+l.label+'</span><span>@ '+l.price+' <button data-i="'+i+'" class="rm">×</button></span></li>';
-  }).join('');
-  var stake = Number(($('#stake').value||0));
-  var odd = slip.reduce(function(a,x){ return a*Number(x.price); },1);
-  var potential = stake * odd;
+  $('#slip').innerHTML = slip.map((l,i)=>`
+    <li><span>${l.label}</span>
+      <span>@ ${l.price} <button data-i="${i}" class="rm">×</button></span>
+    </li>`).join('');
+  const stake = Number($('#stake').value||0);
+  const odd = slip.reduce((a,x)=>a*Number(x.price),1);
+  let potential = stake * odd;
   if (potential>20000) potential = 20000;
   $('#potential').textContent = fmt(potential);
 }
 function clearSlip(){ slip=[]; renderSlip(); }
 
-function placeTicket(){
-  var stake = Number($('#stake').value||0);
+async function placeTicket(){
+  const stake = Number($('#stake').value||0);
   if (stake<20 || stake>1000){ alert('Stake must be 20–1000 KES'); return; }
   if (!slip.length){ alert('Add at least one selection'); return; }
-  api('/api/tickets',{
-    method:'POST',headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ stake: stake, items: slip.map(function(x){return {selection_id:x.selection_id};}) })
-  }).then(function(res){
-    $('#printArea').innerHTML =
-      '<div class="card" style="background:#fff;color:#111">'+
-        '<h3 style="margin:0 0 6px 0">Mastermind Bet</h3>'+
-        '<div>Ticket: <b>'+res.ticket_id+'</b></div>'+
-        '<div>Stake: KES '+fmt(res.stake)+'</div>'+
-        '<div>Potential: KES '+fmt(res.potential_payout)+'</div>'+
-      '</div>';
+  try{
+    const res = await api('/api/tickets',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ stake, items: slip.map(x=>({selection_id:x.selection_id})) })
+    });
+    $('#printArea').innerHTML = `
+      <div class="card" style="background:#fff;color:#111">
+        <h3 style="margin:0 0 6px 0">Mastermind Bet</h3>
+        <div>Ticket: <b>${res.ticket_id}</b></div>
+        <div>Stake: KES ${fmt(res.stake)}</div>
+        <div>Potential: KES ${fmt(res.potential_payout)}</div>
+      </div>`;
     clearSlip();
-  }).catch(function(e){ alert('Ticket failed: '+e.message); });
+  }catch(e){ alert('Ticket failed: '+e.message); }
 }
 
-/* ---------- LOADERS ---------- */
-function loadFootball(code){
-  api('/api/fixtures?competition_code='+encodeURIComponent(code)).then(function(fx){
-    var box = $('#list');
-    box.innerHTML = '<h3 style="margin:8px 0">Football • '+code+'</h3>' +
-      fx.map(function(f){
-        return '<div class="fixture">'+
-          '<div>'+new Date(f.start_time).toLocaleString([], {hour:'2-digit',minute:'2-digit'})+'</div>'+
-          '<div><strong>'+f.home+'</strong> vs <strong>'+f.away+'</strong></div>'+
-          '<div><button class="pill" data-fx="'+f.id+'">Markets</button></div>'+
-        '</div>';
-      }).join('');
+/* ---------- FOOTBALL ---------- */
+const FOOTBALL_TABS = [
+  { key:'MAIN', cols:[
+    ['1X2','Home','1'], ['1X2','Draw','X'], ['1X2','Away','2'],
+    ['1X12X2','1X','1X'], ['1X12X2','12','12'], ['1X12X2','X2','X2'],
+    ['GG/NG','GG','GG'], ['GG/NG','NG','NG'],
+    ['OV/UN 2.5','OV2.5','OV2.5'], ['OV/UN 2.5','UN2.5','UN2.5'],
+  ]},
+  { key:'OVER/UNDER', cols:[
+    ['OV/UN 1.5','OV1.5','OV1.5'], ['OV/UN 1.5','UN1.5','UN1.5'],
+    ['OV/UN 2.5','OV2.5','OV2.5'], ['OV/UN 2.5','UN2.5','UN2.5'],
+  ]},
+  { key:'HOME OV/UN', cols:[
+    ['HOME OV/UN','OV0.5','OV0.5(H)'], ['HOME OV/UN','UN0.5','UN0.5(H)'],
+    ['HOME OV/UN','OV1.5','OV1.5(H)'], ['HOME OV/UN','UN1.5','UN1.5(H)'],
+    ['HOME OV/UN','OV2.5','OV2.5(H)'], ['HOME OV/UN','UN2.5','UN2.5(H)'],
+  ]},
+  { key:'AWAY OV/UN', cols:[
+    ['AWAY OV/UN','OV0.5','OV0.5(A)'], ['AWAY OV/UN','UN0.5','UN0.5(A)'],
+    ['AWAY OV/UN','OV1.5','OV1.5(A)'], ['AWAY OV/UN','UN1.5','UN1.5(A)'],
+    ['AWAY OV/UN','OV2.5','OV2.5(A)'], ['AWAY OV/UN','UN2.5','UN2.5(A)'],
+  ]},
+  { key:'1X2 OV/UN 1.5', cols:[
+    ['1X2 OV/UN 1.5','1+OV1.5','1+OV1.5'], ['1X2 OV/UN 1.5','X+OV1.5','X+OV1.5'], ['1X2 OV/UN 1.5','2+OV1.5','2+OV1.5'],
+    ['1X2 OV/UN 1.5','1+UN1.5','1+UN1.5'], ['1X2 OV/UN 1.5','X+UN1.5','X+UN1.5'], ['1X2 OV/UN 1.5','2+UN1.5','2+UN1.5'],
+  ]},
+  { key:'1X2 OV/UN 2.5', cols:[
+    ['1X2 OV/UN 2.5','1+OV2.5','1+OV2.5'], ['1X2 OV/UN 2.5','X+OV2.5','X+OV2.5'], ['1X2 OV/UN 2.5','2+OV2.5','2+OV2.5'],
+    ['1X2 OV/UN 2.5','1+UN2.5','1+UN2.5'], ['1X2 OV/UN 2.5','X+UN2.5','X+UN2.5'], ['1X2 OV/UN 2.5','2+UN2.5','2+UN2.5'],
+  ]},
+];
 
-    // click to load markets
-    var buttons = box.querySelectorAll('[data-fx]');
-    for (var i=0;i<buttons.length;i++){
-      (function(b){
-        b.onclick = function(){
-          api('/api/selections?fixture_id='+b.dataset.fx).then(function(sel){
-            var marketsByLabel = {};
-            for (var j=0;j<sel.length;j++){
-              var s=sel[j]; (marketsByLabel[s.label] = marketsByLabel[s.label] || []).push(s);
+async function loadFootball(code){
+  const fx = await api(`/api/fixtures?competition_code=${encodeURIComponent(code)}`);
+  const box = $('#list');
+  // header (league + tabbar)
+  const head = document.createElement('div');
+  head.innerHTML = `
+    <div class="row" style="justify-content:space-between">
+      <h3 style="margin:8px 0">Football • ${code}</h3>
+      <div class="clock" id="fb-clock">--:--</div>
+    </div>
+    <div class="tabbar" id="fb-tabs"></div>
+    <div id="fb-table"></div>`;
+  box.innerHTML = ''; box.appendChild(head);
+
+  // simple 3-min cycle clock (or nearest next fixture)
+  let next = Date.now() + 180000 - (Date.now()%180000);
+  if (fx.length) next = new Date(fx[0].start_time).getTime();
+  setInterval(()=>{ $('#fb-clock').textContent = countdownText(next); },500);
+
+  const tabsBox = $('#fb-tabs');
+  FOOTBALL_TABS.forEach((t,i)=>{
+    const b=document.createElement('span'); b.className='tab'+(i===0?' active':''); b.textContent=t.key;
+    b.onclick=()=>{ tabsBox.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); b.classList.add('active'); renderTable(t); };
+    tabsBox.appendChild(b);
+  });
+  renderTable(FOOTBALL_TABS[0]);
+
+  async function renderTable(tab){
+    const holder = $('#fb-table'); holder.innerHTML='';
+    const table = document.createElement('div');
+    table.innerHTML = `
+      <div class="fixture" style="font-weight:700;background:#0c1528;border-style:solid">
+        <div>#</div><div>Match</div><div>Markets</div>
+      </div>`;
+    holder.appendChild(table);
+
+    for (const f of fx){
+      const row = document.createElement('div'); row.className='fixture';
+      row.innerHTML = `
+        <div>${new Date(f.start_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
+        <div><strong>${f.home.slice(0,3).toUpperCase()}</strong> vs <strong>${f.away.slice(0,3).toUpperCase()}</strong></div>
+        <div class="row"></div>`;
+      table.appendChild(row);
+
+      const sel = await api(`/api/selections?fixture_id=${f.id}`);
+      const by = {}; sel.forEach(s => (by[s.label] ||= {})[s.name] = { id:s.id, price:s.price });
+
+      const marketWrap = row.querySelector('.row');
+      tab.cols.forEach(([label,name,show])=>{
+        const found = by[label] && by[label][name];
+        const span = document.createElement('span'); span.className='pill';
+        if (found){
+          span.textContent = `${show} @ ${found.price}`;
+          span.onclick = ()=>{
+            if (!slip.some(x=>x.selection_id===found.id)){
+              slip.push({ selection_id: found.id, label:`${label}:${name}`, price:found.price }); renderSlip();
             }
-            var mkHtml = Object.keys(marketsByLabel).map(function(label){
-              var arr = marketsByLabel[label];
-              return '<div class="market">'+
-                '<div><strong>'+label+'</strong></div>'+
-                '<div>'+arr.map(function(s){
-                  return '<span class="pill" data-sid="'+s.id+'" data-label="'+label+':'+s.name+'" data-price="'+s.price+'">'+
-                    s.name+' @ '+s.price+
-                  '</span>';
-                }).join('')+'</div>'+
-              '</div>';
-            }).join('');
-            b.parentNode.insertAdjacentHTML('beforeend','<div style="margin-top:6px">'+mkHtml+'</div>');
-            var pills = b.parentNode.querySelectorAll('[data-sid]');
-            for (var k=0;k<pills.length;k++){
-              (function(p){
-                p.onclick=function(){
-                  var sid = Number(p.dataset.sid);
-                  var exists = slip.some(function(x){ return x.selection_id===sid; });
-                  if (!exists){
-                    slip.push({ selection_id:sid, label:p.dataset.label, price:p.dataset.price });
-                    renderSlip();
-                  }
-                };
-              })(pills[k]);
-            }
-            b.remove();
-          });
-        };
-      })(buttons[i]);
+          };
+        } else {
+          span.style.opacity=.5; span.textContent = `${show} —`;
+        }
+        marketWrap.appendChild(span);
+      });
     }
+  }
+}
+
+/* ---------- COLORS ---------- */
+async function loadColors(){
+  const info = await api('/virtual/colors'); // draw_no, starts_at, picks
+  const box = $('#list');
+  const endsAt = info ? new Date(info.starts_at).getTime() : Date.now()+180000-(Date.now()%180000);
+  const head = document.createElement('div');
+  head.innerHTML = `
+    <div class="row" style="justify-content:space-between">
+      <h3 style="margin:8px 0">Color Pool — Draw #${info?info.draw_no:'-'}</h3>
+      <div class="clock" id="col-clock">--:--</div>
+    </div>
+    <div id="col-body"></div>`;
+  box.innerHTML=''; box.appendChild(head);
+  setInterval(()=>$('#col-clock').textContent=countdownText(endsAt),500);
+
+  // load full markets for the draw
+  const latest = await api('/api/colors/draws/latest');
+  if (!latest){ $('#col-body').textContent='No scheduled draw.'; return; }
+  const markets = await api(`/api/selections?color_draw_id=${latest.draw.id}`);
+  const by = {}; markets.forEach(s => (by[s.label] ||= []).push(s));
+
+  const body = $('#col-body');
+  // Winning Color
+  body.insertAdjacentHTML('beforeend', `<div class="market"><div><strong>WINNING COLOR</strong></div><div id="mc-win"></div></div>`);
+  (by['WINNING COLOR'] || info.picks || []).forEach(p=>{
+    const c=p.color || p.name;
+    const cls = c==='RED'?'red':c==='GREEN'?'green':c==='BLUE'?'blue':'yellow';
+    const el = document.createElement('span'); el.className='pill';
+    el.innerHTML = `<span class="ball ${cls}">${c[0]}</span> @ ${p.price}`;
+    const id = p.id;
+    el.onclick = ()=>{ if(!slip.some(x=>x.selection_id===id)){ slip.push({selection_id:id,label:`COLOR:${c}`,price:p.price}); renderSlip(); } };
+    $('#mc-win').appendChild(el);
+  });
+
+  // Number of Colors
+  body.insertAdjacentHTML('beforeend', `<div class="market"><div><strong>NUMBER OF COLORS</strong></div><div id="mc-num"></div></div>`);
+  (by['NUMBER OF COLORS']||[]).forEach(p=>{
+    const el=document.createElement('span'); el.className='pill';
+    el.textContent = `${p.name} @ ${p.price}`;
+    el.onclick = ()=>{ if(!slip.some(x=>x.selection_id===p.id)){ slip.push({selection_id:p.id,label:`NUM COLORS:${p.name}`,price:p.price}); renderSlip(); } };
+    $('#mc-num').appendChild(el);
   });
 }
 
-/* === COLORS with TIMER & TWO MARKETS === */
-function loadColors(){
-  api('/api/colors/draws/latest').then(function(data){
-    var box = $('#list');
-    if(!data){ box.innerHTML='<div class="muted">No scheduled draw.</div>'; return; }
+/* ---------- RACES ---------- */
+const RACE_TABS = ['MAIN','FORECAST','QUINELLA','TRICAST'];
+async function loadRaces(type){ // DOG or HORSE
+  const races = await api(`/api/races?type=${type}`);
+  const next = races[0];
+  const box = $('#list');
+  if(!next){ box.textContent='No races yet.'; return; }
 
-    // robust grouping even if label not present
-    var picks = data.picks || [];
-    var groups = { 'WINNING COLOR':[], 'NUMBER OF COLORS':[] };
-    for (var i=0;i<picks.length;i++){
-      var p = picks[i];
-      var label = p.label || ((p.color==='RED'||p.color==='GREEN'||p.color==='BLUE'||p.color==='YELLOW') ? 'WINNING COLOR':'NUMBER OF COLORS');
-      groups[label].push(p);
-    }
+  const head = document.createElement('div');
+  head.innerHTML = `
+    <div class="row" style="justify-content:space-between">
+      <h3 style="margin:8px 0">${type==='DOG'?'Dogs':'Horses'} — ${next.track} • R${next.race_no}</h3>
+      <div class="clock" id="race-clock">--:--</div>
+    </div>
+    <div class="tabbar" id="race-tabs"></div>
+    <div id="race-body"></div>`;
+  box.innerHTML=''; box.appendChild(head);
+  const endsAt = new Date(next.start_time).getTime();
+  setInterval(()=>$('#race-clock').textContent=countdownText(endsAt),500);
 
-    var endsAt = new Date(data.draw.start_time).getTime();
-    function two(n){ return String(n).padStart(2,'0'); }
-    function fmtTimer(sec){ sec = Math.max(0,sec); return two(Math.floor(sec/60))+':'+two(sec%60); }
-    function remain(){ return Math.floor((endsAt - Date.now())/1000); }
-
-    function colorBall(name){
-      var cls = (name==='RED'?'red':(name==='GREEN'?'green':(name==='BLUE'?'blue':'yellow')));
-      return '<span class="ball '+cls+'">'+name.charAt(0)+'</span> <span class="ball-label">'+name+'</span>';
-    }
-
-    box.innerHTML =
-      '<h3 style="margin:8px 0;display:flex;align-items:center;gap:10px">'+
-        'Color Pool — Draw #'+data.draw.draw_no+
-        '<span id="drawTimer" class="badge" style="padding:4px 8px">--:--</span>'+
-      '</h3>'+
-
-      '<div class="market"><div><strong>WINNING COLOR</strong></div><div>'+
-        groups['WINNING COLOR'].map(function(p){
-          return '<span class="pill" data-sid="'+p.id+'" data-label="WINNING COLOR:'+p.color+'" data-price="'+p.price+'">'+
-            colorBall(p.color)+' @ '+p.price+
-          '</span>';
-        }).join('')+
-      '</div></div>'+
-
-      '<div class="market"><div><strong>NUMBER OF COLORS</strong></div><div>'+
-        groups['NUMBER OF COLORS'].map(function(p){
-          return '<span class="pill" data-sid="'+p.id+'" data-label="NUMBER OF COLORS:'+p.color+'" data-price="'+p.price+'">'+
-            p.color+' @ '+p.price+
-          '</span>';
-        }).join('')+
-      '</div></div>';
-
-    var pills = box.querySelectorAll('[data-sid]');
-    for (var k=0;k<pills.length;k++){
-      (function(p){
-        p.onclick=function(){
-          var sid = Number(p.dataset.sid);
-          var exists = slip.some(function(x){ return x.selection_id===sid; });
-          if (!exists){
-            slip.push({ selection_id:sid, label:p.dataset.label, price:p.dataset.price });
-            renderSlip();
-          }
-        };
-      })(pills[k]);
-    }
-
-    var timerEl = document.getElementById('drawTimer');
-    (function tick(){
-      var s = remain();
-      timerEl.textContent = fmtTimer(s);
-      if (s<=0){ setTimeout(loadColors,1000); return; }
-      setTimeout(tick, 500);
-    })();
+  const tabs = $('#race-tabs');
+  RACE_TABS.forEach((name,i)=>{
+    const b=document.createElement('span'); b.className='tab'+(i===0?' active':''); b.textContent=name;
+    b.onclick=()=>{ tabs.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); b.classList.add('active'); renderRace(name); };
+    tabs.appendChild(b);
   });
-}
+  renderRace('MAIN');
 
-function loadRaces(type){ // DOG or HORSE
-  api('/api/races?type='+encodeURIComponent(type)).then(function(races){
-    var box = $('#list');
-    box.innerHTML = '<h3 style="margin:8px 0">'+(type==='DOG'?'Dogs':'Horses')+' — Upcoming</h3>'+
-      races.map(function(r){
-        return '<div class="fixture">'+
-          '<div>'+r.track+' • R'+r.race_no+'</div>'+
-          '<div>'+new Date(r.start_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})+'</div>'+
-          '<div><button class="pill" data-r="'+r.id+'">Win & Forecast</button></div>'+
-        '</div>';
-      }).join('');
+  async function renderRace(which){
+    const body = $('#race-body'); body.innerHTML='';
+    const sel = await api(`/api/selections?race_event_id=${next.id}`);
+    const by={}; sel.forEach(s=>(by[s.label] ||= []).push(s));
 
-    var buttons = box.querySelectorAll('[data-r]');
-    for (var i=0;i<buttons.length;i++){
-      (function(b){
-        b.onclick=function(){
-          api('/api/selections?race_event_id='+b.dataset.r).then(function(sel){
-            var by = {};
-            for (var j=0;j<sel.length;j++){ var s=sel[j]; (by[s.label]=by[s.label]||[]).push(s); }
-            var mkHtml = Object.keys(by).map(function(label){
-              var arr=by[label];
-              return '<div class="market"><div><strong>'+label+'</strong></div><div>'+
-                arr.map(function(s){
-                  return '<span class="pill" data-sid="'+s.id+'" data-label="'+label+':'+s.name+'" data-price="'+s.price+'">'+
-                    s.name+' @ '+s.price+
-                  '</span>';
-                }).join('')+
-              '</div></div>';
-            }).join('');
-            b.parentNode.insertAdjacentHTML('beforeend','<div style="margin-top:6px">'+mkHtml+'</div>');
-            var pills = b.parentNode.querySelectorAll('[data-sid]');
-            for (var k=0;k<pills.length;k++){
-              (function(p){
-                p.onclick=function(){
-                  var sid = Number(p.dataset.sid);
-                  var exists = slip.some(function(x){ return x.selection_id===sid; });
-                  if (!exists){
-                    slip.push({ selection_id:sid, label:p.dataset.label, price:p.dataset.price });
-                    renderSlip();
-                  }
-                };
-              })(pills[k]);
-            }
-            b.remove();
-          });
-        };
-      })(buttons[i]);
+    function row(label, arr){
+      if(!arr||!arr.length) return;
+      const wrap=document.createElement('div'); wrap.className='market';
+      wrap.innerHTML = `<div><strong>${label}</strong></div><div></div>`;
+      const box=wrap.lastElementChild;
+      arr.forEach(s=>{
+        const p=document.createElement('span'); p.className='pill';
+        p.textContent = `${s.name} @ ${s.price}`;
+        p.onclick=()=>{ if(!slip.some(x=>x.selection_id===s.id)){ slip.push({selection_id:s.id,label:`${label}:${s.name}`,price:s.price}); renderSlip(); } };
+        box.appendChild(p);
+      });
+      body.appendChild(wrap);
     }
-  });
+
+    if (which==='MAIN'){
+      row('WINNER', by['WINNER']); row('PLACE', by['PLACE']); row('SHOW', by['SHOW']);
+    }
+    if (which==='FORECAST'){ row('FORECAST', by['FORECAST']); }
+    if (which==='QUINELLA'){ row('QUINELLA', by['QUINELLA']); }
+    if (which==='TRICAST'){ row('TRICAST', by['TRICAST']); }
+  }
 }
 
 /* ---------- TILE ROUTER ---------- */
 function activateTile(el){
-  var tiles = document.querySelectorAll('.tile');
-  for (var i=0;i<tiles.length;i++) tiles[i].classList.remove('active');
+  document.querySelectorAll('.tile').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
-  var kind = el.dataset.kind, code = el.dataset.code;
+  const kind = el.dataset.kind, code = el.dataset.code;
   if (kind==='FOOTBALL') loadFootball(code);
   if (kind==='COLOR') loadColors();
   if (kind==='RACE') loadRaces(code);
 }
 
-document.getElementById('tiles').addEventListener('click', function(e){
-  var t = e.target.closest('.tile'); if(!t) return;
+document.getElementById('tiles').addEventListener('click', (e)=>{
+  const t = e.target.closest('.tile'); if(!t) return;
   activateTile(t);
 });
 
 /* events */
-document.addEventListener('click', function(e){
+document.addEventListener('click', e=>{
   if (e.target.id==='place') placeTicket();
   if (e.target.id==='clear') clearSlip();
   if (e.target.classList.contains('rm')){ slip.splice(Number(e.target.dataset.i),1); renderSlip(); }
   if (e.target.id==='reprint'){
-    var id = $('#codeLookup').value.trim();
+    const id = $('#codeLookup').value.trim();
     if(!id) return;
-    $('#printArea').innerHTML = '<div class="muted">Reprint placeholder for Ticket '+id+'</div>';
+    fetch('/api/tickets/'+encodeURIComponent(id)).then(r=>r.json()).then(r=>{
+      if(r.error){ $('#printArea').innerHTML = `<div class="muted">${r.error}</div>`; return; }
+      $('#printArea').innerHTML = `
+        <div class="card" style="background:#fff;color:#111">
+          <h3 style="margin:0 0 6px 0">Mastermind Bet</h3>
+          <div>Ticket: <b>${r.code}</b></div>
+          <div>Stake: KES ${fmt(r.stake_kes)}</div>
+          <div>Potential: KES ${fmt(r.potential_kes)}</div>
+          <hr/>
+          <div><strong>Lines</strong></div>
+          <ul>${r.lines.map(l=>`<li>${l.market} — ${l.pick} @ ${l.price}</li>`).join('')}</ul>
+          <div class="muted">Status: ${r.status}</div>
+        </div>`;
+    });
   }
 });
 document.getElementById('stake').addEventListener('input', renderSlip);
