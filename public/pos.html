@@ -1,120 +1,114 @@
 <!doctype html>
 <html lang="en">
 <meta charset="utf-8" />
-<title>Mastermind Cashier</title>
+<title>Mastermind Cashier — POS</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
-  body { font-family: system-ui, Arial, sans-serif; margin:0; background:#0f172a; color:#e2e8f0; }
-  header { padding:12px 16px; background:#111827; display:flex; gap:12px; align-items:center; }
-  header h1 { margin:0; font-size:18px; }
-  main { display:grid; grid-template-columns: 2fr 1fr; gap:12px; padding:12px; }
-  .card { background:#111827; border:1px solid #1f2937; border-radius:12px; padding:12px; }
-  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  button, input, select { background:#0b1220; color:#e5e7eb; border:1px solid #243047; border-radius:8px; padding:8px 10px; }
-  button.primary { background:#14532d; border-color:#14532d; }
-  button.danger { background:#7f1d1d; border-color:#7f1d1d; }
-  .fixture { display:flex; justify-content:space-between; padding:8px; border:1px dashed #243047; border-radius:8px; margin-bottom:8px; }
-  .market { margin:8px 0; }
-  .pill { display:inline-block; padding:6px 8px; border:1px solid #374151; border-radius:999px; margin:4px 6px 0 0; cursor:pointer; }
-  .pill:hover { background:#1f2937; }
-  .betslip li { display:flex; justify-content:space-between; margin:6px 0; }
-  .receipt { background:#fff; color:#111; padding:16px; border-radius:8px; }
-  .watermark { position:relative; }
-  .watermark::after {
-    content: attr(data-status);
-    position:absolute; inset:0;
-    display:flex; align-items:center; justify-content:center;
-    font: 700 48px/1 system-ui;
-    color: rgba(16,185,129,0.18); /* green */
-    letter-spacing:4px; transform: rotate(-18deg);
-    pointer-events:none;
+  :root{
+    --bg:#0b1220; --panel:#0f172a; --line:#1f2937; --text:#e2e8f0; --muted:#7a8699;
+    --accent:#f59e0b; --ok:#10b981; --danger:#ef4444; --tile:#111827;
   }
-  .barcode { display:block; margin:8px auto; }
-  .muted { color:#6b7280; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Arial}
+  header{position:sticky;top:0;z-index:10;display:flex;gap:12px;align-items:center;padding:12px 16px;background:#0c1426;border-bottom:1px solid var(--line)}
+  header h1{margin:0;font-size:18px}
+  main{display:grid;grid-template-columns:2fr 1fr;gap:12px;padding:12px}
+  @media(max-width:960px){ main{grid-template-columns:1fr} }
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px}
+  .muted{color:var(--muted)}
+  /* tiles */
+  .tiles{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:10px;margin-bottom:10px}
+  @media(max-width:1200px){.tiles{grid-template-columns:repeat(3,1fr)}}
+  @media(max-width:600px){.tiles{grid-template-columns:repeat(2,1fr)}}
+  .tile{cursor:pointer;user-select:none;border:1px solid #223048;background:var(--tile);border-radius:16px;padding:12px;display:flex;gap:10px;align-items:center;transition:transform .12s ease, box-shadow .12s ease}
+  .tile:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+  .tile.active{outline:2px solid var(--accent)}
+  .badge{font-size:12px;border:1px solid #2a3b60;padding:2px 6px;border-radius:999px;color:#bcd}
+  .big{font-weight:700}
+  /* fixtures + pills */
+  .fixture{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px dashed #26334d;border-radius:12px;padding:8px 10px;margin-bottom:8px}
+  .market{margin:8px 0}
+  .pill{display:inline-block;padding:8px 10px;border:1px solid #334155;border-radius:10px;margin:4px 6px 0 0;cursor:pointer;background:#0b1528}
+  .pill:hover{outline:2px solid var(--accent)}
+  /* betslip */
+  .betslip li{display:flex;justify-content:space-between;margin:6px 0;gap:8px}
+  button,input{background:#0b1528;color:var(--text);border:1px solid #243047;border-radius:10px;padding:8px 10px}
+  button.primary{background:#115e38;border-color:#115e38}
+  button.danger{background:#7f1d1d;border-color:#7f1d1d}
+  /* glossy info card */
+  .gloss{position:relative;overflow:hidden}
+  .gloss::before{content:"";position:absolute;inset:-60% -40% auto -40%;height:160%;background:linear-gradient(120deg,rgba(255,255,255,.08),rgba(255,255,255,0));transform:rotate(-12deg)}
+  /* pool balls */
+  .ball{width:38px;height:38px;border-radius:999px;display:inline-grid;place-items:center;font:700 14px/1 system-ui;color:#fff;margin-right:6px;border:1px solid rgba(0,0,0,.3);box-shadow:inset 0 -8px 14px rgba(0,0,0,.35), inset 0 10px 18px rgba(255,255,255,.12), 0 3px 8px rgba(0,0,0,.45)}
+  .ball-label{font-size:11px;margin-left:4px;color:#cfd6e6}
+  .ball.red{background:radial-gradient(circle at 30% 25%, #ff8a8a, #d71d1d 55%, #8b1111)}
+  .ball.green{background:radial-gradient(circle at 30% 25%, #79ffb5, #10b981 55%, #0a5e46)}
+  .ball.blue{background:radial-gradient(circle at 30% 25%, #8ac7ff, #2563eb 55%, #163986)}
+  .ball.yellow{background:radial-gradient(circle at 30% 25%, #ffe99a, #f59e0b 55%, #7a4e02)}
 </style>
 
-<header>
+<header class="gloss">
   <h1>Mastermind Cashier</h1>
-  <button id="seed">Seed Sample</button>
-  <div class="muted">Min KES 20 • Max KES 1000 • Max payout KES 20000</div>
+  <span class="muted">Min KES 20 • Max KES 1000 • Max payout KES 20,000</span>
 </header>
 
 <main>
+  <!-- LEFT -->
   <section class="card">
-    <div class="row">
-      <select id="league">
-        <option value="EPL">EPL</option>
-        <option value="UCL">Champions League</option>
-        <option value="LALIGA">La Liga</option>
-      </select>
-      <button id="refresh">Refresh fixtures</button>
+    <!-- Tiles -->
+    <div id="tiles" class="tiles">
+      <div class="tile active" data-kind="FOOTBALL" data-code="EPL">
+        <div class="big">EPL</div><span class="badge">1X2 • GG/NG</span>
+      </div>
+      <div class="tile" data-kind="FOOTBALL" data-code="UCL">
+        <div class="big">UCL</div><span class="badge">1X2 • GG/NG</span>
+      </div>
+      <div class="tile" data-kind="FOOTBALL" data-code="LALIGA">
+        <div class="big">LaLiga</div><span class="badge">1X2 • GG/NG</span>
+      </div>
+      <div class="tile" data-kind="COLOR" data-code="COLOR">
+        <div class="ball red">●</div><div class="ball green">●</div><div class="ball blue">●</div><div class="ball yellow">●</div>
+        <span class="ball-label">Color Pool</span>
+      </div>
+      <div class="tile" data-kind="RACE" data-code="DOG">
+        <div class="big">Dogs</div><span class="badge">Win • Forecast</span>
+      </div>
+      <div class="tile" data-kind="RACE" data-code="HORSE">
+        <div class="big">Horses</div><span class="badge">Win • Forecast</span>
+      </div>
     </div>
-    <div id="fixtures"></div>
-    <div id="markets"></div>
+
+    <!-- Dynamic content -->
+    <div id="list"></div>
   </section>
 
+  <!-- RIGHT -->
   <section class="card">
-    <h3>Betslip</h3>
+    <h3 style="margin-top:0">Betslip</h3>
     <ul id="slip" class="betslip"></ul>
-    <div class="row">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <input id="stake" type="number" min="20" max="1000" step="1" placeholder="Stake (KES)" />
       <div>Potential: <strong id="potential">0.00</strong> KES</div>
     </div>
-    <div class="row" style="margin-top:8px;">
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
       <button class="primary" id="place">Place Ticket</button>
       <button class="danger" id="clear">Clear</button>
     </div>
-
-    <hr style="border-color:#1f2937; margin:12px 0;" />
-
-    <div class="row">
+    <hr style="border-color:#1f2937;margin:12px 0">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <input id="codeLookup" placeholder="Enter ticket code (MM-...)" />
       <button id="reprint">Find / Reprint</button>
     </div>
-
-    <div id="printArea" style="margin-top:12px;"></div>
+    <div id="printArea" style="margin-top:12px"></div>
   </section>
 </main>
 
 <script>
-const $ = sel => document.querySelector(sel);
-const $$ = sel => Array.from(document.querySelectorAll(sel));
-
-let slip = []; // {selection_id, label, price}
+const $ = s => document.querySelector(s);
+let slip = []; // {selection_id,label,price}
 
 function fmt(n){ return Number(n).toFixed(2); }
-
-async function api(url, opts){ const r = await fetch(url, opts); if(!r.ok) throw new Error(await r.text()); return r.json(); }
-
-async function loadFixtures(){
-  const league = $('#league').value;
-  const data = await api(`/api/fixtures?league=${encodeURIComponent(league)}`);
-  const box = $('#fixtures');
-  box.innerHTML = '<h3>Fixtures</h3>' + data.map(f => `
-    <div class="fixture">
-      <div>${new Date(f.kickoff_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
-      <div><strong>${f.home_code}</strong> vs <strong>${f.away_code}</strong></div>
-      <div><button data-fx="${f.id}" class="loadMarkets">Markets</button></div>
-    </div>
-  `).join('');
-}
-
-async function loadMarkets(fixtureId){
-  const data = await api(`/api/fixtures/${fixtureId}/markets`);
-  const box = $('#markets');
-  box.innerHTML = '<h3>Markets</h3>' + data.map(m => `
-    <div class="market">
-      <div><strong>${m.market}</strong></div>
-      <div>
-        ${m.selections.map(s => `
-          <span class="pill" data-sel="${s.selection_id}" data-label="${m.market}:${s.code}" data-price="${s.price}">
-            ${s.code} @ ${s.price}
-          </span>
-        `).join('')}
-      </div>
-    </div>
-  `).join('');
-}
+async function api(url,opts){ const r=await fetch(url,opts); if(!r.ok) throw new Error(await r.text()); return r.json(); }
 
 function renderSlip(){
   const ul = $('#slip');
@@ -124,93 +118,178 @@ function renderSlip(){
       <span>@ ${l.price} <button data-i="${i}" class="rm">×</button></span>
     </li>
   `).join('');
-
-  const stake = Number($('#stake').value || 0);
+  const stake = Number($('#stake').value||0);
   const odd = slip.reduce((a,x)=>a*Number(x.price),1);
   let potential = stake * odd;
-  if (potential > 20000) potential = 20000; // hard cap displayed
+  if (potential>20000) potential = 20000;
   $('#potential').textContent = fmt(potential);
 }
-
-function clearSlip(){ slip = []; renderSlip(); }
+function clearSlip(){ slip=[]; renderSlip(); }
 
 async function placeTicket(){
-  const stake = Number($('#stake').value || 0);
-  if (stake < 20 || stake > 1000) { alert('Stake must be between 20 and 1000 KES'); return; }
-  if (!slip.length) { alert('Add at least one selection'); return; }
-
-  const body = {
-    stake_kes: stake,
-    lines: slip.map(x => ({ selection_id: x.selection_id }))
-  };
-  try {
-    const r = await api('/api/tickets', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-    printTicket(r.code);
+  const stake = Number($('#stake').value||0);
+  if (stake<20 || stake>1000){ alert('Stake must be 20–1000 KES'); return; }
+  if (!slip.length){ alert('Add at least one selection'); return; }
+  try{
+    const res = await api('/api/tickets',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ stake, items: slip.map(x=>({selection_id:x.selection_id})) })
+    });
+    // simple receipt
+    $('#printArea').innerHTML = `
+      <div class="card" style="background:#fff;color:#111">
+        <h3 style="margin:0 0 6px 0">Mastermind Bet</h3>
+        <div>Ticket: <b>${res.ticket_id}</b></div>
+        <div>Stake: KES ${fmt(res.stake)}</div>
+        <div>Potential: KES ${fmt(res.potential_payout)}</div>
+      </div>`;
     clearSlip();
-  } catch (e) {
-    alert('Ticket failed: ' + e.message);
-  }
+  }catch(e){ alert('Ticket failed: '+e.message); }
 }
 
-async function printTicket(code){
-  const r = await api(`/api/tickets/${encodeURIComponent(code)}`);
-  const area = $('#printArea');
-  area.innerHTML = `
-    <div class="receipt watermark" data-status="${r.status}">
-      <h3 style="margin:0 0 8px 0;">Mastermind Bet</h3>
-      <div class="muted">${new Date(r.created_at).toLocaleString()}</div>
-      <div style="margin-top:8px;"><strong>Ticket:</strong> ${r.code}</div>
-      <img class="barcode" src="/barcode/${encodeURIComponent(r.code)}" alt="barcode" />
-      <hr/>
-      <div><strong>Stake:</strong> KES ${Number(r.stake_kes).toFixed(2)}</div>
-      <div><strong>Potential:</strong> KES ${Number(r.potential_kes).toFixed(2)}</div>
-      <hr/>
-      <div><strong>Lines</strong></div>
-      <ul>
-        ${r.lines.map(l => `<li>${l.market} — ${l.pick} @ ${l.price}</li>`).join('')}
-      </ul>
-      <div class="muted">Status watermark will turn <span style="color:#10b981;font-weight:700;">WON</span> when settled.</div>
-    </div>`;
-  window.print && window.print();
-}
+/* ---------- LOADERS ---------- */
+async function loadFootball(code){
+  const fx = await api(`/api/fixtures?competition_code=${encodeURIComponent(code)}`);
+  const box = $('#list');
+  box.innerHTML = `<h3 style="margin:8px 0">Football • ${code}</h3>` +
+    fx.map(f=>`
+      <div class="fixture">
+        <div>${new Date(f.start_time).toLocaleString([], {hour:'2-digit',minute:'2-digit'})}</div>
+        <div><strong>${f.home}</strong> vs <strong>${f.away}</strong></div>
+        <div><button class="pill" data-fx="${f.id}">Markets</button></div>
+      </div>`).join('');
 
-// events
-document.addEventListener('click', e => {
-  if (e.target.classList.contains('loadMarkets')) {
-    loadMarkets(e.target.dataset.fx);
-  }
-  if (e.target.classList.contains('pill')) {
-    const sel = e.target.dataset.sel;
-    const exists = slip.some(x => x.selection_id === sel);
-    if (!exists) {
-      slip.push({
-        selection_id: sel,
-        label: e.target.dataset.label,
-        price: e.target.dataset.price
+  // click to load markets
+  box.querySelectorAll('[data-fx]').forEach(b=>{
+    b.onclick = async ()=>{
+      const sel = await api(`/api/selections?fixture_id=${b.dataset.fx}`);
+      const marketsByLabel = {};
+      sel.forEach(s => (marketsByLabel[s.label] ||= []).push(s));
+      const mkHtml = Object.entries(marketsByLabel).map(([label,arr])=>`
+        <div class="market">
+          <div><strong>${label}</strong></div>
+          <div>
+            ${arr.map(s=>`<span class="pill" data-sid="${s.id}" data-label="${label}:${s.name}" data-price="${s.price}">
+              ${s.name} @ ${s.price}
+            </span>`).join('')}
+          </div>
+        </div>`).join('');
+      b.parentElement.insertAdjacentHTML('beforeend', `<div style="margin-top:6px">${mkHtml}</div>`);
+      // attach clicks
+      b.parentElement.querySelectorAll('[data-sid]').forEach(p=>{
+        p.onclick=()=>{
+          const sid = Number(p.dataset.sid);
+          if (!slip.some(x=>x.selection_id===sid)){
+            slip.push({ selection_id:sid, label:p.dataset.label, price:p.dataset.price });
+            renderSlip();
+          }
+        };
       });
-      renderSlip();
-    }
-  }
-  if (e.target.id === 'clear') clearSlip();
-  if (e.target.classList.contains('rm')) {
-    slip.splice(Number(e.target.dataset.i),1);
-    renderSlip();
-  }
-  if (e.target.id === 'place') placeTicket();
-  if (e.target.id === 'refresh') loadFixtures();
-  if (e.target.id === 'seed') {
-    fetch('/admin/seed-sample', { method:'POST' }).then(loadFixtures);
-  }
-  if (e.target.id === 'reprint') {
-    const code = $('#codeLookup').value.trim();
-    if (code) printTicket(code);
-  }
+      b.remove(); // prevent duplicate blocks
+    };
+  });
+}
+
+async function loadColors(){
+  const data = await api('/api/colors/draws/latest');
+  const box = $('#list');
+  const picks = data?.picks||[];
+  const colorBall = (name) => {
+    const cls = name==='RED'?'red':name==='GREEN'?'green':name==='BLUE'?'blue':'yellow';
+    return `<span class="ball ${cls}">${name[0]}</span> <span class="ball-label">${name}</span>`;
+  };
+  box.innerHTML = `
+    <h3 style="margin:8px 0">Color Pool — Draw #${data?.draw?.draw_no??'-'}</h3>
+    <div class="market">
+      <div><strong>Pick Color</strong></div>
+      <div>
+        ${picks.map(p=>`
+          <span class="pill" data-sid="${p.id}" data-label="COLOR:${p.color}" data-price="${p.price}">
+            ${colorBall(p.color)} @ ${p.price}
+          </span>`).join('')}
+      </div>
+    </div>`;
+  box.querySelectorAll('[data-sid]').forEach(p=>{
+    p.onclick=()=>{
+      const sid = Number(p.dataset.sid);
+      if (!slip.some(x=>x.selection_id===sid)){
+        slip.push({ selection_id:sid, label:p.dataset.label, price:p.dataset.price });
+        renderSlip();
+      }
+    };
+  });
+}
+
+async function loadRaces(type){ // DOG or HORSE
+  const races = await api(`/api/races?type=${type}`);
+  const box = $('#list');
+  box.innerHTML = `<h3 style="margin:8px 0">${type==='DOG'?'Dogs':'Horses'} — Upcoming</h3>` +
+    races.map(r=>`
+      <div class="fixture">
+        <div>${r.track} • R${r.race_no}</div>
+        <div>${new Date(r.start_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
+        <div><button class="pill" data-r="${r.id}">Win & Forecast</button></div>
+      </div>`).join('');
+  box.querySelectorAll('[data-r]').forEach(b=>{
+    b.onclick = async ()=>{
+      const sel = await api(`/api/selections?race_event_id=${b.dataset.r}`);
+      const by = {};
+      sel.forEach(s => (by[s.label] ||= []).push(s));
+      const mkHtml = Object.entries(by).map(([label,arr])=>`
+        <div class="market">
+          <div><strong>${label}</strong></div>
+          <div>
+            ${arr.map(s=>`<span class="pill" data-sid="${s.id}" data-label="${label}:${s.name}" data-price="${s.price}">
+              ${s.name} @ ${s.price}
+            </span>`).join('')}
+          </div>
+        </div>`).join('');
+      b.parentElement.insertAdjacentHTML('beforeend', `<div style="margin-top:6px">${mkHtml}</div>`);
+      b.parentElement.querySelectorAll('[data-sid]').forEach(p=>{
+        p.onclick=()=>{
+          const sid = Number(p.dataset.sid);
+          if (!slip.some(x=>x.selection_id===sid)){
+            slip.push({ selection_id:sid, label:p.dataset.label, price:p.dataset.price });
+            renderSlip();
+          }
+        };
+      });
+      b.remove();
+    };
+  });
+}
+
+/* ---------- TILE ROUTER ---------- */
+function activateTile(el){
+  document.querySelectorAll('.tile').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  const kind = el.dataset.kind, code = el.dataset.code;
+  if (kind==='FOOTBALL') loadFootball(code);
+  if (kind==='COLOR') loadColors();
+  if (kind==='RACE') loadRaces(code);
+}
+
+document.getElementById('tiles').addEventListener('click', (e)=>{
+  const t = e.target.closest('.tile'); if(!t) return;
+  activateTile(t);
 });
 
+/* events */
+document.addEventListener('click', e=>{
+  if (e.target.id==='place') placeTicket();
+  if (e.target.id==='clear') clearSlip();
+  if (e.target.classList.contains('rm')){ slip.splice(Number(e.target.dataset.i),1); renderSlip(); }
+  if (e.target.id==='reprint'){
+    const id = $('#codeLookup').value.trim();
+    if(!id) return;
+    // Simple lookup (adapt if you later add a GET /api/tickets/:id)
+    $('#printArea').innerHTML = `<div class="muted">Reprint placeholder for Ticket ${id}</div>`;
+  }
+});
 document.getElementById('stake').addEventListener('input', renderSlip);
 
-// init
-loadFixtures();
+/* init */
+activateTile(document.querySelector('.tile.active'));
 renderSlip();
 </script>
 </html>
