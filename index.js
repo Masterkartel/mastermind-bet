@@ -1,257 +1,187 @@
-// index.js — API + POS + Virtual (serves static HTML files instead of giant strings)
-// run: npm i express pg dotenv bwip-js && pm2 start index.js --name mastermind-bet --update-env
-require('dotenv').config();
-const path = require('path');
+cat > index.js <<'JS'
 const express = require('express');
-const { Pool } = require('pg');
-const crypto = require('crypto');
-const bwipjs = require('bwip-js');
+const path = require('path');
+const {Pool} = require('pg');
+require('dotenv').config();
 
 const app = express();
 app.use(express.json());
+app.use(express.static('public'));
 
-// serve static assets from /public
-app.use(express.static(path.join(__dirname, 'public')));
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
-// --- DB ----------------------------------------------------------------------
-if (!process.env.DATABASE_URL) {
-  console.error(new Date().toISOString() + ': No DATABASE_URL in env — DB features will be limited.');
-}
-const pool = process.env.DATABASE_URL
-  ? new Pool({ connectionString: process.env.DATABASE_URL })
-  : null;
+app.get('/health', (_,res)=>res.json({ok:true}));
 
-async function withTxn(fn) {
-  if (!pool) throw new Error('DB not configured');
+// ------------- Helpers
+const KES = v => Math.round(v); // working in cents already
+const toCents = kes => Math.round(kes*100);
+
+// ------------- Seed a few teams + sample fixtures + markets if empty
+app.post('/admin/seed-sample', async (req,res)=>{
   const client = await pool.connect();
-  try {
+  try{
     await client.query('BEGIN');
-    const out = await fn(client);
+    // 4 teams EPL
+    const {rows: epl} = await client.query(`SELECT id FROM leagues WHERE code='EPL'`);
+    const leagueId = epl[0].id;
+
+    const countTeams = await client.query('SELECT count(*) FROM teams WHERE league_id=$1',[leagueId]);
+    if (Number(countTeams.rows[0].count) < 4){
+      await client.query(
+        `INSERT INTO teams(league_id,code3,name,rating) VALUES
+         ($1,'ARS','Arsenal',85),($1,'CHE','Chelsea',80),
+         ($1,'MCI','Man City',90),($1,'MUN','Man United',82)`,[leagueId]
+      );
+    }
+
+    // 2 fixtures (OPEN)
+    const now = new Date();
+    const kickoff1 = new Date(now.getTime()+5*60*1000); // +5 min
+    const kickoff2 = new Date(now.getTime()+10*60*1000); // +10 min
+    const teams = await client.query('SELECT id,code3,rating FROM teams WHERE league_id=$1 LIMIT 4',[leagueId]);
+
+    const [t1,t2,t3,t4] = teams.rows;
+    const insFx = `
+      INSERT INTO fixtures(id,league_id,kickoff_at,home_team,away_team,status)
+      VALUES (gen_random_uuid(),$1,$2,$3,$4,'OPEN'),
+             (gen_random_uuid(),$1,$5,$6,$7,'OPEN')
+      RETURNING id
+    `;
+    const fx = await client.query(insFx,[leagueId,kickoff1,t1.id,t2.id,kickoff2,t3.id,t4.id]);
+    const [f1,f2] = fx.rows.map(r=>r.id);
+
+    // Create simple markets (1X2 & OU_2_5) with fixed demo odds
+    async function makeMarkets(fid){
+      const m1 = await client.query(
+        `INSERT INTO markets(id,fixture_id,code) VALUES (gen_random_uuid(),$1,'1X2') RETURNING id`,[fid]);
+      const mid1 = m1.rows[0].id;
+      await client.query(
+        `INSERT INTO selections(id,market_id,code,price) VALUES
+         (gen_random_uuid(),$1,'1',1.90),(gen_random_uuid(),$1,'X',3.40),(gen_random_uuid(),$1,'2',3.60)`,[mid1]
+      );
+      const m2 = await client.query(
+        `INSERT INTO markets(id,fixture_id,code) VALUES (gen_random_uuid(),$1,'OU_2_5') RETURNING id`,[fid]);
+      const mid2 = m2.rows[0].id;
+      await client.query(
+        `INSERT INTO selections(id,market_id,code,price) VALUES
+         (gen_random_uuid(),$1,'OV',1.95),(gen_random_uuid(),$1,'UN',1.85)`,[mid2]
+      );
+    }
+    await makeMarkets(f1); await makeMarkets(f2);
+
     await client.query('COMMIT');
-    return out;
-  } catch (e) {
-    await client.query('ROLLBACK'); throw e;
-  } finally {
+    res.json({ok:true, fixtures:[f1,f2]});
+  }catch(e){
+    await pool.query('ROLLBACK');
+    res.status(500).json({ok:false,error:e.message});
+  }finally{
     client.release();
   }
-}
-
-async function migrate() {
-  if (!pool) return;
-  const sql = `
-  CREATE TABLE IF NOT EXISTS wallets (
-    id BIGSERIAL PRIMARY KEY,
-    owner_type TEXT NOT NULL CHECK (owner_type IN ('house','agent','cashier')),
-    owner_id   TEXT,
-    currency   TEXT NOT NULL DEFAULT 'KES',
-    balance_cents BIGINT NOT NULL DEFAULT 0,
-    UNIQUE(owner_type, owner_id)
-  );
-  CREATE TABLE IF NOT EXISTS wallet_ledger (
-    id BIGSERIAL PRIMARY KEY,
-    wallet_id BIGINT NOT NULL REFERENCES wallets(id),
-    entry_type TEXT NOT NULL CHECK (entry_type IN ('credit','debit')),
-    amount_cents BIGINT NOT NULL CHECK (amount_cents > 0),
-    balance_after_cents BIGINT NOT NULL,
-    ref_type TEXT, ref_id TEXT, memo TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-  );
-  CREATE TABLE IF NOT EXISTS tickets (
-    id BIGSERIAL PRIMARY KEY,
-    uid TEXT UNIQUE NOT NULL,
-    cashier_id TEXT NOT NULL,
-    stake_cents BIGINT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'PENDING',
-    potential_win_cents BIGINT,
-    payout_cents BIGINT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    settled_at TIMESTAMPTZ,
-    odds NUMERIC(7,3),
-    product TEXT,
-    event_code TEXT,
-    market_code TEXT,
-    selection_code TEXT,
-    pick_label TEXT
-  );
-  CREATE INDEX IF NOT EXISTS idx_tickets_cashier_created ON tickets(cashier_id, created_at DESC);
-
-  INSERT INTO wallets(owner_type, owner_id, currency, balance_cents)
-  SELECT 'house', NULL, 'KES', 0
-  WHERE NOT EXISTS (SELECT 1 FROM wallets WHERE owner_type='house' AND owner_id IS NULL);
-  INSERT INTO wallets(owner_type, owner_id, currency, balance_cents)
-  SELECT 'agent', 'agent1', 'KES', 0
-  WHERE NOT EXISTS (SELECT 1 FROM wallets WHERE owner_type='agent' AND owner_id='agent1');
-  INSERT INTO wallets(owner_type, owner_id, currency, balance_cents)
-  SELECT 'cashier', 'cashier1', 'KES', 0
-  WHERE NOT EXISTS (SELECT 1 FROM wallets WHERE owner_type='cashier' AND owner_id='cashier1');
-  `;
-  await pool.query(sql);
-  console.log(new Date().toISOString() + ': DB migrate: OK');
-}
-migrate().catch(e=>{
-  console.error(new Date().toISOString() + ': DB migrate FAILED', e.message);
 });
 
-// --- helpers -----------------------------------------------------------------
-const MIN_STAKE = parseInt(process.env.MIN_STAKE_CENTS || '2000', 10); // 20 KES (cents)
-const MAX_STAKE = 100000;   // 1,000 KES (cents)
-const MAX_PAYOUT = 2000000; // 20,000 KES (cents)
-const PRODUCTS = new Set(['FOOTBALL','COLOR','DOGS','HORSES']);
+// ------------- API for cashier UI
+app.get('/api/fixtures', async (req,res)=>{
+  const { league='EPL' } = req.query;
+  const rows = await pool.query(`
+    SELECT f.id, f.kickoff_at,
+           th.code3 AS home_code, ta.code3 AS away_code
+    FROM fixtures f
+    JOIN leagues l ON l.id=f.league_id AND l.code=$1
+    JOIN teams th ON th.id=f.home_team
+    JOIN teams ta ON ta.id=f.away_team
+    WHERE f.status='OPEN'
+    ORDER BY f.kickoff_at ASC`,[league]);
+  res.json(rows.rows);
+});
 
-async function getWallet(client, ownerType, ownerId=null) {
-  const { rows } = await client.query(
-    'SELECT * FROM wallets WHERE owner_type=$1 AND ((owner_id IS NULL AND $2::text IS NULL) OR owner_id=$2) FOR UPDATE',
-    [ownerType, ownerId]
-  );
-  if (!rows[0]) {
-    const ins = await client.query(
-      'INSERT INTO wallets(owner_type, owner_id) VALUES ($1,$2) RETURNING *',
-      [ownerType, ownerId]
-    );
-    return ins.rows[0];
+app.get('/api/fixtures/:id/markets', async (req,res)=>{
+  const {id} = req.params;
+  const rows = await pool.query(`
+    SELECT m.id as market_id, m.code as market,
+           json_agg(json_build_object('selection_id',s.id,'code',s.code,'price',s.price) ORDER BY s.code) as selections
+    FROM markets m
+    JOIN selections s ON s.market_id=m.id
+    WHERE m.fixture_id=$1 AND m.status='OPEN'
+    GROUP BY m.id, m.code
+    ORDER BY m.code`,[id]);
+  res.json(rows.rows);
+});
+
+// Create ticket (enforce stake/payout rules)
+app.post('/api/tickets', async (req,res)=>{
+  try{
+    const { shop_id=null, cashier_id=null, stake_kes, lines } = req.body;
+    const stake_cents = Math.round(Number(stake_kes)*100);
+
+    const min = Number(process.env.STAKE_MIN_KES)*100;   // 2000
+    const max = Number(process.env.STAKE_MAX_KES)*100;   // 100000
+    const payoutMax = Number(process.env.PAYOUT_MAX_KES)*100; // 2,000,000
+
+    if (!Number.isFinite(stake_cents) || stake_cents < min || stake_cents > max){
+      return res.status(400).json({ok:false, error:`Stake must be between ${min/100}-${max/100} KES`});
+    }
+    if (!Array.isArray(lines) || lines.length === 0){
+      return res.status(400).json({ok:false, error:'No selections'});
+    }
+
+    // Fetch prices for all selections
+    const ids = lines.map(l=>l.selection_id);
+    const q = `
+      SELECT s.id, s.price, m.id as market_id
+      FROM selections s JOIN markets m ON m.id=s.market_id
+      WHERE s.id = ANY($1::uuid[]) AND m.status='OPEN'`;
+    const {rows} = await pool.query(q,[ids]);
+
+    if (rows.length !== ids.length) return res.status(400).json({ok:false,error:'Invalid selections'});
+
+    // Compute accumulator price
+    let acc = 1.0;
+    for (const r of rows){ acc *= Number(r.price); }
+
+    let potential_cents = Math.floor(stake_cents * acc);
+    if (potential_cents > payoutMax) potential_cents = payoutMax; // hard cap
+
+    // Insert ticket
+    const code = 'MM-' + Date.now().toString(36).toUpperCase();
+    const ticket = await pool.query(`
+      INSERT INTO tickets(code,shop_id,cashier_id,stake_cents,potential_win_cents,status)
+      VALUES ($1,$2,$3,$4,$5,'PENDING')
+      RETURNING id, code, potential_win_cents`,[code, shop_id, cashier_id, stake_cents, potential_cents]);
+
+    const ticketId = ticket.rows[0].id;
+
+    // Insert lines
+    for (const r of rows){
+      await pool.query(`INSERT INTO ticket_lines(ticket_id,market_id,selection_id,price)
+                        VALUES ($1,$2,$3,$4)`,[ticketId, r.market_id, r.id, r.price]);
+    }
+
+    // (Wallet debit will come after we wire float; for now we just return)
+    res.json({ok:true, code, potential_kes: (potential_cents/100).toFixed(2)});
+  }catch(e){
+    res.status(500).json({ok:false,error:e.message});
   }
-  return rows[0];
-}
-async function ledger(client, walletId, type, amount, refType, refId, memo) {
-  const { rows } = await client.query('UPDATE wallets SET balance_cents = balance_cents ' + (type==='credit'?'+':'-') + ' $1 WHERE id=$2 RETURNING balance_cents',[amount, walletId]);
-  await client.query(
-    'INSERT INTO wallet_ledger(wallet_id,entry_type,amount_cents,balance_after_cents,ref_type,ref_id,memo) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-    [walletId, type, amount, rows[0].balance_cents, refType, refId, memo||null]
-  );
-}
-function need(role, keyName) {
-  return (req,res,next)=>{
-    if (req.header(keyName) === process.env[role]) return next();
-    return res.status(401).json({error:`${keyName} required`});
-  };
-}
-const needAdmin   = need('ADMIN_KEY','x-admin-key');
-const needAgent   = need('AGENT_KEY','x-agent-key');
-const needCashier = need('CASHIER_KEY','x-cashier-key');
-function makeTicketUid(){ return 'T' + crypto.randomBytes(6).toString('hex').toUpperCase(); }
-
-// --- health ------------------------------------------------------------------
-app.get('/health', (_req,res)=> res.json({ok:true}));
-
-// --- POS minimal page (served from /public/pos.html) ------------------------
-app.get('/pos', (_req,res)=>{
-  res.sendFile(path.join(__dirname,'public','pos.html'));
 });
 
-// --- Tickets -----------------------------------------------------------------
-app.post('/bets/place', needCashier, async (req,res)=>{
-  const stake = parseInt(req.body.stake_cents,10);
-  if (!stake || stake < MIN_STAKE) return res.status(400).json({error:`min stake ${MIN_STAKE/100} KES`});
-  if (stake > MAX_STAKE) return res.status(400).json({error:`max stake ${MAX_STAKE/100} KES`});
-
-  let odds = parseFloat(req.body.odds); if (!Number.isFinite(odds) || odds < 1.01) odds = 2.00;
-  let product = (req.body.product||'FOOTBALL').toString().toUpperCase();
-  if (!PRODUCTS.has(product)) product = 'FOOTBALL';
-
-  const event_code = req.body.event_code || null;
-  const market_code = req.body.market_code || null;
-  const selection_code = req.body.selection_code || null;
-  const pick_label = req.body.pick_label || null;
-
-  const potential = Math.min(Math.floor(stake * odds), MAX_PAYOUT);
-
-  try {
-    const out = await withTxn(async (client)=>{
-      const cashier = await getWallet(client,'cashier','cashier1');
-      if (cashier.balance_cents < stake) throw new Error('insufficient funds');
-      await ledger(client, cashier.id, 'debit', stake, 'stake', 'reserve', 'stake reserved');
-      const uid = makeTicketUid();
-      await client.query(
-        `INSERT INTO tickets(uid,cashier_id,stake_cents,status,potential_win_cents,odds,product,event_code,market_code,selection_code,pick_label)
-         VALUES ($1,'cashier1',$2,'PENDING',$3,$4,$5,$6,$7,$8,$9)`,
-        [uid, stake, potential, odds, product, event_code, market_code, selection_code, pick_label]
-      );
-      return { uid };
-    });
-    res.json({ok:true, ticket_uid: out.uid, stake_cents: stake, odds, product, potential_win_cents: potential, event_code, market_code, selection_code, pick_label});
-  } catch(e){ res.status(400).json({error:e.message}); }
+app.get('/api/tickets/:code', async (req,res)=>{
+  const {code}=req.params;
+  const t = await pool.query(`SELECT id,code,stake_cents,potential_win_cents,status,created_at FROM tickets WHERE code=$1`,[code]);
+  if (!t.rowCount) return res.status(404).json({ok:false,error:'Not found'});
+  const ticket = t.rows[0];
+  const lines = await pool.query(`
+     SELECT tl.price, m.code as market, s.code as pick
+     FROM ticket_lines tl
+     JOIN selections s ON s.id=tl.selection_id
+     JOIN markets m    ON m.id=tl.market_id
+     WHERE tl.ticket_id=$1`,[ticket.id]);
+  ticket.lines = lines.rows;
+  res.json(ticket);
 });
 
-app.get('/cashier/tickets', needCashier, async (_req,res)=>{
-  if (!pool) return res.json([]);
-  const { rows } = await pool.query(
-    `SELECT uid, stake_cents, potential_win_cents, status, payout_cents, created_at,
-            odds, product, event_code, market_code, selection_code, pick_label
-     FROM tickets WHERE cashier_id='cashier1' ORDER BY created_at DESC LIMIT 20`
-  );
-  res.json(rows);
-});
+// Serve cashier dashboard at /
+app.get('/', (_,res)=>res.sendFile(path.join(__dirname,'public','pos.html')));
 
-app.get('/tickets/:uid', async (req,res)=>{
-  if (!pool) return res.status(404).json({error:'no db'});
-  const { rows } = await pool.query('SELECT * FROM tickets WHERE uid=$1',[req.params.uid]);
-  if (!rows[0]) return res.status(404).json({error:'ticket not found'});
-  res.json(rows[0]);
+app.listen(process.env.PORT || 3000, ()=> {
+  console.log('Server on :', process.env.PORT || 3000);
 });
-
-app.get('/tickets/:uid/barcode.png', async (req,res)=>{
-  try {
-    const png = await bwipjs.toBuffer({ bcid:'code128', text:req.params.uid, scale:3, height:10, includetext:true, textxalign:'center' });
-    res.type('png').send(png);
-  } catch { res.status(400).json({error:'barcode failed'}); }
-});
-
-app.get('/tickets/:uid/print', async (req,res)=>{
-  if (!pool) return res.status(404).send('No DB');
-  const { rows } = await pool.query('SELECT * FROM tickets WHERE uid=$1',[req.params.uid]);
-  if (!rows[0]) return res.status(404).send('Ticket not found');
-  const t = rows[0];
-  const color = t.status==='WON' ? '#16a34a' : t.status==='LOST' ? '#dc2626' : '#6b7280';
-  res.type('html').send(`<!doctype html><html><head><meta charset="utf-8"><title>${t.uid}</title>
-  <style>body{font-family:system-ui,Arial;padding:16px}.card{width:380px;border:1px solid #e5e7eb;border-radius:12px;padding:16px;position:relative;overflow:hidden}
-  .row{display:flex;justify-content:space-between;margin:6px 0}.bar{text-align:center;margin:12px auto}
-  .wm{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:52px;opacity:.12;color:${color};transform:rotate(-18deg)}
-  .badge{display:inline-block;padding:4px 10px;border-radius:9999px;color:#fff;background:${color}}.muted{color:#6b7280}.tiny{font-size:12px}</style></head>
-  <body><div class="card"><div class="wm">${t.status}</div>
-  <div class="row"><div><strong>Mastermind Bet</strong></div><div class="badge">${t.status}</div></div>
-  <div class="row"><div class="muted">Ticket</div><div>${t.uid}</div></div>
-  <div class="row"><div class="muted">Product</div><div>${t.product||'-'}</div></div>
-  <div class="row"><div class="muted">Pick</div><div>${t.pick_label||t.selection_code||'-'}</div></div>
-  <div class="row"><div class="muted">Odds</div><div>${t.odds?Number(t.odds).toFixed(2):'-'}</div></div>
-  <div class="row"><div class="muted">Stake</div><div>KES ${(t.stake_cents/100).toFixed(0)}</div></div>
-  <div class="row"><div class="muted">Potential</div><div>KES ${((t.potential_win_cents||0)/100).toFixed(0)}</div></div>
-  <div class="row"><div class="muted">Payout</div><div>KES ${((t.payout_cents||0)/100).toFixed(0)}</div></div>
-  <div class="bar"><img src="/tickets/${t.uid}/barcode.png"/></div>
-  <div class="muted tiny" style="text-align:center">Verify: mastermind-bet.com/tickets/${t.uid}</div></div>
-  <script>window.print()</script></body></html>`);
-});
-
-// --- Virtual data (simple generator so the page renders) ---------------------
-const LEAGUES = [
-  { code:'CHAMPS', name:'Champions Cup', teams: ['PSG','MCI','RMA','FCB','MUN','BAR','ROM','JUV','PSV','AEK','NAP','ZEN','BVB','CEL','LIV','CHE'] },
-  { code:'EPL',    name:'Premier League', teams: ['MUN','TOT','EVE','CHE','NEW','WOL','LIV','ARS','NOT','SOU','BOU','CRY','LEI','ASV','WHU','BRN','BRI','LEE','FUL','MCI'] },
-  { code:'LIGA',   name:'Liga', teams: ['CAD','RVA','VIL','SEV','ATM','GRO','ESP','ELC','MAL','FCB','RMA','GET','ATH','OSA','CEL','BET','VAL','RSO','VAL','ALM'] },
-];
-function rnd(min,max){ return +(min + Math.random()*(max-min)).toFixed(2); }
-function pickOdds(){
-  const one = rnd(1.2,6.5), draw=rnd(2.8,3.6), two=rnd(1.2,6.5);
-  return {
-    '1X2': {'1':one,'X':draw,'2':two},
-    'GG/NG': {'GG':rnd(1.5,2.3),'NG':rnd(1.5,2.3)},
-    '1X2 OV/UN 2.5': {'OV2.5':rnd(1.7,2.5),'UN2.5':rnd(1.3,2.1)}
-  };
-}
-app.get('/virtual', (_req,res)=> res.sendFile(path.join(__dirname,'public','virtual.html')));
-app.get('/virtual/state', (_req,res)=>{
-  const now = Date.now();
-  const leagues = LEAGUES.map((l,i)=>({ code:l.code, round: (i+1), endsAt: now + (i+1)*180000 }));
-  res.json({ leagues });
-});
-app.get('/virtual/league/:code', (req,res)=>{
-  const L = LEAGUES.find(x=>x.code===req.params.code) || LEAGUES[0];
-  const fixtures = [];
-  for (let i=0;i<Math.min(8, Math.floor(L.teams.length/2));i++){
-    const home = L.teams[i*2], away = L.teams[i*2+1];
-    fixtures.push({ id:i+1, home, away, markets: pickOdds() });
-  }
-  res.json({ code:L.code, fixtures });
-});
-
-// --- start -------------------------------------------------------------------
-const port = parseInt(process.env.PORT||'3000',10);
-app.listen(port, ()=> console.log('App on :' + port));
+JS
