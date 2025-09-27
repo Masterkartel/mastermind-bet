@@ -1,11 +1,19 @@
 {
   "name": "mastermind-bet",
   "version": "0.1.0",
+  "type": "commonjs",
   "main": "index.js",
-  "scripts": { "start": "node index.js" },
+  "scripts": {
+    "dev": "node index.js",
+    "db:init": "psql \"$DATABASE_URL\" -f db/schema.sql",
+    "seed:football": "node scripts/seed_football.js",
+    "seed:races": "node scripts/seed_races.js",
+    "seed:colors": "node scripts/seed_colors.js",
+    "seed:all": "npm run seed:football && npm run seed:races && npm run seed:colors"
+  },
   "dependencies": {
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "pg": "^8.11.5"
+    "pg": "^8.12.0"
   }
 }
