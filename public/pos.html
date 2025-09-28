@@ -6,42 +6,52 @@
 <style>
   :root{
     --bg:#0b1220; --panel:#0f172a; --line:#1f2937; --text:#e2e8f0; --muted:#7a8699;
-    --accent:#f59e0b; --ok:#10b981; --danger:#ef4444; --tile:#111827;
+    --accent:#f59e0b; --ok:#10b981; --danger:#ef4444; --tile:#111827; --chip:#0b1528;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Arial}
-  header{position:sticky;top:0;z-index:10;display:flex;gap:12px;align-items:center;padding:12px 16px;background:#0c1426;border-bottom:1px solid var(--line)}
+  header{position:sticky;top:0;z-index:10;display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 16px;background:#0c1426;border-bottom:1px solid var(--line)}
   header h1{margin:0;font-size:18px}
+  .top-right{display:flex;gap:12px;align-items:center}
+  .balance,.jackpot{background:#0b1528;border:1px solid #243047;border-radius:999px;padding:6px 10px;font-weight:600}
+  .jackpot small{color:#9ab}
   main{display:grid;grid-template-columns:2fr 1fr;gap:12px;padding:12px}
   @media(max-width:960px){ main{grid-template-columns:1fr} }
   .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px}
   .muted{color:var(--muted)}
+
   /* tiles */
   .tiles{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:10px;margin-bottom:10px}
   @media(max-width:1200px){.tiles{grid-template-columns:repeat(3,1fr)}}
   @media(max-width:600px){.tiles{grid-template-columns:repeat(2,1fr)}}
-  .tile{cursor:pointer;user-select:none;border:1px solid #223048;background:var(--tile);border-radius:16px;padding:12px;display:flex;gap:10px;align-items:center;transition:transform .12s ease, box-shadow .12s ease}
+  .tile{cursor:pointer;user-select:none;border:1px solid #223048;background:var(--tile);border-radius:16px;padding:12px;display:flex;gap:10px;align-items:center;justify-content:space-between;transition:transform .12s ease, box-shadow .12s ease}
   .tile:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.35)}
   .tile.active{outline:2px solid var(--accent)}
+  .tile .left{display:flex;gap:10px;align-items:center}
   .badge{font-size:12px;border:1px solid #2a3b60;padding:2px 6px;border-radius:999px;color:#bcd}
   .big{font-weight:700}
-  /* sections */
-  .tabbar{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 10px}
-  .tab{padding:6px 10px;border-radius:999px;border:1px solid #334155;background:#111827;cursor:pointer}
-  .tab.active{background:#ef4444;border-color:#ef4444}
-  /* fixtures + pills */
-  .fixture{display:grid;grid-template-columns:86px 1fr auto;gap:12px;align-items:center;border:1px dashed #26334d;border-radius:12px;padding:8px 10px;margin-bottom:8px}
-  .market{margin:8px 0}
-  .pill{display:inline-block;padding:8px 10px;border:1px solid #334155;border-radius:10px;margin:4px 6px 0 0;cursor:pointer;background:#0b1528}
+  .ctd{font:600 12px/1 system-ui;color:#c9d3e7}
+
+  /* fixtures table */
+  .tbl{width:100%;border-collapse:collapse;margin-top:6px}
+  .tbl th,.tbl td{border-bottom:1px solid #223048;padding:6px 8px;font-size:14px;white-space:nowrap}
+  .tbl th{position:sticky;top:58px;background:var(--panel);z-index:5}
+  .rowhead{display:flex;align-items:center;gap:8px}
+  .arrow{cursor:pointer;border:1px solid #334155;background:var(--chip);border-radius:8px;padding:2px 6px;font-size:12px}
+  .detail{background:#0b1528;border:1px solid #223048;border-radius:8px;padding:10px;margin:8px 0;display:none}
+  .detail.show{display:block}
+
+  .pill{display:inline-block;padding:6px 10px;border:1px solid #334155;border-radius:10px;margin:2px 4px;cursor:pointer;background:#0b1528}
   .pill:hover{outline:2px solid var(--accent)}
+  .btn-odd{display:inline-block;min-width:52px;text-align:center;background:#0b1528;border:1px solid #334155;border-radius:8px;padding:6px 8px;margin:2px;cursor:pointer}
+  .btn-odd:hover{outline:2px solid var(--accent)}
+
   /* betslip */
   .betslip li{display:flex;justify-content:space-between;margin:6px 0;gap:8px}
   button,input{background:#0b1528;color:var(--text);border:1px solid #243047;border-radius:10px;padding:8px 10px}
   button.primary{background:#115e38;border-color:#115e38}
   button.danger{background:#7f1d1d;border-color:#7f1d1d}
-  /* glossy info card */
-  .gloss{position:relative;overflow:hidden}
-  .gloss::before{content:"";position:absolute;inset:-60% -40% auto -40%;height:160%;background:linear-gradient(120deg,rgba(255,255,255,.08),rgba(255,255,255,0));transform:rotate(-12deg)}
+
   /* pool balls */
   .ball{width:38px;height:38px;border-radius:999px;display:inline-grid;place-items:center;font:700 14px/1 system-ui;color:#fff;margin-right:6px;border:1px solid rgba(0,0,0,.3);box-shadow:inset 0 -8px 14px rgba(0,0,0,.35), inset 0 10px 18px rgba(255,255,255,.12), 0 3px 8px rgba(0,0,0,.45)}
   .ball-label{font-size:11px;margin-left:4px;color:#cfd6e6}
@@ -49,14 +59,17 @@
   .ball.green{background:radial-gradient(circle at 30% 25%, #79ffb5, #10b981 55%, #0a5e46)}
   .ball.blue{background:radial-gradient(circle at 30% 25%, #8ac7ff, #2563eb 55%, #163986)}
   .ball.yellow{background:radial-gradient(circle at 30% 25%, #ffe99a, #f59e0b 55%, #7a4e02)}
-  /* mini clock */
-  .clock{font-weight:700;color:#9fb0c8}
-  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 </style>
 
-<header class="gloss">
-  <h1>Mastermind Cashier</h1>
-  <span class="muted">Min KES 20 • Max KES 1000 • Max payout KES 20,000</span>
+<header>
+  <div style="display:flex;gap:12px;align-items:center">
+    <h1>Mastermind Cashier</h1>
+    <span class="muted">Min KES 20 • Max KES 1000 • Max payout KES 20,000</span>
+  </div>
+  <div class="top-right">
+    <div class="jackpot">Jackpot: <b id="jackpot">1,268.00</b> <small>KSh</small></div>
+    <div class="balance">Balance: <b id="balance">0.00</b> KSh</div>
+  </div>
 </header>
 
 <main>
@@ -65,23 +78,31 @@
     <!-- Tiles -->
     <div id="tiles" class="tiles">
       <div class="tile active" data-kind="FOOTBALL" data-code="EPL">
-        <div class="big">EPL</div><span class="badge">Main + O/U + more</span>
+        <div class="left"><div class="big">EPL</div><span class="badge">MAIN • O/U • DC • GG/NG</span></div>
+        <div class="ctd" data-count="EPL">--:--</div>
       </div>
       <div class="tile" data-kind="FOOTBALL" data-code="UCL">
-        <div class="big">UCL</div><span class="badge">Main + O/U + more</span>
+        <div class="left"><div class="big">UCL</div><span class="badge">MAIN • O/U • DC • GG/NG</span></div>
+        <div class="ctd" data-count="UCL">--:--</div>
       </div>
       <div class="tile" data-kind="FOOTBALL" data-code="LALIGA">
-        <div class="big">LaLiga</div><span class="badge">Main + O/U + more</span>
+        <div class="left"><div class="big">LaLiga</div><span class="badge">MAIN • O/U • DC • GG/NG</span></div>
+        <div class="ctd" data-count="LALIGA">--:--</div>
       </div>
       <div class="tile" data-kind="COLOR" data-code="COLOR">
-        <div class="ball red">●</div><div class="ball green">●</div><div class="ball blue">●</div><div class="ball yellow">●</div>
-        <span class="ball-label">Color Pool</span>
+        <div class="left">
+          <div class="ball red">●</div><div class="ball green">●</div><div class="ball blue">●</div><div class="ball yellow">●</div>
+          <span class="ball-label">Color Pool</span>
+        </div>
+        <div class="ctd" id="color-ctd">--:--</div>
       </div>
       <div class="tile" data-kind="RACE" data-code="DOG">
-        <div class="big">Dogs</div><span class="badge">Main • Forecast • Quinella • Tricast</span>
+        <div class="left"><div class="big">Dogs</div><span class="badge">Main • Forecast • Quinella • Tricast</span></div>
+        <div class="ctd" id="dog-ctd">--:--</div>
       </div>
       <div class="tile" data-kind="RACE" data-code="HORSE">
-        <div class="big">Horses</div><span class="badge">Main • Forecast • Quinella • Tricast</span>
+        <div class="left"><div class="big">Horses</div><span class="badge">Main • Forecast • Quinella • Tricast</span></div>
+        <div class="ctd" id="horse-ctd">--:--</div>
       </div>
     </div>
 
@@ -93,17 +114,17 @@
   <section class="card">
     <h3 style="margin-top:0">Betslip</h3>
     <ul id="slip" class="betslip"></ul>
-    <div class="row">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <input id="stake" type="number" min="20" max="1000" step="1" placeholder="Stake (KES)" />
       <div>Potential: <strong id="potential">0.00</strong> KES</div>
     </div>
-    <div class="row" style="margin-top:10px">
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
       <button class="primary" id="place">Place Ticket</button>
       <button class="danger" id="clear">Clear</button>
     </div>
     <hr style="border-color:#1f2937;margin:12px 0">
-    <div class="row">
-      <input id="codeLookup" placeholder="Enter ticket code (id)" />
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input id="codeLookup" placeholder="Enter ticket code (e.g., 12345)" />
       <button id="reprint">Find / Reprint</button>
     </div>
     <div id="printArea" style="margin-top:12px"></div>
@@ -111,31 +132,79 @@
 </main>
 
 <script>
+/* -------- mini utils -------- */
 const $ = s => document.querySelector(s);
-let slip = []; // {selection_id,label,price}
-
+const $$ = s => Array.from(document.querySelectorAll(s));
 function fmt(n){ return Number(n).toFixed(2); }
 async function api(url,opts){ const r=await fetch(url,opts); if(!r.ok) throw new Error(await r.text()); return r.json(); }
-function countdownText(targetMs){
-  const s = Math.max(0, Math.floor((targetMs - Date.now())/1000));
-  const mm = String(Math.floor(s/60)).padStart(2,'0');
-  const ss = String(s%60).padStart(2,'0');
-  return mm+':'+ss;
-}
+function btnOdd(o, on){ const b=document.createElement('span'); b.className='btn-odd'; b.textContent=Number.isFinite(+o)?fmt(o):'-'; b.onclick=on; return b; }
+function mapBy(arr, key){ const m={}; arr.forEach(x=>{ (m[x[key]] ||= []).push(x); }); return m; }
+function get(mk,name){ return (mk && mk[name]!=null) ? mk[name] : '-'; }
 
+/* -------- cashier balance + jackpot -------- */
+(function initTop(){
+  const url = new URL(window.location.href);
+  const bal = url.searchParams.get('balance');
+  if (bal) $('#balance').textContent = fmt(bal);
+  let jp = 1268.00;
+  setInterval(()=>{ jp = Math.round((jp + Math.random()*0.6)*100)/100; $('#jackpot').textContent = jp.toLocaleString(); }, 4000);
+})();
+
+/* -------- countdown tiles (football & color) -------- */
+async function refreshCountdowns(){
+  try{
+    const st = await api('/virtual/state');
+    (st.leagues||[]).forEach(le=>{
+      const el = document.querySelector('[data-count="'+le.code+'"]');
+      if(!el) return;
+      const end = new Date(le.endsAt).getTime();
+      tick(el,end);
+    });
+  }catch{}
+  try{
+    const c = await api('/virtual/colors');
+    if (c) tick($('#color-ctd'), new Date(c.starts_at).getTime());
+  }catch{}
+}
+function tick(el, endMs){
+  function frame(){
+    const now = Date.now();
+    const ms = Math.max(0, endMs-now);
+    const s = Math.floor(ms/1000);
+    const m = Math.floor(s/60);
+    const ss = String(s%60).padStart(2,'0');
+    el.textContent = `${m}:${ss}`;
+    if (ms>0) requestAnimationFrame(frame);
+  }
+  frame();
+}
+setInterval(refreshCountdowns, 10000);
+refreshCountdowns();
+
+/* -------- betslip -------- */
+let slip = []; // {selection_id,label,price}
 function renderSlip(){
-  $('#slip').innerHTML = slip.map((l,i)=>`
-    <li><span>${l.label}</span>
+  const ul = $('#slip');
+  ul.innerHTML = slip.map((l,i)=>`
+    <li>
+      <span>${l.label}</span>
       <span>@ ${l.price} <button data-i="${i}" class="rm">×</button></span>
-    </li>`).join('');
+    </li>
+  `).join('');
   const stake = Number($('#stake').value||0);
   const odd = slip.reduce((a,x)=>a*Number(x.price),1);
   let potential = stake * odd;
   if (potential>20000) potential = 20000;
   $('#potential').textContent = fmt(potential);
 }
+function addPick(sid,label,price){
+  sid=Number(sid); if(!sid) return;
+  if (!slip.some(x=>x.selection_id===sid)){
+    slip.push({ selection_id:sid, label, price });
+    renderSlip();
+  }
+}
 function clearSlip(){ slip=[]; renderSlip(); }
-
 async function placeTicket(){
   const stake = Number($('#stake').value||0);
   if (stake<20 || stake>1000){ alert('Stake must be 20–1000 KES'); return; }
@@ -155,222 +224,6 @@ async function placeTicket(){
     clearSlip();
   }catch(e){ alert('Ticket failed: '+e.message); }
 }
-
-/* ---------- FOOTBALL ---------- */
-const FOOTBALL_TABS = [
-  { key:'MAIN', cols:[
-    ['1X2','Home','1'], ['1X2','Draw','X'], ['1X2','Away','2'],
-    ['1X12X2','1X','1X'], ['1X12X2','12','12'], ['1X12X2','X2','X2'],
-    ['GG/NG','GG','GG'], ['GG/NG','NG','NG'],
-    ['OV/UN 2.5','OV2.5','OV2.5'], ['OV/UN 2.5','UN2.5','UN2.5'],
-  ]},
-  { key:'OVER/UNDER', cols:[
-    ['OV/UN 1.5','OV1.5','OV1.5'], ['OV/UN 1.5','UN1.5','UN1.5'],
-    ['OV/UN 2.5','OV2.5','OV2.5'], ['OV/UN 2.5','UN2.5','UN2.5'],
-  ]},
-  { key:'HOME OV/UN', cols:[
-    ['HOME OV/UN','OV0.5','OV0.5(H)'], ['HOME OV/UN','UN0.5','UN0.5(H)'],
-    ['HOME OV/UN','OV1.5','OV1.5(H)'], ['HOME OV/UN','UN1.5','UN1.5(H)'],
-    ['HOME OV/UN','OV2.5','OV2.5(H)'], ['HOME OV/UN','UN2.5','UN2.5(H)'],
-  ]},
-  { key:'AWAY OV/UN', cols:[
-    ['AWAY OV/UN','OV0.5','OV0.5(A)'], ['AWAY OV/UN','UN0.5','UN0.5(A)'],
-    ['AWAY OV/UN','OV1.5','OV1.5(A)'], ['AWAY OV/UN','UN1.5','UN1.5(A)'],
-    ['AWAY OV/UN','OV2.5','OV2.5(A)'], ['AWAY OV/UN','UN2.5','UN2.5(A)'],
-  ]},
-  { key:'1X2 OV/UN 1.5', cols:[
-    ['1X2 OV/UN 1.5','1+OV1.5','1+OV1.5'], ['1X2 OV/UN 1.5','X+OV1.5','X+OV1.5'], ['1X2 OV/UN 1.5','2+OV1.5','2+OV1.5'],
-    ['1X2 OV/UN 1.5','1+UN1.5','1+UN1.5'], ['1X2 OV/UN 1.5','X+UN1.5','X+UN1.5'], ['1X2 OV/UN 1.5','2+UN1.5','2+UN1.5'],
-  ]},
-  { key:'1X2 OV/UN 2.5', cols:[
-    ['1X2 OV/UN 2.5','1+OV2.5','1+OV2.5'], ['1X2 OV/UN 2.5','X+OV2.5','X+OV2.5'], ['1X2 OV/UN 2.5','2+OV2.5','2+OV2.5'],
-    ['1X2 OV/UN 2.5','1+UN2.5','1+UN2.5'], ['1X2 OV/UN 2.5','X+UN2.5','X+UN2.5'], ['1X2 OV/UN 2.5','2+UN2.5','2+UN2.5'],
-  ]},
-];
-
-async function loadFootball(code){
-  const fx = await api(`/api/fixtures?competition_code=${encodeURIComponent(code)}`);
-  const box = $('#list');
-  // header (league + tabbar)
-  const head = document.createElement('div');
-  head.innerHTML = `
-    <div class="row" style="justify-content:space-between">
-      <h3 style="margin:8px 0">Football • ${code}</h3>
-      <div class="clock" id="fb-clock">--:--</div>
-    </div>
-    <div class="tabbar" id="fb-tabs"></div>
-    <div id="fb-table"></div>`;
-  box.innerHTML = ''; box.appendChild(head);
-
-  // simple 3-min cycle clock (or nearest next fixture)
-  let next = Date.now() + 180000 - (Date.now()%180000);
-  if (fx.length) next = new Date(fx[0].start_time).getTime();
-  setInterval(()=>{ $('#fb-clock').textContent = countdownText(next); },500);
-
-  const tabsBox = $('#fb-tabs');
-  FOOTBALL_TABS.forEach((t,i)=>{
-    const b=document.createElement('span'); b.className='tab'+(i===0?' active':''); b.textContent=t.key;
-    b.onclick=()=>{ tabsBox.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); b.classList.add('active'); renderTable(t); };
-    tabsBox.appendChild(b);
-  });
-  renderTable(FOOTBALL_TABS[0]);
-
-  async function renderTable(tab){
-    const holder = $('#fb-table'); holder.innerHTML='';
-    const table = document.createElement('div');
-    table.innerHTML = `
-      <div class="fixture" style="font-weight:700;background:#0c1528;border-style:solid">
-        <div>#</div><div>Match</div><div>Markets</div>
-      </div>`;
-    holder.appendChild(table);
-
-    for (const f of fx){
-      const row = document.createElement('div'); row.className='fixture';
-      row.innerHTML = `
-        <div>${new Date(f.start_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
-        <div><strong>${f.home.slice(0,3).toUpperCase()}</strong> vs <strong>${f.away.slice(0,3).toUpperCase()}</strong></div>
-        <div class="row"></div>`;
-      table.appendChild(row);
-
-      const sel = await api(`/api/selections?fixture_id=${f.id}`);
-      const by = {}; sel.forEach(s => (by[s.label] ||= {})[s.name] = { id:s.id, price:s.price });
-
-      const marketWrap = row.querySelector('.row');
-      tab.cols.forEach(([label,name,show])=>{
-        const found = by[label] && by[label][name];
-        const span = document.createElement('span'); span.className='pill';
-        if (found){
-          span.textContent = `${show} @ ${found.price}`;
-          span.onclick = ()=>{
-            if (!slip.some(x=>x.selection_id===found.id)){
-              slip.push({ selection_id: found.id, label:`${label}:${name}`, price:found.price }); renderSlip();
-            }
-          };
-        } else {
-          span.style.opacity=.5; span.textContent = `${show} —`;
-        }
-        marketWrap.appendChild(span);
-      });
-    }
-  }
-}
-
-/* ---------- COLORS ---------- */
-async function loadColors(){
-  const info = await api('/virtual/colors'); // draw_no, starts_at, picks
-  const box = $('#list');
-  const endsAt = info ? new Date(info.starts_at).getTime() : Date.now()+180000-(Date.now()%180000);
-  const head = document.createElement('div');
-  head.innerHTML = `
-    <div class="row" style="justify-content:space-between">
-      <h3 style="margin:8px 0">Color Pool — Draw #${info?info.draw_no:'-'}</h3>
-      <div class="clock" id="col-clock">--:--</div>
-    </div>
-    <div id="col-body"></div>`;
-  box.innerHTML=''; box.appendChild(head);
-  setInterval(()=>$('#col-clock').textContent=countdownText(endsAt),500);
-
-  // load full markets for the draw
-  const latest = await api('/api/colors/draws/latest');
-  if (!latest){ $('#col-body').textContent='No scheduled draw.'; return; }
-  const markets = await api(`/api/selections?color_draw_id=${latest.draw.id}`);
-  const by = {}; markets.forEach(s => (by[s.label] ||= []).push(s));
-
-  const body = $('#col-body');
-  // Winning Color
-  body.insertAdjacentHTML('beforeend', `<div class="market"><div><strong>WINNING COLOR</strong></div><div id="mc-win"></div></div>`);
-  (by['WINNING COLOR'] || info.picks || []).forEach(p=>{
-    const c=p.color || p.name;
-    const cls = c==='RED'?'red':c==='GREEN'?'green':c==='BLUE'?'blue':'yellow';
-    const el = document.createElement('span'); el.className='pill';
-    el.innerHTML = `<span class="ball ${cls}">${c[0]}</span> @ ${p.price}`;
-    const id = p.id;
-    el.onclick = ()=>{ if(!slip.some(x=>x.selection_id===id)){ slip.push({selection_id:id,label:`COLOR:${c}`,price:p.price}); renderSlip(); } };
-    $('#mc-win').appendChild(el);
-  });
-
-  // Number of Colors
-  body.insertAdjacentHTML('beforeend', `<div class="market"><div><strong>NUMBER OF COLORS</strong></div><div id="mc-num"></div></div>`);
-  (by['NUMBER OF COLORS']||[]).forEach(p=>{
-    const el=document.createElement('span'); el.className='pill';
-    el.textContent = `${p.name} @ ${p.price}`;
-    el.onclick = ()=>{ if(!slip.some(x=>x.selection_id===p.id)){ slip.push({selection_id:p.id,label:`NUM COLORS:${p.name}`,price:p.price}); renderSlip(); } };
-    $('#mc-num').appendChild(el);
-  });
-}
-
-/* ---------- RACES ---------- */
-const RACE_TABS = ['MAIN','FORECAST','QUINELLA','TRICAST'];
-async function loadRaces(type){ // DOG or HORSE
-  const races = await api(`/api/races?type=${type}`);
-  const next = races[0];
-  const box = $('#list');
-  if(!next){ box.textContent='No races yet.'; return; }
-
-  const head = document.createElement('div');
-  head.innerHTML = `
-    <div class="row" style="justify-content:space-between">
-      <h3 style="margin:8px 0">${type==='DOG'?'Dogs':'Horses'} — ${next.track} • R${next.race_no}</h3>
-      <div class="clock" id="race-clock">--:--</div>
-    </div>
-    <div class="tabbar" id="race-tabs"></div>
-    <div id="race-body"></div>`;
-  box.innerHTML=''; box.appendChild(head);
-  const endsAt = new Date(next.start_time).getTime();
-  setInterval(()=>$('#race-clock').textContent=countdownText(endsAt),500);
-
-  const tabs = $('#race-tabs');
-  RACE_TABS.forEach((name,i)=>{
-    const b=document.createElement('span'); b.className='tab'+(i===0?' active':''); b.textContent=name;
-    b.onclick=()=>{ tabs.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); b.classList.add('active'); renderRace(name); };
-    tabs.appendChild(b);
-  });
-  renderRace('MAIN');
-
-  async function renderRace(which){
-    const body = $('#race-body'); body.innerHTML='';
-    const sel = await api(`/api/selections?race_event_id=${next.id}`);
-    const by={}; sel.forEach(s=>(by[s.label] ||= []).push(s));
-
-    function row(label, arr){
-      if(!arr||!arr.length) return;
-      const wrap=document.createElement('div'); wrap.className='market';
-      wrap.innerHTML = `<div><strong>${label}</strong></div><div></div>`;
-      const box=wrap.lastElementChild;
-      arr.forEach(s=>{
-        const p=document.createElement('span'); p.className='pill';
-        p.textContent = `${s.name} @ ${s.price}`;
-        p.onclick=()=>{ if(!slip.some(x=>x.selection_id===s.id)){ slip.push({selection_id:s.id,label:`${label}:${s.name}`,price:s.price}); renderSlip(); } };
-        box.appendChild(p);
-      });
-      body.appendChild(wrap);
-    }
-
-    if (which==='MAIN'){
-      row('WINNER', by['WINNER']); row('PLACE', by['PLACE']); row('SHOW', by['SHOW']);
-    }
-    if (which==='FORECAST'){ row('FORECAST', by['FORECAST']); }
-    if (which==='QUINELLA'){ row('QUINELLA', by['QUINELLA']); }
-    if (which==='TRICAST'){ row('TRICAST', by['TRICAST']); }
-  }
-}
-
-/* ---------- TILE ROUTER ---------- */
-function activateTile(el){
-  document.querySelectorAll('.tile').forEach(t=>t.classList.remove('active'));
-  el.classList.add('active');
-  const kind = el.dataset.kind, code = el.dataset.code;
-  if (kind==='FOOTBALL') loadFootball(code);
-  if (kind==='COLOR') loadColors();
-  if (kind==='RACE') loadRaces(code);
-}
-
-document.getElementById('tiles').addEventListener('click', (e)=>{
-  const t = e.target.closest('.tile'); if(!t) return;
-  activateTile(t);
-});
-
-/* events */
 document.addEventListener('click', e=>{
   if (e.target.id==='place') placeTicket();
   if (e.target.id==='clear') clearSlip();
@@ -378,23 +231,237 @@ document.addEventListener('click', e=>{
   if (e.target.id==='reprint'){
     const id = $('#codeLookup').value.trim();
     if(!id) return;
-    fetch('/api/tickets/'+encodeURIComponent(id)).then(r=>r.json()).then(r=>{
-      if(r.error){ $('#printArea').innerHTML = `<div class="muted">${r.error}</div>`; return; }
+    api('/api/tickets/'+encodeURIComponent(id)).then(t=>{
       $('#printArea').innerHTML = `
         <div class="card" style="background:#fff;color:#111">
-          <h3 style="margin:0 0 6px 0">Mastermind Bet</h3>
-          <div>Ticket: <b>${r.code}</b></div>
-          <div>Stake: KES ${fmt(r.stake_kes)}</div>
-          <div>Potential: KES ${fmt(r.potential_kes)}</div>
-          <hr/>
-          <div><strong>Lines</strong></div>
-          <ul>${r.lines.map(l=>`<li>${l.market} — ${l.pick} @ ${l.price}</li>`).join('')}</ul>
-          <div class="muted">Status: ${r.status}</div>
+          <h3 style="margin:0 0 6px 0">Ticket ${t.code}</h3>
+          <div>Stake: KES ${fmt(t.stake_kes)}</div>
+          <div>Potential: KES ${fmt(t.potential_kes)}</div>
+          <div style="margin-top:8px"><b>Lines</b><ul>${
+            t.lines.map(l=>`<li>${l.market}: ${l.pick} @ ${fmt(l.price)}</li>`).join('')
+          }</ul></div>
         </div>`;
-    });
+    }).catch(()=> $('#printArea').innerHTML = `<div class="muted">Ticket not found.</div>`);
   }
 });
 document.getElementById('stake').addEventListener('input', renderSlip);
+
+/* ---------- LOADERS ---------- */
+function marketMap(rows){
+  // rows: [{label,name,price,id}]
+  const map={}; rows.forEach(r=>{ (map[r.label] ||= {}); map[r.label][r.name] = {price:r.price,id:r.id}; });
+  return map;
+}
+
+async function loadFootball(code){
+  const fx = await api(`/api/fixtures?competition_code=${encodeURIComponent(code)}`);
+  const box = $('#list');
+  if(!fx.length){ box.innerHTML = `<div class="muted">No fixtures yet.</div>`; return; }
+
+  const head = `
+   <thead>
+     <tr>
+       <th>#</th><th style="min-width:220px">Match</th>
+       <th>1</th><th>X</th><th>2</th>
+       <th>1X</th><th>12</th><th>X2</th>
+       <th>GG</th><th>NG</th>
+       <th>OV2.5</th><th>UN2.5</th>
+       <th></th>
+     </tr>
+   </thead>`;
+  const t=document.createElement('table'); t.className='tbl';
+  t.innerHTML = head + '<tbody></tbody>';
+  const tb=t.querySelector('tbody');
+
+  for (const f of fx){
+    const tr=document.createElement('tr');
+    tr.innerHTML = `
+      <td>${f.id}</td>
+      <td><div class="rowhead"><span>${f.home.slice(0,3).toUpperCase()}</span> vs <span>${f.away.slice(0,3).toUpperCase()}</span>
+           <span class="muted">• ${new Date(f.start_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span></div></td>
+      <td></td><td></td><td></td>
+      <td></td><td></td><td></td>
+      <td></td><td></td>
+      <td></td><td></td>
+      <td><button class="arrow" data-expand="${f.id}">▶</button></td>
+    `;
+    tb.appendChild(tr);
+
+    const sel = await api(`/api/selections?fixture_id=${f.id}`);
+    const by = marketMap(sel);
+
+    // MAIN
+    const m12 = by['1X2']||{};
+    tr.children[2].appendChild(btnOdd(get(m12,'Home')?.price||get(m12,'1'), ()=> addPick(m12['Home']?.id||m12['1']?.id, `1X2:${f.home}`, m12['Home']?.price||m12['1']?.price)));
+    tr.children[3].appendChild(btnOdd(get(m12,'Draw')?.price||get(m12,'X'), ()=> addPick(m12['Draw']?.id||m12['X']?.id, `1X2:Draw`, m12['Draw']?.price||m12['X']?.price)));
+    tr.children[4].appendChild(btnOdd(get(m12,'Away')?.price||get(m12,'2'), ()=> addPick(m12['Away']?.id||m12['2']?.id, `1X2:${f.away}`, m12['Away']?.price||m12['2']?.price)));
+
+    const dc = by['Double Chance']||by['DC']||{};
+    tr.children[5].appendChild(btnOdd(get(dc,'1X')?.price, ()=> addPick(dc['1X']?.id, 'DC:1X', dc['1X']?.price)));
+    tr.children[6].appendChild(btnOdd(get(dc,'12')?.price, ()=> addPick(dc['12']?.id, 'DC:12', dc['12']?.price)));
+    tr.children[7].appendChild(btnOdd(get(dc,'X2')?.price, ()=> addPick(dc['X2']?.id, 'DC:X2', dc['X2']?.price)));
+
+    const ggn = by['GG/NG']||{};
+    tr.children[8].appendChild(btnOdd(get(ggn,'GG')?.price, ()=> addPick(ggn['GG']?.id, 'GG/NG:GG', ggn['GG']?.price)));
+    tr.children[9].appendChild(btnOdd(get(ggn,'NG')?.price, ()=> addPick(ggn['NG']?.id, 'GG/NG:NG', ggn['NG']?.price)));
+
+    const ou25 = by['OV/UN 2.5']||by['O/U 2.5']||by['1X2 OV/UN 2.5']||{};
+    tr.children[10].appendChild(btnOdd(get(ou25,'OV2.5')?.price, ()=> addPick(ou25['OV2.5']?.id, 'O/U 2.5:Over', ou25['OV2.5']?.price)));
+    tr.children[11].appendChild(btnOdd(get(ou25,'UN2.5')?.price, ()=> addPick(ou25['UN2.5']?.id, 'O/U 2.5:Under', ou25['UN2.5']?.price)));
+
+    // expandable detail panel (Total Goals + other tabs if they exist)
+    const detail = document.createElement('tr');
+    detail.innerHTML = `<td></td><td colspan="11">
+        <div class="detail" id="det-${f.id}">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+            <span class="pill" data-tab="OU15-${f.id}">OVER/UNDER 1.5</span>
+            <span class="pill" data-tab="HOME-${f.id}">HOME OV/UN</span>
+            <span class="pill" data-tab="AWAY-${f.id}">AWAY OV/UN</span>
+            <span class="pill" data-tab="1X2OU15-${f.id}">1X2 OV/UN 1.5</span>
+            <span class="pill" data-tab="1X2OU25-${f.id}">1X2 OV/UN 2.5</span>
+            <span class="pill" data-tab="TG-${f.id}">TOTAL GOALS</span>
+          </div>
+          <div id="pane-${f.id}"></div>
+        </div>
+      </td><td></td>`;
+    tb.appendChild(detail);
+
+    function renderPane(kind){
+      const out = $('#pane-'+f.id); out.innerHTML='';
+      if (kind==='OU15'){
+        const mk = by['OV/UN 1.5']||by['O/U 1.5']||{};
+        out.appendChild(btnOdd(get(mk,'OV1.5')?.price, ()=> addPick(mk['OV1.5']?.id,'O/U1.5:Over', mk['OV1.5']?.price)));
+        out.appendChild(btnOdd(get(mk,'UN1.5')?.price, ()=> addPick(mk['UN1.5']?.id,'O/U1.5:Under', mk['UN1.5']?.price)));
+      } else if (kind==='HOME'){
+        const mk = by['HOME OV/UN']||{};
+        ['OV0.5','UN0.5','OV1.5','UN1.5','OV2.5','UN2.5'].forEach(k=>{
+          out.appendChild(btnOdd(get(mk,k)?.price, ()=> addPick(mk[k]?.id,'HOME '+k, mk[k]?.price)));
+        });
+      } else if (kind==='AWAY'){
+        const mk = by['AWAY OV/UN']||{};
+        ['OV0.5','UN0.5','OV1.5','UN1.5','OV2.5','UN2.5'].forEach(k=>{
+          out.appendChild(btnOdd(get(mk,k)?.price, ()=> addPick(mk[k]?.id,'AWAY '+k, mk[k]?.price)));
+        });
+      } else if (kind==='1X2OU15'){
+        const mk = by['1X2 OV/UN 1.5']||{};
+        ['1+OV1.5','X+OV1.5','2+OV1.5','1+UN1.5','X+UN1.5','2+UN1.5'].forEach(k=>{
+          out.appendChild(btnOdd(get(mk,k)?.price, ()=> addPick(mk[k]?.id,'1X2OU1.5 '+k, mk[k]?.price)));
+        });
+      } else if (kind==='1X2OU25'){
+        const mk = by['1X2 OV/UN 2.5']||{};
+        ['1+OV2.5','X+OV2.5','2+OV2.5','1+UN2.5','X+UN2.5','2+UN2.5'].forEach(k=>{
+          out.appendChild(btnOdd(get(mk,k)?.price, ()=> addPick(mk[k]?.id,'1X2OU2.5 '+k, mk[k]?.price)));
+        });
+      } else if (kind==='TG'){
+        const mk = by['TOTAL GOALS']||{};
+        ['0','1','2','3','4','5+'].forEach(k=>{
+          out.appendChild(btnOdd(get(mk,k)?.price, ()=> addPick(mk[k]?.id,'Total Goals '+k, mk[k]?.price)));
+        });
+      }
+    }
+    t.addEventListener('click', (e)=>{
+      const btn = e.target.closest('.arrow');
+      if (btn && btn.dataset.expand==f.id){
+        const el = $('#det-'+f.id); el.classList.toggle('show');
+        if (el.classList.contains('show')) renderPane('OU15');
+      }
+      const tab = e.target.closest('.pill');
+      if (tab && tab.dataset.tab.endsWith(String(f.id))){
+        const kind = tab.dataset.tab.split('-')[0];
+        renderPane(kind);
+      }
+    });
+  }
+
+  box.innerHTML = `<h3 style="margin:8px 0">Football • ${code}</h3>`;
+  box.appendChild(t);
+}
+
+async function loadColors(){
+  const data = await api('/virtual/colors');
+  const box = $('#list');
+  if(!data){ box.innerHTML='<div class="muted">No scheduled draw.</div>'; return; }
+  tick($('#color-ctd'), new Date(data.starts_at).getTime());
+
+  const picks = data.picks||[];
+  const colorBall = (name) => {
+    const cls = name==='RED'?'red':name==='GREEN'?'green':name==='BLUE'?'blue':'yellow';
+    return `<span class="ball ${cls}">${name[0]}</span> <span class="ball-label">${name}</span>`;
+  };
+  box.innerHTML = `
+    <h3 style="margin:8px 0">Color Pool — Draw #${data.draw_no}</h3>
+    <div class="card" style="margin-bottom:10px">
+      <b>Winning Color</b>
+      <div style="margin-top:6px" id="win-colors"></div>
+    </div>
+    <div class="card">
+      <b>Number of Colors</b>
+      <div class="muted" style="margin-top:6px">If provided by backend, markets like 0 / 2+ / 3+ / 4+ / 5+ per color will appear here.</div>
+      <div id="num-colors" style="margin-top:6px"></div>
+    </div>
+  `;
+  const win = $('#win-colors');
+  picks.forEach(p=>{
+    const span=document.createElement('span'); span.className='pill';
+    span.innerHTML = `${colorBall(p.color)} @ ${p.price}`;
+    span.onclick=()=> addPick(p.id, `COLOR:${p.color}`, p.price);
+    win.appendChild(span);
+  });
+}
+
+async function loadRaces(type){ // DOG or HORSE
+  const races = await api(`/api/races?type=${type}`);
+  const box = $('#list');
+  if(!races.length){ box.innerHTML='<div class="muted">No races yet.</div>'; return; }
+
+  const soonest = races[0]?.start_time ? new Date(races[0].start_time).getTime() : null;
+  if (soonest) tick(type==='DOG' ? $('#dog-ctd') : $('#horse-ctd'), soonest);
+
+  box.innerHTML = `<h3 style="margin:8px 0">${type==='DOG'?'Dogs':'Horses'} — Upcoming</h3>`;
+  for (const r of races){
+    const wrap=document.createElement('div'); wrap.className='card'; wrap.style.marginBottom='8px';
+    wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center">
+      <div><strong>${r.track}</strong> • R${r.race_no}</div>
+      <div class="muted">${new Date(r.start_time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+      <span class="pill" data-tab="MAIN-${r.id}">MAIN</span>
+      <span class="pill" data-tab="FORECAST-${r.id}">FORECAST</span>
+      <span class="pill" data-tab="QUINELLA-${r.id}">QUINELLA</span>
+      <span class="pill" data-tab="TRICAST-${r.id}">TRICAST</span>
+    </div>
+    <div id="race-${r.id}" style="margin-top:6px"></div>`;
+    box.appendChild(wrap);
+
+    const sel = await api(`/api/selections?race_event_id=${r.id}`);
+    const by = mapBy(sel,'label');
+
+    function draw(group){
+      const pane = $('#race-'+r.id); pane.innerHTML='';
+      (by[group]||[]).forEach(s=>{
+        pane.appendChild(btnOdd(s.price, ()=> addPick(s.id, `${group}:${s.name}`, s.price)));
+      });
+    }
+    draw('MAIN');
+    wrap.addEventListener('click', e=>{
+      const t = e.target.closest('.pill'); if(!t) return;
+      draw(t.dataset.tab.split('-')[0]);
+    });
+  }
+}
+
+/* ---------- TILE ROUTER ---------- */
+function activateTile(el){
+  $$('.tile').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  const kind = el.dataset.kind, code = el.dataset.code;
+  if (kind==='FOOTBALL') loadFootball(code);
+  if (kind==='COLOR') loadColors();
+  if (kind==='RACE') loadRaces(code);
+}
+$('#tiles').addEventListener('click', (e)=>{
+  const t = e.target.closest('.tile'); if(!t) return; activateTile(t);
+});
 
 /* init */
 activateTile(document.querySelector('.tile.active'));
