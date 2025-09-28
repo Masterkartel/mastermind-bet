@@ -11,9 +11,10 @@
     --text:#eaf2ff; --soft:#cfe0ff;
   }
   *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial}
-  header{display:flex;align-items:center;gap:16px;padding:12px 16px;background:linear-gradient(90deg,#1b2436, #0f1523);}
+  header{display:flex;align-items:center;gap:10px;padding:12px 16px;background:linear-gradient(90deg,#1b2436, #0f1523);flex-wrap:wrap}
   .brand{font-weight:800;letter-spacing:.4px}
-  .badge{background:var(--panel-2);padding:6px 10px;border-radius:999px;color:var(--soft);border:1px solid #23304a}
+  .badge{background:var(--panel-2);padding:6px 10px;border-radius:999px;color:var(--soft);border:1px solid #23304a;text-decoration:none}
+  .badge:hover{filter:brightness(1.1)}
   main{display:grid;grid-template-columns: 2fr 1fr; gap:16px; padding:16px}
   .card{background:var(--panel);border:1px solid #1a253b;border-radius:14px;overflow:hidden}
   .card h2{margin:0;padding:10px 12px;background:var(--panel-2);border-bottom:1px solid #1a253b;font-size:14px;letter-spacing:.3px}
@@ -34,12 +35,19 @@
   .info{color:var(--muted);font-size:12px}
   input,select{background:#10192b;border:1px solid #263a60;color:#cfe0ff;border-radius:10px;padding:8px 10px}
   .totals{display:flex;justify-content:space-between;padding:10px 12px;background:#0f1727;border-top:1px solid #1a253b}
+  .spacer{flex:1}
 </style>
 </head>
 <body>
 <header>
   <div class="brand">💥 Mastermind Bet — POS</div>
-  <div class="badge">House Edge On ✅</div>
+  <span class="badge">House Edge On ✅</span>
+  <!-- Quick navigation to all front products -->
+  <a class="badge" href="/pos">Football</a>
+  <a class="badge" href="/dogs">Dogs</a>
+  <a class="badge" href="/horses">Horses</a>
+  <a class="badge" href="/colors">Colors</a>
+  <span class="spacer"></span>
   <a class="badge" href="/virtual">Virtual</a>
   <a class="badge" href="/admin">Admin</a>
   <a class="badge" href="/history">History</a>
@@ -86,9 +94,13 @@ const state = { league: 'EPL', slip: [] };
 
 function fmt(n){ return Number(n).toFixed(2); }
 
+async function get(path){ const r = await fetch(path); if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }
+
 async function loadLimits(){
-  const r = await fetch('/admin/limits'); const j = await r.json();
-  limitsEl.textContent = `Min Stake: ${j.min_stake} • Max Stake: ${j.max_stake} • Max Payout: ${j.max_payout}`;
+  try{
+    const j = await get('/admin/limits');
+    limitsEl.textContent = `Min Stake: ${j.min_stake} • Max Stake: ${j.max_stake} • Max Payout: ${j.max_payout}`;
+  }catch{ limitsEl.textContent=''; }
 }
 function addToSlip(sel){
   if(state.slip.find(s=>s.id===sel.selection_id)) return;
@@ -109,7 +121,10 @@ function renderSlip(){
   estOdds.textContent = fmt(mult);
 }
 async function loadLeagues(){
-  const r = await fetch('/api/competitions'); const j = await r.json();
+  const j = await get('/api/competitions');
+  if(!Array.isArray(j) || j.length===0){
+    leaguesBar.innerHTML = '<span class="badge">No competitions</span>'; return;
+  }
   leaguesBar.innerHTML = j.map(x => 
     `<button class="pill ${x.code===state.league?'active':''}" onclick="changeLeague('${x.code}')">${x.code}</button>`
   ).join('');
@@ -118,31 +133,29 @@ async function changeLeague(code){ state.league = code; await loadFixtures(); aw
 
 async function loadFixtures(){
   fixturesDiv.innerHTML = '<div class="info">Loading…</div>';
-  // fetch fixtures then selections grouped per fixture
-  const fx = await (await fetch(`/api/fixtures?competition_code=${state.league}`)).json();
+  const fx = await get(`/api/fixtures?competition_code=${state.league}`);
+  if(!Array.isArray(fx) || fx.length===0){ fixturesDiv.innerHTML = '<div class="info">No fixtures.</div>'; return; }
   const blocks = [];
   for(const f of fx){
-    const rows = await (await fetch(`/api/selections?fixture_id=${f.id}`)).json();
-    // organize by market label
+    const rows = await get(`/api/selections?fixture_id=${f.id}`);
     const groups = {};
     rows.forEach(r=>{
       const key = r.label;
-      groups[key] = groups[key] || [];
-      groups[key].push(r);
+      (groups[key] ||= []).push(r);
     });
     const mkHtml = Object.keys(groups).map(k=>{
-      const cells = groups[k].map(s=>`<span class="odd" onclick='addToSlip(${JSON.stringify({selection_id:s.id,label:rhtml(k),name:rhtml(s.name),price:s.price})})'>${rhtml(s.name)}<br>${fmt(s.price)}</span>`).join(' ');
-      return `<div class="row"><span class="badge">${rhtml(k)}</span> ${cells}</div>`;
+      const cells = groups[k].map(s=>`<span class="odd" onclick='addToSlip(${JSON.stringify({selection_id:s.id,label:escapeHtml(k),name:escapeHtml(s.name),price:s.price})})'>${escapeHtml(s.name)}<br>${fmt(s.price)}</span>`).join(' ');
+      return `<div class="row"><span class="badge">${escapeHtml(k)}</span> ${cells}</div>`;
     }).join('');
     blocks.push(`
       <div class="card">
-        <h2>${rhtml(f.home)} vs ${rhtml(f.away)} — ${new Date(f.start_time).toLocaleString()}</h2>
-        <div class="shelf">${mkHtml}</div>
+        <h2>${escapeHtml(f.home)} vs ${escapeHtml(f.away)} — ${new Date(f.start_time).toLocaleString()}</h2>
+        <div class="shelf">${mkHtml||'<div class="info">No markets for this fixture.</div>'}</div>
       </div>`);
   }
-  fixturesDiv.innerHTML = blocks.join('') || '<div class="info">No fixtures.</div>';
+  fixturesDiv.innerHTML = blocks.join('');
 }
-function rhtml(s){ return String(s).replace(/[&<>"]/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m])); }
+function escapeHtml(s){ return String(s).replace(/[&<>"]/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m])); }
 
 document.getElementById('clear').onclick = ()=>{ state.slip=[]; renderSlip(); };
 document.getElementById('place').onclick = async ()=>{
@@ -150,11 +163,15 @@ document.getElementById('place').onclick = async ()=>{
   const agent_code = (document.getElementById('agentCode').value||'').trim()||null;
   const items = state.slip.map(x=>({ selection_id:x.id }));
   msg.textContent='…';
-  const res = await fetch('/api/tickets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agent_code,stake,items})});
-  const j = await res.json();
-  if(!res.ok){ msg.textContent = '❌ ' + (j.error||'Failed'); return; }
-  msg.textContent = `✅ Ticket #${j.ticket_id} placed. Payout up to ${j.potential_payout}`;
-  state.slip = []; renderSlip();
+  try{
+    const res = await fetch('/api/tickets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agent_code,stake,items})});
+    const j = await res.json();
+    if(!res.ok) throw new Error(j.error||'Failed');
+    msg.textContent = `✅ Ticket #${j.ticket_id} placed. Payout up to ${j.potential_payout}`;
+    state.slip = []; renderSlip();
+  }catch(e){
+    msg.textContent = '❌ ' + e.message;
+  }
 };
 
 loadLimits().catch(()=>{});
