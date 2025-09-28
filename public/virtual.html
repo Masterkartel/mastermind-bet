@@ -11,7 +11,7 @@
 body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Arial}
 header{position:sticky;top:0;background:#0c1426;border-bottom:1px solid var(--line);padding:12px 16px;z-index:10;display:flex;justify-content:space-between;align-items:center}
 h1{margin:0;font-size:18px}
-.top{display:flex;gap:12px;align-items:center}
+.top{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .badge{background:#0b1528;border:1px solid #243047;border-radius:999px;padding:6px 10px}
 .wrap{display:grid;grid-template-columns:1fr 340px;gap:12px;padding:12px}
 @media(max-width:1024px){.wrap{grid-template-columns:1fr}}
@@ -24,7 +24,8 @@ h1{margin:0;font-size:18px}
 .tile.active{outline:2px solid var(--accent)}
 .ctd{font:600 12px/1 system-ui;color:#c9d3e7}
 .tbl{width:100%;border-collapse:collapse}
-.tbl th,.tbl td{border-bottom:1px solid #223048;padding:6px 8px;font-size:14px;white-space:nowrap}
+.tbl th,.tbl td{border-bottom:1px solid #223048;padding:6px 8px;font-size:14px;white-space:nowrap;text-align:center}
+.tbl th:first-child,.tbl td:first-child{ text-align:left }
 .btn-odd{display:inline-block;min-width:52px;text-align:center;background:#0b1528;border:1px solid #334155;border-radius:8px;padding:6px 8px;margin:2px;cursor:pointer}
 .btn-odd:hover{outline:2px solid var(--accent)}
 .pill{display:inline-block;padding:6px 10px;border:1px solid #334155;border-radius:10px;margin:2px 4px;cursor:pointer;background:#0b1528}
@@ -35,6 +36,7 @@ h1{margin:0;font-size:18px}
 .ball.green{background:radial-gradient(circle at 30% 25%, #79ffb5, #10b981 55%, #0a5e46)}
 .ball.blue{background:radial-gradient(circle at 30% 25%, #8ac7ff, #2563eb 55%, #163986)}
 .ball.yellow{background:radial-gradient(circle at 30% 25%, #ffe99a, #f59e0b 55%, #7a4e02)}
+.mini{font-size:12px;color:#9fb0c8}
 </style>
 </head>
 <body>
@@ -42,6 +44,7 @@ h1{margin:0;font-size:18px}
   <div class="top">
     <h1>Mastermind Virtuals</h1>
     <span class="badge">Jackpot: <b id="jp">1,268.00</b> KSh</span>
+    <span class="badge">Nairobi: <b id="nrb-now">--:--:--</b></span>
   </div>
   <div class="top">
     <span class="badge">Balance: <b id="bal">0.00</b> KSh</span>
@@ -68,182 +71,241 @@ h1{margin:0;font-size:18px}
     <div style="display:flex;justify-content:space-between;align-items:center">
       <strong>Fastbet</strong><button id="refresh" class="tile" style="padding:6px 10px">Refresh</button>
     </div>
-    <div id="tickets" style="margin-top:8px;font-size:12px;color:#9fb0c8">Your quick slips will appear here.</div>
+    <div id="tickets" class="mini" style="margin-top:8px">Your quick slips will appear here.</div>
   </div>
 </div>
 
 <script>
 (function(){
-  /* helpers */
-  var $=q=>document.querySelector(q), $$=q=>Array.from(document.querySelectorAll(q));
-  function api(u){ return fetch(u).then(r=>r.json()); }
-  function btnOdd(o,cb){ var b=document.createElement('span'); b.className='btn-odd'; b.textContent=(+o===+o?Number(o).toFixed(2):'-'); b.onclick=cb; return b; }
-  function tick(el, end){ function f(){ var ms=Math.max(0,end-Date.now()); var s=Math.floor(ms/1000), m=Math.floor(s/60), ss=String(s%60).padStart(2,'0'); el.textContent=m+':'+ss; if(ms>0) requestAnimationFrame(f);} f(); }
+  /* ===== Helpers ===== */
+  const TZ = 'Africa/Nairobi';
+  const $ = q => document.querySelector(q), $$ = q => Array.from(document.querySelectorAll(q));
+  const api = u => fetch(u).then(r => r.json());
+  const fmt2 = n => String(n).padStart(2,'0');
 
-  /* top */
-  (function topBar(){
-    var p=new URL(location.href).searchParams;
-    var bal=p.get('balance'); if(bal) $('#bal').textContent = Number(bal).toFixed(2);
-    var jp=1268.0; setInterval(()=>{ jp=Math.round((jp+Math.random()*0.7)*100)/100; $('#jp').textContent=jp.toLocaleString(); }, 4500);
+  // generic countdown (mm:ss)
+  function setCountdown(el, endsAtMs){
+    function draw(){
+      const remain = Math.max(0, endsAtMs - Date.now());
+      const s = Math.floor(remain/1000); const m = Math.floor(s/60);
+      el.textContent = `${m}:${fmt2(s%60)}`;
+      if(remain>0) requestAnimationFrame(draw);
+    }
+    draw();
+  }
+
+  // Nairobi clock in header
+  (function clock(){
+    function tick(){
+      const now = new Date();
+      $('#nrb-now').textContent = now.toLocaleTimeString('en-KE', { timeZone: TZ, hour12:false });
+    }
+    tick(); setInterval(tick, 1000);
   })();
 
-  /* tile countdowns */
+  // Top badges: balance + jackpot grow
+  (function topBar(){
+    const p = new URL(location.href).searchParams;
+    const bal = p.get('balance'); if (bal) $('#bal').textContent = Number(bal).toFixed(2);
+    let jp = 1268.0;
+    setInterval(()=>{ jp = Math.round((jp + Math.random()*0.7)*100)/100; $('#jp').textContent = jp.toLocaleString(); }, 4500);
+  })();
+
+  /* ===== Tile countdowns / global next ===== */
   async function refreshCTD(){
     try{
-      var st=await api('/virtual/state');
-      (st.leagues||[]).forEach(function(le){
-        var el=document.querySelector('[data-count="'+le.code+'"]'); if(!el) return;
-        tick(el, new Date(le.endsAt).getTime());
-        $('#global-ctd').textContent = el.textContent;
+      const st = await api('/virtual/state');
+      let soonest = null;
+      (st.leagues||[]).forEach(le=>{
+        const el = document.querySelector('[data-count="'+le.code+'"]');
+        if(!el) return;
+        const ends = Number(le.endsAt);
+        setCountdown(el, ends);
+        if(!soonest || ends < soonest) soonest = ends;
       });
+      if(soonest) setCountdown($('#global-ctd'), soonest);
     }catch{}
-    try{ var c=await api('/virtual/colors'); if(c){ tick($('#ctd-color'), new Date(c.starts_at).getTime()); } }catch{}
+
+    try{
+      const c = await api('/virtual/colors');
+      if(c){
+        const t = new Date(c.starts_at).getTime();
+        setCountdown($('#ctd-color'), t);
+      }
+    }catch{}
   }
   refreshCTD(); setInterval(refreshCTD, 10000);
 
-  /* FOOTBALL (league table view with all markets visible like the screenshot) */
+  /* ===== FOOTBALL: league table like your screenshots ===== */
   async function showLeague(code){
-    var box=$('#content'); box.innerHTML='';
-    var data = await api('/virtual/league/'+encodeURIComponent(code));
-    var fx = data.fixtures||[]; if(!fx.length){ box.textContent='No fixtures yet.'; return; }
+    const box = $('#content'); box.innerHTML = '';
+    const data = await api('/virtual/league/'+encodeURIComponent(code));
+    const fx = data.fixtures||[];
+    if(!fx.length){ box.textContent='No fixtures yet.'; return; }
 
-    var t=document.createElement('table'); t.className='tbl';
-    t.innerHTML='<thead><tr>\
-      <th>#</th><th>Match</th>\
-      <th>1</th><th>X</th><th>2</th>\
-      <th>1X</th><th>12</th><th>X2</th>\
-      <th>GG</th><th>NG</th>\
-      <th>OV2.5</th><th>UN2.5</th>\
-      <th>OU1.5</th><th>U1.5</th>\
-      </tr></thead><tbody></tbody>';
-    var tb=t.querySelector('tbody');
+    const t = document.createElement('table'); t.className='tbl';
+    t.innerHTML = `
+      <thead><tr>
+        <th>#</th><th>Match</th>
+        <th>1</th><th>X</th><th>2</th>
+        <th>1X</th><th>12</th><th>X2</th>
+        <th>GG</th><th>NG</th>
+        <th>OV2.5</th><th>UN2.5</th>
+        <th>OV1.5</th><th>UN1.5</th>
+      </tr></thead><tbody></tbody>`;
+    const tb = t.querySelector('tbody');
 
-    fx.forEach(function(f,i){
-      var mk=f.markets||{}, m12=mk['1X2']||{}, dc=mk['Double Chance']||mk['DC']||{}, ggn=mk['GG/NG']||{}, ou25=mk['OV/UN 2.5']||mk['O/U 2.5']||{};
-      var tr=document.createElement('tr');
-      tr.innerHTML='<td>'+(i+1)+'</td><td>'+f.home.slice(0,3).toUpperCase()+' vs '+f.away.slice(0,3).toUpperCase()+'</td>'
-        +'<td></td><td></td><td></td>'
-        +'<td></td><td></td><td></td>'
-        +'<td></td><td></td>'
-        +'<td></td><td></td>'
-        +'<td></td><td></td>';
+    fx.forEach((f,i)=>{
+      const mk=f.markets||{};
+      const m12 = mk['1X2']||{};
+      const dc  = mk['Double Chance']||mk['DC']||{};
+      const ggn = mk['GG/NG']||mk['BTS']||{};
+      const ou25= mk['OV/UN 2.5']||mk['OVER/UNDER 2.5']||mk['O/U 2.5']||{};
+      const ou15= mk['OV/UN 1.5']||mk['OVER/UNDER 1.5']||mk['O/U 1.5']||{};
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${i+1}</td>
+        <td style="text-align:left">
+          ${f.home.slice(0,3).toUpperCase()} vs ${f.away.slice(0,3).toUpperCase()}
+          <div class="mini">${new Date(f.kickoff).toLocaleTimeString('en-KE',{timeZone:TZ,hour:'2-digit',minute:'2-digit',hour12:false})} Nairobi</div>
+        </td>
+        <td></td><td></td><td></td>
+        <td></td><td></td><td></td>
+        <td></td><td></td>
+        <td></td><td></td>
+        <td></td><td></td>`;
       tb.appendChild(tr);
 
-      tr.children[2].appendChild(btnOdd(m12['Home']||m12['1'], ()=>{}));
-      tr.children[3].appendChild(btnOdd(m12['Draw']||m12['X'], ()=>{}));
-      tr.children[4].appendChild(btnOdd(m12['Away']||m12['2'], ()=>{}));
+      function add(cellIdx, price){
+        const td = tr.children[cellIdx];
+        const span = document.createElement('span'); span.className='btn-odd';
+        span.textContent = price ? Number(price).toFixed(2) : '-';
+        td.appendChild(span);
+      }
+      add(2, m12['Home']||m12['1']);
+      add(3, m12['Draw']||m12['X']);
+      add(4, m12['Away']||m12['2']);
+      add(5, dc['1X']); add(6, dc['12']); add(7, dc['X2']);
+      add(8, ggn['GG']||ggn['YES']); add(9, ggn['NG']||ggn['NO']);
+      add(10, ou25['OV2.5']||ou25['OVER 2.5']); add(11, ou25['UN2.5']||ou25['UNDER 2.5']);
+      add(12, ou15['OV1.5']||ou15['OVER 1.5']); add(13, ou15['UN1.5']||ou15['UNDER 1.5']);
 
-      tr.children[5].appendChild(btnOdd(dc['1X'], ()=>{}));
-      tr.children[6].appendChild(btnOdd(dc['12'], ()=>{}));
-      tr.children[7].appendChild(btnOdd(dc['X2'], ()=>{}));
-
-      tr.children[8].appendChild(btnOdd(ggn['GG'], ()=>{}));
-      tr.children[9].appendChild(btnOdd(ggn['NG'], ()=>{}));
-
-      tr.children[10].appendChild(btnOdd(ou25['OV2.5'], ()=>{}));
-      tr.children[11].appendChild(btnOdd(ou25['UN2.5'], ()=>{}));
-
-      var ou15 = mk['OV/UN 1.5']||mk['O/U 1.5']||{};
-      tr.children[12].appendChild(btnOdd(ou15['OV1.5'], ()=>{}));
-      tr.children[13].appendChild(btnOdd(ou15['UN1.5'], ()=>{}));
-
-      // per-row expand button for deeper markets
-      var exp=document.createElement('tr');
-      exp.innerHTML='<td></td><td colspan="12">\
-        <div class="section" style="display:flex;gap:8px;flex-wrap:wrap">\
-          <span class="pill" data-k="HOME">HOME OV/UN</span>\
-          <span class="pill" data-k="AWAY">AWAY OV/UN</span>\
-          <span class="pill" data-k="1X2OU15">1X2 OV/UN 1.5</span>\
-          <span class="pill" data-k="1X2OU25">1X2 OV/UN 2.5</span>\
-          <span class="pill" data-k="TG">TOTAL GOALS</span>\
-        </div>\
-        <div class="section" id="pane-'+f.id+'"></div>\
-      </td><td></td>';
+      // expandable sub-markets like the right screenshot (HOME/AWAY O/U, 1X2+O/U, TOTAL GOALS)
+      const exp = document.createElement('tr');
+      exp.innerHTML = `
+        <td></td>
+        <td colspan="12">
+          <div class="section" style="display:flex;gap:8px;flex-wrap:wrap">
+            <span class="pill" data-k="HOME">HOME OV/UN</span>
+            <span class="pill" data-k="AWAY">AWAY OV/UN</span>
+            <span class="pill" data-k="1X2OU15">1X2 OV/UN 1.5</span>
+            <span class="pill" data-k="1X2OU25">1X2 OV/UN 2.5</span>
+            <span class="pill" data-k="TG">TOTAL GOALS</span>
+          </div>
+          <div class="section" id="pane-${f.id}"></div>
+        </td>
+        <td></td>`;
       tb.appendChild(exp);
 
       function pane(kind){
-        var p=$('#pane-'+f.id); p.innerHTML='';
+        const p = $('#pane-'+f.id); p.innerHTML='';
         if(kind==='HOME'){
-          var mkh=mk['HOME OV/UN']||{};
-          ['OV0.5','UN0.5','OV1.5','UN1.5','OV2.5','UN2.5'].forEach(k=> p.appendChild(btnOdd(mkh[k],()=>{})));
+          const H = mk['HOME OV/UN']||{};
+          ['OV0.5','UN0.5','OV1.5','UN1.5','OV2.5','UN2.5'].forEach(k=> p.appendChild(btn(H[k])));
         } else if(kind==='AWAY'){
-          var mka=mk['AWAY OV/UN']||{};
-          ['OV0.5','UN0.5','OV1.5','UN1.5','OV2.5','UN2.5'].forEach(k=> p.appendChild(btnOdd(mka[k],()=>{})));
+          const A = mk['AWAY OV/UN']||{};
+          ['OV0.5','UN0.5','OV1.5','UN1.5','OV2.5','UN2.5'].forEach(k=> p.appendChild(btn(A[k])));
         } else if(kind==='1X2OU15'){
-          var mkc=mk['1X2 OV/UN 1.5']||{};
-          ['1+OV1.5','X+OV1.5','2+OV1.5','1+UN1.5','X+UN1.5','2+UN1.5'].forEach(k=> p.appendChild(btnOdd(mkc[k],()=>{})));
+          const C = mk['1X2 OV/UN 1.5']||{};
+          ['1+OV1.5','X+OV1.5','2+OV1.5','1+UN1.5','X+UN1.5','2+UN1.5'].forEach(k=> p.appendChild(btn(C[k])));
         } else if(kind==='1X2OU25'){
-          var mkd=mk['1X2 OV/UN 2.5']||{};
-          ['1+OV2.5','X+OV2.5','2+OV2.5','1+UN2.5','X+UN2.5','2+UN2.5'].forEach(k=> p.appendChild(btnOdd(mkd[k],()=>{})));
+          const D = mk['1X2 OV/UN 2.5']||{};
+          ['1+OV2.5','X+OV2.5','2+OV2.5','1+UN2.5','X+UN2.5','2+UN2.5'].forEach(k=> p.appendChild(btn(D[k])));
         } else if(kind==='TG'){
-          var mke=mk['TOTAL GOALS']||{};
-          ['0','1','2','3','4','5+'].forEach(k=> p.appendChild(btnOdd(mke[k],()=>{})));
+          const G = mk['TOTAL GOALS']||{};
+          ['0','1','2','3','4','5+'].forEach(k=> p.appendChild(btn(G[k])));
         }
       }
-      exp.addEventListener('click', e=>{
-        var t=e.target.closest('.pill'); if(!t) return;
-        pane(t.dataset.k);
-      });
+      function btn(v){ const s=document.createElement('span'); s.className='btn-odd'; s.textContent=(+v===+v)?Number(v).toFixed(2):'-'; return s; }
+      exp.addEventListener('click', e=>{ const t=e.target.closest('.pill'); if(!t) return; pane(t.dataset.k); });
     });
 
     box.appendChild(t);
   }
 
-  /* COLOR */
+  /* ===== COLOR (Winning Color + countdown using Nairobi time) ===== */
   async function showColor(){
-    var box=$('#content'); box.innerHTML='';
-    var data=await api('/virtual/colors'); if(!data){ box.textContent='No scheduled draw.'; return; }
-    tick($('#ctd-color'), new Date(data.starts_at).getTime());
+    const box = $('#content'); box.innerHTML='';
+    const data = await api('/virtual/colors'); if(!data){ box.textContent='No scheduled draw.'; return; }
+    const startMs = new Date(data.starts_at).getTime();
+    setCountdown($('#ctd-color'), startMs);
 
-    var picks=data.picks||[];
-    var sec=document.createElement('div'); sec.className='panel';
-    sec.innerHTML='<div><b>Winning Color</b></div><div id="win" class="section"></div><div class="section"><b>Number of Colors</b><div class="muted">Shown when backend provides this market.</div><div id="noc" class="section"></div></div>';
+    const sec = document.createElement('div'); sec.className='panel';
+    sec.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><b>Winning Color</b></div>
+        <div class="mini">Next draw: ${new Date(startMs).toLocaleTimeString('en-KE',{timeZone:TZ,hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})} Nairobi</div>
+      </div>
+      <div id="win" class="section"></div>`;
     box.appendChild(sec);
 
-    var win=$('#win');
-    function ball(c){ var cls=c==='RED'?'red':c==='GREEN'?'green':c==='BLUE'?'blue':'yellow'; return '<span class="ball '+cls+'">●</span> '+c; }
-    picks.forEach(p=>{ var s=document.createElement('span'); s.className='pill'; s.innerHTML=ball(p.color)+' @ '+p.price; win.appendChild(s); });
+    const win = $('#win');
+    function ball(c){ const cls=c==='RED'?'red':c==='GREEN'?'green':c==='BLUE'?'blue':'yellow'; return `<span class="ball ${cls}">●</span> ${c}`; }
+    (data.picks||[]).forEach(p=>{
+      const s=document.createElement('span'); s.className='pill'; s.innerHTML=ball(p.color)+' @ '+Number(p.price).toFixed(2); win.appendChild(s);
+    });
   }
 
-  /* RACES */
+  /* ===== RACES ===== */
   async function showRaces(type){
-    var box=$('#content'); box.innerHTML='';
-    var races=await api('/api/races?type='+encodeURIComponent(type));
+    const box = $('#content'); box.innerHTML='';
+    const races = await api('/api/races?type='+encodeURIComponent(type));
     if(!races.length){ box.textContent='No races yet.'; return; }
-    var soon=races[0]?.start_time ? new Date(races[0].start_time).getTime() : null;
-    if(soon) tick(type==='DOG' ? $('#ctd-dog') : $('#ctd-horse'), soon);
+
+    const soon = races[0]?.start_time ? new Date(races[0].start_time).getTime() : null;
+    if(soon) setCountdown(type==='DOG' ? $('#ctd-dog') : $('#ctd-horse'), soon);
 
     for (const r of races){
-      var wrap=document.createElement('div'); wrap.className='panel'; wrap.style.marginBottom='8px';
-      wrap.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><b>'+r.track+'</b><span class="badge">'+new Date(r.start_time).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})+'</span></div>\
-      <div class="section"><span class="pill" data-k="MAIN">MAIN</span><span class="pill" data-k="FORECAST">FORECAST</span><span class="pill" data-k="QUINELLA">QUINELLA</span><span class="pill" data-k="TRICAST">TRICAST</span></div>\
-      <div class="section" id="race-'+r.id+'"></div>';
+      const wrap=document.createElement('div'); wrap.className='panel'; wrap.style.marginBottom='8px';
+      wrap.innerHTML=`
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <b>${r.track} • R${r.race_no}</b>
+          <span class="badge">${new Date(r.start_time).toLocaleTimeString('en-KE',{timeZone:TZ,hour:"2-digit",minute:"2-digit",hour12:false})} Nairobi</span>
+        </div>
+        <div class="section">
+          <span class="pill" data-k="MAIN">MAIN</span>
+          <span class="pill" data-k="FORECAST">FORECAST</span>
+          <span class="pill" data-k="QUINELLA">QUINELLA</span>
+          <span class="pill" data-k="TRICAST">TRICAST</span>
+        </div>
+        <div class="section" id="race-${r.id}"></div>`;
       box.appendChild(wrap);
 
       const sel = await api('/api/selections?race_event_id='+r.id);
       const by={}; sel.forEach(s=>{ (by[s.label] ||= []).push(s); });
       function draw(group){
-        var pane=$('#race-'+r.id); pane.innerHTML='';
-        (by[group]||[]).forEach(s=> pane.appendChild(btnOdd(s.price, ()=>{})));
+        const pane=$('#race-'+r.id); pane.innerHTML='';
+        (by[group]||[]).forEach(s=>{
+          const b=document.createElement('span'); b.className='btn-odd'; b.textContent=Number(s.price).toFixed(2); pane.appendChild(b);
+        });
       }
       draw('MAIN');
-      wrap.addEventListener('click', e=>{
-        var t=e.target.closest('.pill'); if(!t) return;
-        draw(t.dataset.k);
-      });
+      wrap.addEventListener('click', e=>{ const t=e.target.closest('.pill'); if(!t) return; draw(t.dataset.k); });
     }
   }
 
-  /* router */
+  /* ===== Router ===== */
   function activate(el){
     $$('.tile').forEach(x=>x.classList.remove('active')); el.classList.add('active');
-    var kind=el.getAttribute('data-kind'), code=el.getAttribute('data-code');
+    const kind=el.getAttribute('data-kind'), code=el.getAttribute('data-code');
     if(kind==='FOOTBALL') showLeague(code);
     if(kind==='COLOR') showColor();
     if(kind==='RACE') showRaces(code);
   }
-  $('#tiles').addEventListener('click', e=>{ var t=e.target.closest('.tile'); if(!t) return; activate(t); });
+  $('#tiles').addEventListener('click', e=>{ const t=e.target.closest('.tile'); if(!t) return; activate(t); });
 
+  // initial
   activate(document.querySelector('.tile.active'));
 })();
 </script>
