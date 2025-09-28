@@ -1,153 +1,245 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Colors — Mastermind Bet</title>
-<link rel="icon" href="data:," />
+<link rel="icon" href="data:,">
 <style>
   :root{
-    --bg:#0b0f17; --panel:#121826; --panel-2:#192235; --accent:#ffb703; --muted:#8aa0c7; --text:#eaf2ff; --ok:#06d6a0;
+    --bg:#0a0f18; --felt:#102233; --panel:#0f1727; --panel-2:#17233b; --line:#1e3053;
+    --text:#e9f2ff; --muted:#9ab3da; --accent:#ffb703; --green:#12d28a; --red:#ef476f;
   }
-  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial}
-  header{display:flex;align-items:center;gap:8px;padding:12px 16px;background:linear-gradient(90deg,#1b2436, #0f1523);}
-  a{color:#cfe0ff;text-decoration:none;background:#18233a;border:1px solid #243353;padding:6px 10px;border-radius:999px}
-  .brand{font-weight:800}
-  .wrap{display:grid;grid-template-columns:2fr 1fr;gap:16px;padding:16px}
-  .card{background:var(--panel);border:1px solid #1a253b;border-radius:14px;overflow:hidden}
-  .card h2{margin:0;padding:10px 12px;background:var(--panel-2);border-bottom:1px solid #1a253b;font-size:14px}
-  .shelf{padding:12px;display:flex;flex-direction:column;gap:10px}
-  .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-  .badge{display:inline-block;background:#223356;border:1px solid #2a416b;padding:4px 8px;border-radius:8px;margin-right:6px}
-  .odd{display:inline-block;min-width:64px;text-align:center;padding:6px 8px;border-radius:8px;background:#0e1626;border:1px solid #213150;cursor:pointer}
-  .odd.pick{background:var(--ok);border-color:#10a57f;color:#08231d;font-weight:700}
-  input{background:#10192b;border:1px solid #263a60;color:#cfe0ff;border-radius:10px;padding:8px 10px}
-  .btn{background:var(--accent);border:0;padding:10px 14px;border-radius:10px;font-weight:700;cursor:pointer}
-  .btn.secondary{background:#223356;color:#cfe0ff;border:1px solid #2a416b}
-  .totals{display:flex;justify-content:space-between;padding:10px 12px;background:#0f1727;border-top:1px solid #1a253b}
-  .info{color:var(--muted);font-size:12px}
-  .count{font-weight:700}
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1400px 700px at 20% -10%,#162846 0%,#0b1423 60%), var(--bg);
+       color:var(--text);font:14px/1.35 system-ui,Segoe UI,Roboto,Helvetica,Arial}
+  a{color:inherit;text-decoration:none}
+  header{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #0d1530;
+         background:linear-gradient(180deg,#0e1830,#0a1327)}
+  .brand{font-weight:800;letter-spacing:.5px}
+  .nav{display:flex;gap:8px;flex-wrap:wrap;margin-left:8px}
+  .pill{background:#101a2f;border:1px solid #243a63;color:#cfe0ff;padding:7px 10px;border-radius:999px}
+  .pill:hover{filter:brightness(1.1)}
+  .spacer{flex:1}
+  .clock{font-variant-numeric:tabular-nums;color:var(--muted)}
+
+  /* header glossy balls */
+  .header-balls{display:flex;gap:10px;margin-left:6px}
+  .mini-ball{width:18px;height:18px;border-radius:50%;position:relative;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.1), 0 4px 8px rgba(0,0,0,.6)}
+  .mini-ball.red{background:radial-gradient(circle at 30% 30%,#ff7a7a,#a40013 60%,#68000a)}
+  .mini-ball.blue{background:radial-gradient(circle at 30% 30%,#7ab4ff,#0a46c0 60%,#052565)}
+  .mini-ball.green{background:radial-gradient(circle at 30% 30%,#8ef0b2,#0a8e55 60%,#055132)}
+  .mini-ball.yellow{background:radial-gradient(circle at 30% 30%,#fff3a3,#e0a000 60%,#8a5f00)}
+  .mini-ball.purple{background:radial-gradient(circle at 30% 30%,#d6a8ff,#6a25c7 60%,#3e0c7e)}
+  .mini-ball.orange{background:radial-gradient(circle at 30% 30%,#ffc28a,#d66a00 60%,#7c3600)}
+
+  main{display:grid;grid-template-columns:1.6fr .9fr;gap:16px;padding:16px}
+  .card{background:linear-gradient(180deg,#0f1a33,#0c1428); border:1px solid var(--line);
+        border-radius:14px;overflow:hidden}
+  .head{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--panel-2);border-bottom:1px solid var(--line)}
+  .head h2{margin:0;font-size:14px;letter-spacing:.3px}
+  .sub{display:flex;gap:8px;align-items:center}
+  .btn{background:var(--accent);border:0;border-radius:10px;padding:8px 12px;font-weight:700;color:#111;cursor:pointer}
+  .btn.secondary{background:#1a2a48;color:#cfe0ff;border:1px solid #2a416b}
+  .wrap{padding:12px}
+
+  .cluster{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px}
+  .tag{font-size:12px;color:#cfe0ff;background:#12203a;border:1px solid #1e345a;border-radius:8px;padding:6px 10px}
+
+  /* glossy pool balls (big) */
+  .ball{width:64px;height:64px;border-radius:50%;position:relative;display:flex;align-items:center;justify-content:center;
+        text-transform:uppercase;font-weight:900;letter-spacing:.5px;color:white;user-select:none;cursor:pointer}
+  .ball:after{content:'';position:absolute;inset:-2px;border-radius:50%;
+    box-shadow:inset 0 6px 18px rgba(255,255,255,.25), inset 0 -8px 18px rgba(0,0,0,.55), 0 15px 30px rgba(0,0,0,.6)}
+  .ball .cap{position:absolute;top:4px;left:6px;width:24px;height:18px;border-radius:50%;
+    background:radial-gradient(circle at 30% 30%, rgba(255,255,255,.95), rgba(255,255,255,.15) 65%, transparent 70%)}
+  .ball .label{position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);font-weight:700;
+    font-size:12px;color:#d8e6ff}
+  .ball .odd{position:absolute;bottom:-34px;left:50%;transform:translateX(-50%);
+    background:#0f1a2f;border:1px solid #27406d;padding:3px 8px;border-radius:999px;font-size:12px}
+  .ball.pick{outline:3px solid var(--green)}
+  /* color palettes */
+  .red{background:radial-gradient(circle at 30% 30%,#ff8fa0,#c9184a 60%,#6a0016)}
+  .blue{background:radial-gradient(circle at 30% 30%,#9bd0ff,#0d47c7 60%,#072b76)}
+  .green{background:radial-gradient(circle at 30% 30%,#9bf3c6,#0f9d58 60%,#075f36)}
+  .yellow{background:radial-gradient(circle at 30% 30%,#fff2a1,#f2a900 60%,#8a5e00)}
+  .purple{background:radial-gradient(circle at 30% 30%,#e6c3ff,#7e33d6 60%,#471388)}
+  .orange{background:radial-gradient(circle at 30% 30%,#ffd2a1,#e67300 60%,#8b3e00)}
+  .black{background:radial-gradient(circle at 30% 30%,#5a5a5a,#101010 60%,#000)}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:26px}
+  .hint{color:var(--muted);font-size:12px}
+
+  /* slip */
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0}
+  input{background:#0f192b;border:1px solid #2a416b;color:#e6f0ff;border-radius:10px;padding:8px 10px}
+  .totals{display:flex;justify-content:space-between;align-items:center;margin-top:6px;padding:10px;border-top:1px solid var(--line);background:#0e1830}
+  .slipline{display:flex;gap:6px;align-items:center;background:#0f1a31;border:1px solid #243a63;border-radius:10px;padding:8px}
+  .x{cursor:pointer;color:#ff9b9b}
 </style>
 </head>
 <body>
 <header>
-  <div class="brand">🎨 Colors — Mastermind Bet</div>
-  <a href="/pos">POS</a><a href="/dogs">Dogs</a><a href="/horses">Horses</a><a href="/admin">Admin</a><a href="/history">History</a>
+  <div class="brand">🎱 Colors — Mastermind Bet</div>
+  <div class="header-balls">
+    <div class="mini-ball red"></div>
+    <div class="mini-ball blue"></div>
+    <div class="mini-ball green"></div>
+    <div class="mini-ball yellow"></div>
+    <div class="mini-ball purple"></div>
+    <div class="mini-ball orange"></div>
+  </div>
+  <nav class="nav">
+    <a class="pill" href="/pos">POS</a>
+    <a class="pill" href="/dogs">Dogs</a>
+    <a class="pill" href="/horses">Horses</a>
+    <a class="pill" href="/colors">Colors</a>
+    <a class="pill" href="/admin">Admin</a>
+    <a class="pill" href="/history">History</a>
+  </nav>
+  <div class="spacer"></div>
+  <div class="clock" id="clock">--:--</div>
 </header>
 
-<div class="wrap">
+<main>
   <section class="card">
-    <h2>Next Draw</h2>
-    <div class="shelf" id="drawBox">
-      <div class="info">Loading…</div>
+    <div class="head">
+      <h2>Next Draw</h2>
+      <div class="spacer"></div>
+      <div class="sub">
+        <span class="tag" id="drawNo">Draw #—</span>
+        <span class="tag">Starts <span id="startLocal">--:--</span></span>
+        <span class="tag" id="cd">⏱ 00:00</span>
+      </div>
+    </div>
+    <div class="wrap">
+      <div class="cluster"><span class="tag">WINNING COLOR</span></div>
+      <div class="grid" id="colorsGrid"></div>
+      <div class="cluster" style="margin-top:18px"><span class="tag">NUMBER OF COLORS</span></div>
+      <div class="grid" id="countGrid"></div>
+      <div class="hint" style="margin-top:10px">Tap a glossy ball to add to betslip. Odds shown under each ball.</div>
     </div>
   </section>
 
   <section class="card">
-    <h2>Betslip</h2>
-    <div class="shelf">
-      <div class="row">
-        <label>Agent Code</label><input id="agentCode" placeholder="(optional)">
-      </div>
+    <div class="head"><h2>Betslip</h2></div>
+    <div class="wrap">
+      <div class="row"><label>Agent Code</label><input id="agent" placeholder="optional e.g. AG001"></div>
       <div id="slip"></div>
-      <div class="row">
-        <label>Stake</label><input id="stake" type="number" min="20" value="50">
+      <div class="row"><label>Stake</label><input id="stake" type="number" min="20" value="50">
         <button class="btn" id="place">Place Bet</button>
         <button class="btn secondary" id="clear">Clear</button>
       </div>
-      <div class="totals"><div>Lines: <span id="lineCount">0</span></div><div>Est. Odds: <span id="estOdds">1.00</span></div></div>
-      <div class="info" id="msg"></div>
+      <div class="totals"><div>Lines: <b id="lineCount">0</b></div><div>Est. Odds: <b id="estOdds">1.00</b></div></div>
+      <div class="hint" id="msg"></div>
     </div>
   </section>
-</div>
+</main>
 
 <script>
-const box = document.getElementById('drawBox');
-const slipDiv = document.getElementById('slip');
-const lineCount = document.getElementById('lineCount');
-const estOdds = document.getElementById('estOdds');
-const msg = document.getElementById('msg');
-const state = { slip: [], draw_id: null };
+const $ = s=>document.querySelector(s);
+const colorsGrid = $('#colorsGrid');
+const countGrid  = $('#countGrid');
+const drawNo = $('#drawNo');
+const startLocal = $('#startLocal');
+const cd = $('#cd');
+const msg = $('#msg');
 
-function fmt(n){ return Number(n).toFixed(2); }
-function rhtml(s){ return String(s).replace(/[&<>"]/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m])); }
+const state = { picks:[], startsAt: null };
 
-function addToSlip(x){
-  if(state.slip.find(s=>s.id===x.id)) return;
-  state.slip.push(x); renderSlip();
+function tickClock(){
+  const d = new Date();
+  $('#clock').textContent = new Intl.DateTimeFormat(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(d);
 }
-function removeFromSlip(id){ state.slip = state.slip.filter(s=>s.id!==id); renderSlip(); }
+setInterval(tickClock,1000); tickClock();
+
+function ballHtml({id, label, price, color, text}) {
+  return `
+    <div class="ball ${color}" onclick='addPick(${JSON.stringify({id, label, price})})' title="${label} @ ${price}">
+      <div class="cap"></div>
+      <div style="z-index:1;font-size:22px">${text}</div>
+      <div class="label">${label}</div>
+      <div class="odd">@ ${Number(price).toFixed(2)}</div>
+    </div>`;
+}
+
 function renderSlip(){
-  slipDiv.innerHTML = state.slip.map(s =>
-    `<div class="row"><span class="badge">${rhtml(s.market)}</span>
-     <strong>${rhtml(s.pick)}</strong> <span class="badge">@ ${fmt(s.price)}</span>
-     <button class="btn secondary" onclick="removeFromSlip(${s.id})">x</button></div>`
-  ).join('') || '<div class="info">No selections yet.</div>';
-  lineCount.textContent = state.slip.length;
-  estOdds.textContent = fmt(state.slip.reduce((a,b)=>a*b.price,1)||1);
-}
-
-function countdown(ts){
-  function tick(){
-    const now = Date.now(), end = new Date(ts).getTime();
-    const d = Math.max(0, end - now);
-    const s = Math.floor(d/1000);
-    const mm = String(Math.floor(s/60)).padStart(2,'0');
-    const ss = String(s%60).padStart(2,'0');
-    const el = document.getElementById('cd');
-    if(el){ el.textContent = `${mm}:${ss}`; }
-    if(d<=0){ clearInterval(iv); load(); }
+  const slip = $('#slip');
+  if(state.picks.length===0){ slip.innerHTML = '<div class="hint">No selections yet.</div>'; }
+  else {
+    slip.innerHTML = state.picks.map(p=>`
+      <div class="slipline"><span>${p.label}</span>
+      <b>@ ${Number(p.price).toFixed(2)}</b>
+      <span class="x" onclick="removePick(${p.id})">✕</span></div>`).join('');
   }
-  tick();
-  const iv = setInterval(tick, 500);
+  $('#lineCount').textContent = state.picks.length;
+  const m = state.picks.reduce((a,b)=>a*Number(b.price),1)||1;
+  $('#estOdds').textContent = m.toFixed(2);
 }
 
-async function load(){
-  box.innerHTML = '<div class="info">Loading…</div>';
-  const latest = await (await fetch('/api/colors/draws/latest')).json();
-  if(!latest){ box.innerHTML = '<div class="info">No scheduled draw.</div>'; return; }
-  state.draw_id = latest.draw.id;
+function addPick(sel){
+  if(!state.picks.find(x=>x.id===sel.id)) state.picks.push(sel);
+  renderSlip();
+}
+function removePick(id){ state.picks = state.picks.filter(x=>x.id!==id); renderSlip(); }
+$('#clear').onclick = ()=>{ state.picks=[]; renderSlip(); };
 
-  // fetch all selections for this draw so we can group by markets
-  const all = await (await fetch(`/api/selections?color_draw_id=${state.draw_id}`)).json();
-  const groups = {};
-  all.forEach(s => { (groups[s.label] ||= []).push(s); });
+async function get(path){ const r = await fetch(path); if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }
 
-  const colors = (groups['WINNING COLOR']||[]).map(s =>
-    `<span class="odd" onclick='addToSlip(${JSON.stringify({id:s.id, market:s.label, pick:s.name, price:Number(s.price)})})'>
-      ${rhtml(s.name)}<br>${fmt(s.price)}
-    </span>`
-  ).join(' ');
+async function loadDraw(){
+  const j = await get('/api/colors/draws/latest');
+  if(!j){ msg.textContent='No scheduled draw.'; return; }
+  drawNo.textContent = 'Draw #'+j.draw.draw_no;
+  const ts = new Date(j.draw.start_time);
+  state.startsAt = ts.getTime();
+  startLocal.textContent = new Intl.DateTimeFormat(undefined,{
+    hour:'2-digit',minute:'2-digit',second:'2-digit',year:'numeric',month:'short',day:'numeric'
+  }).format(ts);
 
-  const counts = (groups['NUMBER OF COLORS']||[]).map(s =>
-    `<span class="odd" onclick='addToSlip(${JSON.stringify({id:s.id, market:s.label, pick:s.name, price:Number(s.price)})})'>
-      ${rhtml(s.name)}<br>${fmt(s.price)}
-    </span>`
-  ).join(' ');
+  // colors balls (use first letter)
+  const colorMap = {RED:'red', BLUE:'blue', GREEN:'green', YELLOW:'yellow', PURPLE:'purple', ORANGE:'orange', BLACK:'black'};
+  colorsGrid.innerHTML = (j.picks||[]).map(p=>{
+    const c = colorMap[p.color?.toUpperCase()] || 'black';
+    const txt = (p.color||p.name||'')[0] || '?';
+    return ballHtml({id:p.id,label:p.color||p.name,price:p.price,color:c,text:txt});
+  }).join('');
 
-  box.innerHTML = `
-    <div class="row"><span class="badge">Draw #</span> <strong>${latest.draw.draw_no}</strong></div>
-    <div class="row"><span class="badge">Starts</span> ${new Date(latest.draw.start_time).toLocaleString()} &nbsp; <span class="badge">⏳ <span id="cd">--:--</span></span></div>
-    <div class="row"><span class="badge">WINNING COLOR</span> ${colors || '<span class="info">N/A</span>'}</div>
-    <div class="row"><span class="badge">NUMBER OF COLORS</span> ${counts || '<span class="info">N/A</span>'}</div>
-  `;
-  countdown(latest.draw.start_time);
+  // number of colors balls (text is number, blue style)
+  countGrid.innerHTML = (j.number_of_colors||[]).map(p=>{
+    const num = (p.name||'').replace(/\D+/g,'') || p.name || '?';
+    return ballHtml({id:p.id,label:p.name,price:p.price,color:'blue',text:num});
+  }).join('');
+
+  startCountdown();
 }
 
-document.getElementById('clear').onclick = ()=>{ state.slip=[]; renderSlip(); };
-document.getElementById('place').onclick = async ()=>{
-  const stake = Number(document.getElementById('stake').value||0);
-  const agent_code = (document.getElementById('agentCode').value||'').trim()||null;
-  const items = state.slip.map(x=>({ selection_id:x.id }));
-  msg.textContent = '…';
-  const res = await fetch('/api/tickets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agent_code,stake,items})});
-  const j = await res.json();
-  if(!res.ok){ msg.textContent='❌ '+(j.error||'Failed'); return; }
-  msg.textContent = `✅ Ticket #${j.ticket_id} placed. Payout up to ${j.potential_payout}`;
-  state.slip=[]; renderSlip();
+function startCountdown(){
+  if(!state.startsAt) return;
+  const iv = setInterval(()=>{
+    const diff = Math.max(0, Math.floor((state.startsAt - Date.now())/1000));
+    const m = String(Math.floor(diff/60)).padStart(2,'0');
+    const s = String(diff%60).padStart(2,'0');
+    cd.textContent = `⏱ ${m}:${s}`;
+    if(diff===0){ clearInterval(iv); setTimeout(loadDraw, 2000); }
+  },1000);
+}
+
+$('#place').onclick = async ()=>{
+  try{
+    if(state.picks.length===0) throw new Error('Add selections first');
+    const items = state.picks.map(p=>({selection_id:p.id}));
+    const stake = Number($('#stake').value||0);
+    const agent_code = ($('#agent').value||'').trim()||null;
+    const res = await fetch('/api/tickets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agent_code,stake,items})});
+    const j = await res.json();
+    if(!res.ok) throw new Error(j.error||'Failed');
+    msg.textContent = `✅ Ticket #${j.ticket_id} placed. Potential ${j.potential_payout}`;
+    state.picks=[]; renderSlip();
+  }catch(e){ msg.textContent='❌ '+e.message; }
 };
 
-load();
+loadDraw().catch(e=>{msg.textContent='Failed to load: '+e.message});
 </script>
 </body>
 </html>
