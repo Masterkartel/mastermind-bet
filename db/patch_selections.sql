@@ -1,39 +1,94 @@
--- db/patch_selections.sql
+-- ============================================================
+-- Mastermind-Bet: priced selections for Football / Colors / Races
+-- Idempotent helpers + backfills
+-- ============================================================
 
--- 1) Helper: get or create a market for a fixture
+/* ------------------------------------------------------------
+   0) Safety: create minimal indexes used by queries (idempotent)
+   ------------------------------------------------------------ */
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE c.relname = 'idx_markets_fixture' AND n.nspname='public'
+  ) THEN
+    CREATE INDEX idx_markets_fixture ON markets(fixture_id);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE c.relname = 'idx_markets_color' AND n.nspname='public'
+  ) THEN
+    CREATE INDEX idx_markets_color ON markets(color_draw_id);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE c.relname = 'idx_markets_race' AND n.nspname='public'
+  ) THEN
+    CREATE INDEX idx_markets_race ON markets(race_event_id);
+  END IF;
+END$$;
+
+/* ------------------------------------------------------------
+   1) Helper: ensure a market exists for a FIXTURE
+   ------------------------------------------------------------ */
 CREATE OR REPLACE FUNCTION ensure_fixture_market(fid int, m_kind text, m_label text)
 RETURNS int LANGUAGE plpgsql AS $$
-DECLARE mid int;
+DECLARE
+  v_mid int;
 BEGIN
-  SELECT id INTO mid FROM markets WHERE fixture_id=fid AND kind=m_kind LIMIT 1;
-  IF mid IS NULL THEN
-    INSERT INTO markets (fixture_id, kind, label) VALUES (fid, m_kind, m_label)
-    RETURNING id INTO mid;
+  SELECT id INTO v_mid
+  FROM markets
+  WHERE fixture_id = fid AND kind = m_kind
+  LIMIT 1;
+
+  IF v_mid IS NULL THEN
+    INSERT INTO markets (fixture_id, kind, label)
+    VALUES (fid, m_kind, m_label)
+    RETURNING id INTO v_mid;
   END IF;
-  RETURN mid;
+
+  RETURN v_mid;
 END$$;
 
--- 2) Helper: insert selection if not exists (by market_id + name)
-CREATE OR REPLACE FUNCTION ensure_selection(market_id int, sel_name text, sel_price numeric)
+/* ------------------------------------------------------------
+   2) Helper: ensure a selection exists on a market
+      NOTE: avoid name-shadowing by using parameter aliases.
+   ------------------------------------------------------------ */
+CREATE OR REPLACE FUNCTION ensure_selection(p_market_id int, p_sel_name text, p_sel_price numeric)
 RETURNS int LANGUAGE plpgsql AS $$
-DECLARE sid int;
+DECLARE
+  v_sid int;
 BEGIN
-  SELECT id INTO sid FROM selections WHERE market_id=market_id AND name=sel_name LIMIT 1;
-  IF sid IS NULL THEN
-    INSERT INTO selections (market_id, name, price) VALUES (market_id, sel_name, sel_price)
-    RETURNING id INTO sid;
+  SELECT id INTO v_sid
+  FROM selections
+  WHERE market_id = p_market_id AND name = p_sel_name
+  LIMIT 1;
+
+  IF v_sid IS NULL THEN
+    INSERT INTO selections (market_id, name, price)
+    VALUES (p_market_id, p_sel_name, p_sel_price)
+    RETURNING id INTO v_sid;
+  ELSE
+    -- keep this idempotent but allow price refresh if you rerun the patch
+    UPDATE selections
+    SET price = p_sel_price
+    WHERE id = v_sid;
   END IF;
-  RETURN sid;
+
+  RETURN v_sid;
 END$$;
 
--- 3) FOOTBALL: build priced selections for ALL required markets on one fixture
---    Minimal pricing model with a small house edge baked in.
+/* ------------------------------------------------------------
+   3) FOOTBALL: priced selections for one fixture (ALL markets)
+   Markets: 1X2, OU ladder, DC, GG/NG, HOU, AOU, 1X2OU15, 1X2OU25, TGB
+   ------------------------------------------------------------ */
 CREATE OR REPLACE FUNCTION create_fixture_selections(fid int)
 RETURNS void LANGUAGE plpgsql AS $$
 DECLARE
   m1x2 int; mou int; mdc int; mgg int; mhou int; maou int; m1o15 int; m1o25 int; mtgb int;
-  -- base odds (random but reasonable ranges)
-  ph numeric; pd numeric; pa numeric;
+  ph numeric; pd numeric; pa numeric;         -- 1X2 base odds
   pO05 numeric; pU05 numeric; pO15 numeric; pU15 numeric; pO25 numeric; pU25 numeric;
 BEGIN
   -- markets
@@ -47,21 +102,21 @@ BEGIN
   m1o25 := ensure_fixture_market(fid,'1X2OU25','1X2 + Over/Under 2.5');
   mtgb  := ensure_fixture_market(fid,'TGB','Total Goals Bands');
 
-  -- base 1X2 price ranges (house edge implicit)
-  ph := round( (1.60 + random()*0.70)::numeric, 2); -- Home 1.60 – 2.30
-  pd := round( (2.80 + random()*0.80)::numeric, 2); -- Draw 2.80 – 3.60
-  pa := round( (2.10 + random()*1.10)::numeric, 2); -- Away 2.10 – 3.20
+  -- 1X2 price ranges (house edge implicit via conservative ranges)
+  ph := round( (1.60 + random()*0.70)::numeric, 2); -- 1.60–2.30
+  pd := round( (2.80 + random()*0.80)::numeric, 2); -- 2.80–3.60
+  pa := round( (2.10 + random()*1.10)::numeric, 2); -- 2.10–3.20
 
   PERFORM ensure_selection(m1x2,'H',ph);
   PERFORM ensure_selection(m1x2,'D',pd);
   PERFORM ensure_selection(m1x2,'A',pa);
 
-  -- Double Chance derived roughly from 1X2
+  -- Double Chance (approx blend)
   PERFORM ensure_selection(mdc,'1X', round( (1.0/( (0.92/ph)+(0.92/pd) ))::numeric,2) );
   PERFORM ensure_selection(mdc,'12', round( (1.0/( (0.92/ph)+(0.92/pa) ))::numeric,2) );
   PERFORM ensure_selection(mdc,'X2', round( (1.0/( (0.92/pd)+(0.92/pa) ))::numeric,2) );
 
-  -- GG/NG simple ranges
+  -- GG/NG
   PERFORM ensure_selection(mgg,'GG', round(1.55 + random()*0.65,2));
   PERFORM ensure_selection(mgg,'NG', round(1.55 + random()*0.65,2));
 
@@ -83,7 +138,7 @@ BEGIN
   PERFORM ensure_selection(mou,'O55', round(3.80 + random()*2.50,2));
   PERFORM ensure_selection(mou,'U55', round(1.22 + random()*0.25,2));
 
-  -- HOME / AWAY O/U (0.5,1.5,2.5)
+  -- Home / Away O/U (0.5,1.5,2.5)
   PERFORM ensure_selection(mhou,'H_O05', round(1.50 + random()*0.35,2));
   PERFORM ensure_selection(mhou,'H_U05', round(2.60 + random()*1.10,2));
   PERFORM ensure_selection(mhou,'H_O15', round(1.95 + random()*0.60,2));
@@ -99,7 +154,7 @@ BEGIN
   PERFORM ensure_selection(maou,'A_U25', round(1.35 + random()*0.40,2));
 
   -- 1X2 + O/U 1.5
-  PERFORM ensure_selection(m1o15,'H&O', round( (1.0/((0.92/ph)*(0.65)))::numeric,2) ); -- approx blend
+  PERFORM ensure_selection(m1o15,'H&O', round( (1.0/((0.92/ph)*(0.65)))::numeric,2) );
   PERFORM ensure_selection(m1o15,'H&U', round( (1.0/((0.92/ph)*(0.35)))::numeric,2) );
   PERFORM ensure_selection(m1o15,'D&O', round( (1.0/((0.92/pd)*(0.65)))::numeric,2) );
   PERFORM ensure_selection(m1o15,'D&U', round( (1.0/((0.92/pd)*(0.35)))::numeric,2) );
@@ -121,16 +176,23 @@ BEGIN
   PERFORM ensure_selection(mtgb,'TG_6P',  round(5.0 + random()*4.5,2));
 END$$;
 
--- 4) FOOTBALL: backfill selections for all fixtures that lack them
+/* ------------------------------------------------------------
+   4) FOOTBALL backfill: add selections for fixtures missing any
+   ------------------------------------------------------------ */
 CREATE OR REPLACE FUNCTION backfill_fixture_selections()
 RETURNS int LANGUAGE plpgsql AS $$
-DECLARE f record; n int := 0;
+DECLARE
+  n int := 0;
+  f record;
 BEGIN
   FOR f IN
     SELECT f.id
     FROM fixtures f
     WHERE NOT EXISTS (
-      SELECT 1 FROM markets m JOIN selections s ON s.market_id=m.id WHERE m.fixture_id=f.id
+      SELECT 1
+      FROM markets m
+      JOIN selections s ON s.market_id = m.id
+      WHERE m.fixture_id = f.id
     )
   LOOP
     PERFORM create_fixture_selections(f.id);
@@ -139,23 +201,38 @@ BEGIN
   RETURN n;
 END$$;
 
--- 5) COLORS: ensure markets & selections
+/* ------------------------------------------------------------
+   5) COLORS: ensure markets + selections for one draw
+   ------------------------------------------------------------ */
 CREATE OR REPLACE FUNCTION create_color_selections(draw_id int)
 RETURNS void LANGUAGE plpgsql AS $$
-DECLARE m_win int; m_cnt int;
+DECLARE
+  m_win int;
+  m_cnt int;
 BEGIN
-  -- markets
-  SELECT id INTO m_win FROM markets WHERE color_draw_id=draw_id AND kind='COLOR' AND label='WINNING COLOR' LIMIT 1;
+  SELECT id INTO m_win
+  FROM markets
+  WHERE color_draw_id = draw_id AND kind='COLOR' AND label='WINNING COLOR'
+  LIMIT 1;
+
   IF m_win IS NULL THEN
-    INSERT INTO markets (color_draw_id, kind, label) VALUES (draw_id, 'COLOR', 'WINNING COLOR') RETURNING id INTO m_win;
+    INSERT INTO markets (color_draw_id, kind, label)
+    VALUES (draw_id, 'COLOR', 'WINNING COLOR')
+    RETURNING id INTO m_win;
   END IF;
 
-  SELECT id INTO m_cnt FROM markets WHERE color_draw_id=draw_id AND kind='COLOR' AND label='NUMBER OF COLORS' LIMIT 1;
+  SELECT id INTO m_cnt
+  FROM markets
+  WHERE color_draw_id = draw_id AND kind='COLOR' AND label='NUMBER OF COLORS'
+  LIMIT 1;
+
   IF m_cnt IS NULL THEN
-    INSERT INTO markets (color_draw_id, kind, label) VALUES (draw_id, 'COLOR', 'NUMBER OF COLORS') RETURNING id INTO m_cnt;
+    INSERT INTO markets (color_draw_id, kind, label)
+    VALUES (draw_id, 'COLOR', 'NUMBER OF COLORS')
+    RETURNING id INTO m_cnt;
   END IF;
 
-  -- selections (WINNING COLOR)
+  -- WINNING COLOR options
   PERFORM ensure_selection(m_win,'RED',    round(2.2 + random()*0.8,2));
   PERFORM ensure_selection(m_win,'BLUE',   round(2.2 + random()*0.8,2));
   PERFORM ensure_selection(m_win,'GREEN',  round(2.2 + random()*0.8,2));
@@ -163,23 +240,30 @@ BEGIN
   PERFORM ensure_selection(m_win,'PURPLE', round(3.2 + random()*2.0,2));
   PERFORM ensure_selection(m_win,'ORANGE', round(3.2 + random()*2.0,2));
 
-  -- selections (NUMBER OF COLORS)
+  -- NUMBER OF COLORS
   PERFORM ensure_selection(m_cnt,'ONE',   round(3.0 + random()*1.5,2));
   PERFORM ensure_selection(m_cnt,'TWO',   round(2.0 + random()*0.8,2));
   PERFORM ensure_selection(m_cnt,'THREE', round(2.2 + random()*1.2,2));
   PERFORM ensure_selection(m_cnt,'FOUR',  round(4.0 + random()*2.5,2));
 END$$;
 
--- 6) COLORS backfill
+/* ------------------------------------------------------------
+   6) COLORS backfill
+   ------------------------------------------------------------ */
 CREATE OR REPLACE FUNCTION backfill_color_selections()
 RETURNS int LANGUAGE plpgsql AS $$
-DECLARE d record; n int := 0;
+DECLARE
+  n int := 0;
+  d record;
 BEGIN
   FOR d IN
     SELECT cd.id
     FROM color_draws cd
     WHERE NOT EXISTS (
-      SELECT 1 FROM markets m JOIN selections s ON s.market_id=m.id WHERE m.color_draw_id=cd.id
+      SELECT 1
+      FROM markets m
+      JOIN selections s ON s.market_id = m.id
+      WHERE m.color_draw_id = cd.id
     )
   LOOP
     PERFORM create_color_selections(d.id);
@@ -188,37 +272,70 @@ BEGIN
   RETURN n;
 END$$;
 
--- 7) RACES: insert selections from race_runners
+/* ------------------------------------------------------------
+   7) RACES: create selections (one per runner) for one event
+   ------------------------------------------------------------ */
 CREATE OR REPLACE FUNCTION create_race_selections(reid int)
 RETURNS void LANGUAGE plpgsql AS $$
-DECLARE mid int; r record; base numeric := 1.8;
+DECLARE
+  mid int;
+  r record;
+  base numeric := 1.8;
 BEGIN
-  -- get/create market container
-  SELECT id INTO mid FROM markets WHERE race_event_id=reid AND kind='RACE' LIMIT 1;
+  SELECT id INTO mid
+  FROM markets
+  WHERE race_event_id = reid AND kind='RACE'
+  LIMIT 1;
+
   IF mid IS NULL THEN
-    INSERT INTO markets (race_event_id, kind, label) VALUES (reid, 'RACE', 'Race Winner') RETURNING id INTO mid;
+    INSERT INTO markets (race_event_id, kind, label)
+    VALUES (reid, 'RACE', 'Race Winner')
+    RETURNING id INTO mid;
   END IF;
 
-  -- build one selection per runner with simple increasing odds by number
-  FOR r IN SELECT number, label FROM race_runners WHERE race_event_id=reid ORDER BY number LOOP
+  FOR r IN
+    SELECT number, label
+    FROM race_runners
+    WHERE race_event_id = reid
+    ORDER BY number
+  LOOP
     PERFORM ensure_selection(mid, r.label, round(base + (r.number-1)*0.35 + random()*0.25, 2));
   END LOOP;
 END$$;
 
--- 8) RACES backfill
+/* ------------------------------------------------------------
+   8) RACES backfill
+   ------------------------------------------------------------ */
 CREATE OR REPLACE FUNCTION backfill_race_selections()
 RETURNS int LANGUAGE plpgsql AS $$
-DECLARE e record; n int := 0;
+DECLARE
+  n int := 0;
+  e record;
 BEGIN
   FOR e IN
     SELECT re.id
     FROM race_events re
     WHERE NOT EXISTS (
-      SELECT 1 FROM markets m JOIN selections s ON s.market_id=m.id WHERE m.race_event_id=re.id
+      SELECT 1
+      FROM markets m
+      JOIN selections s ON s.market_id = m.id
+      WHERE m.race_event_id = re.id
     )
   LOOP
     PERFORM create_race_selections(e.id);
     n := n + 1;
   END LOOP;
   RETURN n;
+END$$;
+
+/* ------------------------------------------------------------
+   9) Convenience: run all backfills in one call
+   ------------------------------------------------------------ */
+CREATE OR REPLACE FUNCTION backfill_all()
+RETURNS TABLE(fixtures int, colors int, races int) LANGUAGE plpgsql AS $$
+BEGIN
+  fixtures := backfill_fixture_selections();
+  colors   := backfill_color_selections();
+  races    := backfill_race_selections();
+  RETURN NEXT;
 END$$;
