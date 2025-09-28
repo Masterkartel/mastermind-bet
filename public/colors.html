@@ -19,11 +19,9 @@
   .brand{font-weight:800;letter-spacing:.5px}
   .nav{display:flex;gap:8px;flex-wrap:wrap;margin-left:8px}
   .pill{background:#101a2f;border:1px solid #243a63;color:#cfe0ff;padding:7px 10px;border-radius:999px}
-  .pill:hover{filter:brightness(1.1)}
+  .pill:hover{filter:brightness(1.08)}
   .spacer{flex:1}
   .clock{font-variant-numeric:tabular-nums;color:var(--muted)}
-
-  /* header glossy balls */
   .header-balls{display:flex;gap:10px;margin-left:6px}
   .mini-ball{width:18px;height:18px;border-radius:50%;position:relative;
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.1), 0 4px 8px rgba(0,0,0,.6)}
@@ -47,7 +45,7 @@
   .cluster{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px}
   .tag{font-size:12px;color:#cfe0ff;background:#12203a;border:1px solid #1e345a;border-radius:8px;padding:6px 10px}
 
-  /* glossy pool balls (big) */
+  /* glossy balls */
   .ball{width:64px;height:64px;border-radius:50%;position:relative;display:flex;align-items:center;justify-content:center;
         text-transform:uppercase;font-weight:900;letter-spacing:.5px;color:white;user-select:none;cursor:pointer}
   .ball:after{content:'';position:absolute;inset:-2px;border-radius:50%;
@@ -58,8 +56,6 @@
     font-size:12px;color:#d8e6ff}
   .ball .odd{position:absolute;bottom:-34px;left:50%;transform:translateX(-50%);
     background:#0f1a2f;border:1px solid #27406d;padding:3px 8px;border-radius:999px;font-size:12px}
-  .ball.pick{outline:3px solid var(--green)}
-  /* color palettes */
   .red{background:radial-gradient(circle at 30% 30%,#ff8fa0,#c9184a 60%,#6a0016)}
   .blue{background:radial-gradient(circle at 30% 30%,#9bd0ff,#0d47c7 60%,#072b76)}
   .green{background:radial-gradient(circle at 30% 30%,#9bf3c6,#0f9d58 60%,#075f36)}
@@ -70,6 +66,11 @@
 
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:26px}
   .hint{color:var(--muted);font-size:12px}
+
+  /* draw toggles */
+  .tabs{display:flex;gap:8px;flex-wrap:wrap}
+  .tab{background:#111c31;border:1px solid #2a416b;border-radius:10px;padding:6px 10px;cursor:pointer;color:#cfe0ff}
+  .tab.active{outline:2px solid var(--accent);color:#fff}
 
   /* slip */
   .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0}
@@ -104,10 +105,11 @@
 
 <main>
   <section class="card">
-    <div class="head">
+    <div class="head" style="gap:12px;flex-wrap:wrap">
       <h2>Next Draw</h2>
+      <div class="tabs" id="tabs"></div>
       <div class="spacer"></div>
-      <div class="sub">
+      <div class="sub" id="subinfo">
         <span class="tag" id="drawNo">Draw #—</span>
         <span class="tag">Starts <span id="startLocal">--:--</span></span>
         <span class="tag" id="cd">⏱ 00:00</span>
@@ -144,13 +146,15 @@ const countGrid  = $('#countGrid');
 const drawNo = $('#drawNo');
 const startLocal = $('#startLocal');
 const cd = $('#cd');
+const tabs = $('#tabs');
 const msg = $('#msg');
 
-const state = { picks:[], startsAt: null };
+const state = { picks:[], startsAt: null, currentDrawId: null, countdownIv: null };
 
 function tickClock(){
   const d = new Date();
-  $('#clock').textContent = new Intl.DateTimeFormat(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(d);
+  $('#clock').textContent = new Intl.DateTimeFormat(undefined,
+    {hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(d);
 }
 setInterval(tickClock,1000); tickClock();
 
@@ -178,18 +182,64 @@ function renderSlip(){
   $('#estOdds').textContent = m.toFixed(2);
 }
 
-function addPick(sel){
-  if(!state.picks.find(x=>x.id===sel.id)) state.picks.push(sel);
-  renderSlip();
-}
+function addPick(sel){ if(!state.picks.find(x=>x.id===sel.id)) state.picks.push(sel); renderSlip(); }
 function removePick(id){ state.picks = state.picks.filter(x=>x.id!==id); renderSlip(); }
 $('#clear').onclick = ()=>{ state.picks=[]; renderSlip(); };
 
 async function get(path){ const r = await fetch(path); if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }
 
-async function loadDraw(){
-  const j = await get('/api/colors/draws/latest');
-  if(!j){ msg.textContent='No scheduled draw.'; return; }
+function mapColorNameToClass(name){
+  const k = String(name||'').toUpperCase();
+  if (k.includes('RED')) return 'red';
+  if (k.includes('BLUE')) return 'blue';
+  if (k.includes('GREEN')) return 'green';
+  if (k.includes('YELLOW')) return 'yellow';
+  if (k.includes('PURPLE')) return 'purple';
+  if (k.includes('ORANGE')) return 'orange';
+  return 'black';
+}
+
+function formatCountBallText(label){
+  // show 0, 2+, 3+, 4+, 5+, 6
+  const L = String(label||'').toUpperCase();
+  if (/\b0\b|ZERO/.test(L)) return '0';
+  if (/\b1\b|ONE/.test(L)) return '1';
+  if (/\b2\b|TWO/.test(L)) return '2+';
+  if (/\b3\b|THREE/.test(L)) return '3+';
+  if (/\b4\b|FOUR/.test(L)) return '4+';
+  if (/\b5\b|FIVE/.test(L)) return '5+';
+  if (/\b6\b|SIX/.test(L)) return '6';
+  const m = L.match(/\d+/); return m ? (Number(m[0]) >= 2 ? m[0]+'+' : m[0]) : L;
+}
+
+async function loadUpcoming(){
+  const list = await get('/api/colors/draws?limit=5');
+  tabs.innerHTML = list.map((d,i)=>{
+    const t = new Date(d.start_time);
+    const hh = new Intl.DateTimeFormat(undefined,{hour:'2-digit',minute:'2-digit'}).format(t);
+    return `<div class="tab" data-id="${d.id}">#${d.draw_no} • ${hh}</div>`;
+  }).join('') || '<span class="tag">No upcoming draws</span>';
+
+  // click handlers
+  [...tabs.querySelectorAll('.tab')].forEach(el=>{
+    el.onclick = ()=> {
+      [...tabs.children].forEach(t=>t.classList.remove('active'));
+      el.classList.add('active');
+      const id = Number(el.getAttribute('data-id'));
+      loadDrawById(id).catch(err=>msg.textContent='Load failed: '+err.message);
+    };
+  });
+
+  // auto-select first one
+  const first = tabs.querySelector('.tab');
+  if (first) first.click();
+}
+
+async function loadDrawById(id){
+  const j = await get('/api/colors/draws/'+id);
+  if(!j){ msg.textContent='No draw found.'; return; }
+  state.currentDrawId = id;
+
   drawNo.textContent = 'Draw #'+j.draw.draw_no;
   const ts = new Date(j.draw.start_time);
   state.startsAt = ts.getTime();
@@ -197,31 +247,29 @@ async function loadDraw(){
     hour:'2-digit',minute:'2-digit',second:'2-digit',year:'numeric',month:'short',day:'numeric'
   }).format(ts);
 
-  // colors balls (use first letter)
-  const colorMap = {RED:'red', BLUE:'blue', GREEN:'green', YELLOW:'yellow', PURPLE:'purple', ORANGE:'orange', BLACK:'black'};
   colorsGrid.innerHTML = (j.picks||[]).map(p=>{
-    const c = colorMap[p.color?.toUpperCase()] || 'black';
+    const c = mapColorNameToClass(p.color||p.name);
     const txt = (p.color||p.name||'')[0] || '?';
     return ballHtml({id:p.id,label:p.color||p.name,price:p.price,color:c,text:txt});
   }).join('');
 
-  // number of colors balls (text is number, blue style)
   countGrid.innerHTML = (j.number_of_colors||[]).map(p=>{
-    const num = (p.name||'').replace(/\D+/g,'') || p.name || '?';
-    return ballHtml({id:p.id,label:p.name,price:p.price,color:'blue',text:num});
+    const txt = formatCountBallText(p.name);
+    return ballHtml({id:p.id,label:p.name,price:p.price,color:'blue',text:txt});
   }).join('');
 
   startCountdown();
 }
 
 function startCountdown(){
+  if(state.countdownIv) clearInterval(state.countdownIv);
   if(!state.startsAt) return;
-  const iv = setInterval(()=>{
+  state.countdownIv = setInterval(()=>{
     const diff = Math.max(0, Math.floor((state.startsAt - Date.now())/1000));
     const m = String(Math.floor(diff/60)).padStart(2,'0');
     const s = String(diff%60).padStart(2,'0');
     cd.textContent = `⏱ ${m}:${s}`;
-    if(diff===0){ clearInterval(iv); setTimeout(loadDraw, 2000); }
+    if(diff===0){ clearInterval(state.countdownIv); setTimeout(loadUpcoming, 1500); }
   },1000);
 }
 
@@ -231,7 +279,8 @@ $('#place').onclick = async ()=>{
     const items = state.picks.map(p=>({selection_id:p.id}));
     const stake = Number($('#stake').value||0);
     const agent_code = ($('#agent').value||'').trim()||null;
-    const res = await fetch('/api/tickets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agent_code,stake,items})});
+    const res = await fetch('/api/tickets',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({agent_code,stake,items})});
     const j = await res.json();
     if(!res.ok) throw new Error(j.error||'Failed');
     msg.textContent = `✅ Ticket #${j.ticket_id} placed. Potential ${j.potential_payout}`;
@@ -239,7 +288,7 @@ $('#place').onclick = async ()=>{
   }catch(e){ msg.textContent='❌ '+e.message; }
 };
 
-loadDraw().catch(e=>{msg.textContent='Failed to load: '+e.message});
+loadUpcoming().catch(e=>{msg.textContent='Failed to load: '+e.message});
 </script>
 </body>
 </html>
