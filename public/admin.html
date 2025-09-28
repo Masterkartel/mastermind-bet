@@ -1,0 +1,86 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Admin — Mastermind</title>
+<style>
+  :root{--bg:#0b1220;--panel:#0f172a;--line:#1f2937;--text:#e2e8f0}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Arial}
+  header{padding:12px 16px;border-bottom:1px solid var(--line);background:#0c1426}
+  main{padding:16px;display:grid;gap:12px;grid-template-columns:1fr 1fr}
+  .card{background:#0f172a;border:1px solid #223048;border-radius:12px;padding:12px}
+  input,button{background:#0b1528;color:#e2e8f0;border:1px solid #223048;border-radius:8px;padding:8px}
+  label{display:block;margin:6px 0 2px}
+  table{width:100%;border-collapse:collapse}
+  td,th{border-bottom:1px solid #223048;padding:6px;text-align:left}
+</style>
+</head>
+<body>
+<header><h3 style="margin:0">Admin</h3></header>
+<main>
+  <section class="card">
+    <h4>Limits</h4>
+    <div id="limits"></div>
+    <div style="display:flex;gap:6px;margin-top:8px">
+      <input id="min" type="number" placeholder="Min stake"/>
+      <input id="max" type="number" placeholder="Max stake"/>
+      <input id="cap" type="number" placeholder="Max payout"/>
+      <button id="saveL">Save</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h4>Agents</h4>
+    <table id="agt"></table>
+    <div style="display:flex;gap:6px;margin-top:8px">
+      <input id="acode" placeholder="Code (e.g. AG002)"/>
+      <input id="aname" placeholder="Name"/>
+      <input id="adep" type="number" placeholder="Add Balance (KES)"/>
+      <button id="saveA">Create/Top-up</button>
+    </div>
+  </section>
+</main>
+<script>
+async function api(u,o){ const r=await fetch(u,o); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+function fmt(n){ return Number(n).toFixed(2); }
+
+async function loadLimits(){
+  const l = await api('/admin/limits'); document.getElementById('limits').textContent = JSON.stringify(l);
+  document.getElementById('min').value = l.min_stake;
+  document.getElementById('max').value = l.max_stake;
+  document.getElementById('cap').value = l.max_payout;
+}
+async function saveLimits(){
+  const body = {
+    min_stake:Number(document.getElementById('min').value),
+    max_stake:Number(document.getElementById('max').value),
+    max_payout:Number(document.getElementById('cap').value)
+  };
+  await api('/admin/limits',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  loadLimits();
+}
+
+async function loadAgents(){
+  const rows = await api('/admin/agents');
+  const t = document.getElementById('agt');
+  t.innerHTML = '<tr><th>Code</th><th>Name</th><th>Balance</th><th>Active</th></tr>' +
+    rows.map(a=>`<tr><td>${a.code}</td><td>${a.name}</td><td>${fmt(a.balance)}</td><td>${a.is_active?'Yes':'No'}</td></tr>`).join('');
+}
+async function saveAgent(){
+  const body = {
+    code: document.getElementById('acode').value.trim(),
+    name: document.getElementById('aname').value.trim(),
+    add_balance: Number(document.getElementById('adep').value||0)
+  };
+  await api('/admin/agents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  loadAgents();
+}
+
+document.getElementById('saveL').onclick = saveLimits;
+document.getElementById('saveA').onclick = saveAgent;
+
+loadLimits(); loadAgents();
+</script>
+</body>
+</html>
