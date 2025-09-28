@@ -1,313 +1,46 @@
 <!doctype html>
 <html>
 <head>
-<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Mastermind — Virtuals</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Virtual — Mastermind Bet</title>
 <style>
-:root{
-  --bg:#0b1220; --panel:#0f172a; --line:#1f2937; --text:#e2e8f0; --tile:#111827; --chip:#0b1528; --accent:#f59e0b;
-}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Arial}
-header{position:sticky;top:0;background:#0c1426;border-bottom:1px solid var(--line);padding:12px 16px;z-index:10;display:flex;justify-content:space-between;align-items:center}
-h1{margin:0;font-size:18px}
-.top{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-.badge{background:#0b1528;border:1px solid #243047;border-radius:999px;padding:6px 10px}
-.wrap{display:grid;grid-template-columns:1fr 340px;gap:12px;padding:12px}
-@media(max-width:1024px){.wrap{grid-template-columns:1fr}}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px}
-.tiles{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:10px;margin-bottom:10px}
-@media(max-width:1200px){.tiles{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:600px){.tiles{grid-template-columns:repeat(2,1fr)}}
-.tile{cursor:pointer;border:1px solid #223048;background:var(--tile);border-radius:16px;padding:12px;display:flex;gap:10px;align-items:center;justify-content:space-between;transition:transform .12s ease, box-shadow .12s ease}
-.tile:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.35)}
-.tile.active{outline:2px solid var(--accent)}
-.ctd{font:600 12px/1 system-ui;color:#c9d3e7}
-.tbl{width:100%;border-collapse:collapse}
-.tbl th,.tbl td{border-bottom:1px solid #223048;padding:6px 8px;font-size:14px;white-space:nowrap;text-align:center}
-.tbl th:first-child,.tbl td:first-child{ text-align:left }
-.btn-odd{display:inline-block;min-width:52px;text-align:center;background:#0b1528;border:1px solid #334155;border-radius:8px;padding:6px 8px;margin:2px;cursor:pointer}
-.btn-odd:hover{outline:2px solid var(--accent)}
-.pill{display:inline-block;padding:6px 10px;border:1px solid #334155;border-radius:10px;margin:2px 4px;cursor:pointer;background:#0b1528}
-.pill:hover{outline:2px solid var(--accent)}
-.section{margin-top:10px}
-.ball{width:38px;height:38px;border-radius:999px;display:inline-grid;place-items:center;font:700 14px/1 system-ui;color:#fff;margin-right:6px;border:1px solid rgba(0,0,0,.3);box-shadow:inset 0 -8px 14px rgba(0,0,0,.35), inset 0 10px 18px rgba(255,255,255,.12), 0 3px 8px rgba(0,0,0,.45)}
-.ball.red{background:radial-gradient(circle at 30% 25%, #ff8a8a, #d71d1d 55%, #8b1111)}
-.ball.green{background:radial-gradient(circle at 30% 25%, #79ffb5, #10b981 55%, #0a5e46)}
-.ball.blue{background:radial-gradient(circle at 30% 25%, #8ac7ff, #2563eb 55%, #163986)}
-.ball.yellow{background:radial-gradient(circle at 30% 25%, #ffe99a, #f59e0b 55%, #7a4e02)}
-.mini{font-size:12px;color:#9fb0c8}
+  body{margin:0;background:#0b0f17;color:#eaf2ff;font:14px system-ui,Segoe UI,Roboto}
+  header{display:flex;gap:12px;padding:12px;background:#111a2a;border-bottom:1px solid #1a253b}
+  a{color:#cfe0ff;text-decoration:none;background:#18233a;border:1px solid #243353;padding:6px 10px;border-radius:999px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;padding:12px}
+  .card{background:#121826;border:1px solid #1a253b;border-radius:14px;overflow:hidden}
+  .card h3{margin:0;padding:10px 12px;background:#192235;border-bottom:1px solid #1a253b}
+  .shelf{padding:12px}
+  .badge{display:inline-block;background:#223356;border:1px solid #2a416b;padding:4px 8px;border-radius:8px;margin:0 4px 4px 0}
 </style>
 </head>
 <body>
 <header>
-  <div class="top">
-    <h1>Mastermind Virtuals</h1>
-    <span class="badge">Jackpot: <b id="jp">1,268.00</b> KSh</span>
-    <span class="badge">Nairobi: <b id="nrb-now">--:--:--</b></span>
-  </div>
-  <div class="top">
-    <span class="badge">Balance: <b id="bal">0.00</b> KSh</span>
-    <span class="badge">Next: <b id="global-ctd">--:--</b></span>
-  </div>
+  <a href="/pos">POS</a><a href="/admin">Admin</a><a href="/history">History</a>
+  <div style="margin-left:auto">Virtual Dashboard</div>
 </header>
 
-<div class="wrap">
-  <div class="panel">
-    <!-- Tiles -->
-    <div id="tiles" class="tiles">
-      <div class="tile active" data-kind="FOOTBALL" data-code="UCL"><strong>Champions</strong><span class="ctd" data-count="UCL">--:--</span></div>
-      <div class="tile" data-kind="FOOTBALL" data-code="EPL"><strong>EPL</strong><span class="ctd" data-count="EPL">--:--</span></div>
-      <div class="tile" data-kind="FOOTBALL" data-code="LALIGA"><strong>Liga</strong><span class="ctd" data-count="LALIGA">--:--</span></div>
-      <div class="tile" data-kind="COLOR" data-code="COLOR"><strong>COLOR</strong><span class="ctd" id="ctd-color">--:--</span></div>
-      <div class="tile" data-kind="RACE" data-code="DOG"><strong>Dogs</strong><span class="ctd" id="ctd-dog">--:--</span></div>
-      <div class="tile" data-kind="RACE" data-code="HORSE"><strong>Horses</strong><span class="ctd" id="ctd-horse">--:--</span></div>
-    </div>
-
-    <div id="content"></div>
-  </div>
-
-  <div class="panel">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <strong>Fastbet</strong><button id="refresh" class="tile" style="padding:6px 10px">Refresh</button>
-    </div>
-    <div id="tickets" class="mini" style="margin-top:8px">Your quick slips will appear here.</div>
-  </div>
-</div>
+<div class="grid" id="grid"></div>
 
 <script>
-(function(){
-  /* ===== Helpers ===== */
-  const TZ = 'Africa/Nairobi';
-  const $ = q => document.querySelector(q), $$ = q => Array.from(document.querySelectorAll(q));
-  const api = u => fetch(u).then(r => r.json());
-  const fmt2 = n => String(n).padStart(2,'0');
-
-  // generic countdown (mm:ss)
-  function setCountdown(el, endsAtMs){
-    function draw(){
-      const remain = Math.max(0, endsAtMs - Date.now());
-      const s = Math.floor(remain/1000); const m = Math.floor(s/60);
-      el.textContent = `${m}:${fmt2(s%60)}`;
-      if(remain>0) requestAnimationFrame(draw);
-    }
-    draw();
+async function load(){
+  const leagues = await (await fetch('/api/competitions')).json();
+  const grid = document.getElementById('grid');
+  let html = '';
+  for(const lg of leagues){
+    const res = await (await fetch(`/virtual/league/${lg.code}`)).json();
+    const first = res.fixtures?.[0];
+    if(!first){ html += `<div class="card"><h3>${lg.code}</h3><div class="shelf">No fixtures</div></div>`; continue; }
+    const mk = Object.keys(first.markets||{}).slice(0,4).map(k=>`<span class="badge">${k}</span>`).join('');
+    html += `<div class="card">
+      <h3>${lg.code} — next: ${new Date(first.kickoff).toLocaleTimeString()}</h3>
+      <div class="shelf"><div>${first.home} vs ${first.away}</div><div>${mk}</div></div>
+    </div>`;
   }
-
-  // Nairobi clock in header
-  (function clock(){
-    function tick(){
-      const now = new Date();
-      $('#nrb-now').textContent = now.toLocaleTimeString('en-KE', { timeZone: TZ, hour12:false });
-    }
-    tick(); setInterval(tick, 1000);
-  })();
-
-  // Top badges: balance + jackpot grow
-  (function topBar(){
-    const p = new URL(location.href).searchParams;
-    const bal = p.get('balance'); if (bal) $('#bal').textContent = Number(bal).toFixed(2);
-    let jp = 1268.0;
-    setInterval(()=>{ jp = Math.round((jp + Math.random()*0.7)*100)/100; $('#jp').textContent = jp.toLocaleString(); }, 4500);
-  })();
-
-  /* ===== Tile countdowns / global next ===== */
-  async function refreshCTD(){
-    try{
-      const st = await api('/virtual/state');
-      let soonest = null;
-      (st.leagues||[]).forEach(le=>{
-        const el = document.querySelector('[data-count="'+le.code+'"]');
-        if(!el) return;
-        const ends = Number(le.endsAt);
-        setCountdown(el, ends);
-        if(!soonest || ends < soonest) soonest = ends;
-      });
-      if(soonest) setCountdown($('#global-ctd'), soonest);
-    }catch{}
-
-    try{
-      const c = await api('/virtual/colors');
-      if(c){
-        const t = new Date(c.starts_at).getTime();
-        setCountdown($('#ctd-color'), t);
-      }
-    }catch{}
-  }
-  refreshCTD(); setInterval(refreshCTD, 10000);
-
-  /* ===== FOOTBALL: league table like your screenshots ===== */
-  async function showLeague(code){
-    const box = $('#content'); box.innerHTML = '';
-    const data = await api('/virtual/league/'+encodeURIComponent(code));
-    const fx = data.fixtures||[];
-    if(!fx.length){ box.textContent='No fixtures yet.'; return; }
-
-    const t = document.createElement('table'); t.className='tbl';
-    t.innerHTML = `
-      <thead><tr>
-        <th>#</th><th>Match</th>
-        <th>1</th><th>X</th><th>2</th>
-        <th>1X</th><th>12</th><th>X2</th>
-        <th>GG</th><th>NG</th>
-        <th>OV2.5</th><th>UN2.5</th>
-        <th>OV1.5</th><th>UN1.5</th>
-      </tr></thead><tbody></tbody>`;
-    const tb = t.querySelector('tbody');
-
-    fx.forEach((f,i)=>{
-      const mk=f.markets||{};
-      const m12 = mk['1X2']||{};
-      const dc  = mk['Double Chance']||mk['DC']||{};
-      const ggn = mk['GG/NG']||mk['BTS']||{};
-      const ou25= mk['OV/UN 2.5']||mk['OVER/UNDER 2.5']||mk['O/U 2.5']||{};
-      const ou15= mk['OV/UN 1.5']||mk['OVER/UNDER 1.5']||mk['O/U 1.5']||{};
-
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${i+1}</td>
-        <td style="text-align:left">
-          ${f.home.slice(0,3).toUpperCase()} vs ${f.away.slice(0,3).toUpperCase()}
-          <div class="mini">${new Date(f.kickoff).toLocaleTimeString('en-KE',{timeZone:TZ,hour:'2-digit',minute:'2-digit',hour12:false})} Nairobi</div>
-        </td>
-        <td></td><td></td><td></td>
-        <td></td><td></td><td></td>
-        <td></td><td></td>
-        <td></td><td></td>
-        <td></td><td></td>`;
-      tb.appendChild(tr);
-
-      function add(cellIdx, price){
-        const td = tr.children[cellIdx];
-        const span = document.createElement('span'); span.className='btn-odd';
-        span.textContent = price ? Number(price).toFixed(2) : '-';
-        td.appendChild(span);
-      }
-      add(2, m12['Home']||m12['1']);
-      add(3, m12['Draw']||m12['X']);
-      add(4, m12['Away']||m12['2']);
-      add(5, dc['1X']); add(6, dc['12']); add(7, dc['X2']);
-      add(8, ggn['GG']||ggn['YES']); add(9, ggn['NG']||ggn['NO']);
-      add(10, ou25['OV2.5']||ou25['OVER 2.5']); add(11, ou25['UN2.5']||ou25['UNDER 2.5']);
-      add(12, ou15['OV1.5']||ou15['OVER 1.5']); add(13, ou15['UN1.5']||ou15['UNDER 1.5']);
-
-      // expandable sub-markets like the right screenshot (HOME/AWAY O/U, 1X2+O/U, TOTAL GOALS)
-      const exp = document.createElement('tr');
-      exp.innerHTML = `
-        <td></td>
-        <td colspan="12">
-          <div class="section" style="display:flex;gap:8px;flex-wrap:wrap">
-            <span class="pill" data-k="HOME">HOME OV/UN</span>
-            <span class="pill" data-k="AWAY">AWAY OV/UN</span>
-            <span class="pill" data-k="1X2OU15">1X2 OV/UN 1.5</span>
-            <span class="pill" data-k="1X2OU25">1X2 OV/UN 2.5</span>
-            <span class="pill" data-k="TG">TOTAL GOALS</span>
-          </div>
-          <div class="section" id="pane-${f.id}"></div>
-        </td>
-        <td></td>`;
-      tb.appendChild(exp);
-
-      function pane(kind){
-        const p = $('#pane-'+f.id); p.innerHTML='';
-        if(kind==='HOME'){
-          const H = mk['HOME OV/UN']||{};
-          ['OV0.5','UN0.5','OV1.5','UN1.5','OV2.5','UN2.5'].forEach(k=> p.appendChild(btn(H[k])));
-        } else if(kind==='AWAY'){
-          const A = mk['AWAY OV/UN']||{};
-          ['OV0.5','UN0.5','OV1.5','UN1.5','OV2.5','UN2.5'].forEach(k=> p.appendChild(btn(A[k])));
-        } else if(kind==='1X2OU15'){
-          const C = mk['1X2 OV/UN 1.5']||{};
-          ['1+OV1.5','X+OV1.5','2+OV1.5','1+UN1.5','X+UN1.5','2+UN1.5'].forEach(k=> p.appendChild(btn(C[k])));
-        } else if(kind==='1X2OU25'){
-          const D = mk['1X2 OV/UN 2.5']||{};
-          ['1+OV2.5','X+OV2.5','2+OV2.5','1+UN2.5','X+UN2.5','2+UN2.5'].forEach(k=> p.appendChild(btn(D[k])));
-        } else if(kind==='TG'){
-          const G = mk['TOTAL GOALS']||{};
-          ['0','1','2','3','4','5+'].forEach(k=> p.appendChild(btn(G[k])));
-        }
-      }
-      function btn(v){ const s=document.createElement('span'); s.className='btn-odd'; s.textContent=(+v===+v)?Number(v).toFixed(2):'-'; return s; }
-      exp.addEventListener('click', e=>{ const t=e.target.closest('.pill'); if(!t) return; pane(t.dataset.k); });
-    });
-
-    box.appendChild(t);
-  }
-
-  /* ===== COLOR (Winning Color + countdown using Nairobi time) ===== */
-  async function showColor(){
-    const box = $('#content'); box.innerHTML='';
-    const data = await api('/virtual/colors'); if(!data){ box.textContent='No scheduled draw.'; return; }
-    const startMs = new Date(data.starts_at).getTime();
-    setCountdown($('#ctd-color'), startMs);
-
-    const sec = document.createElement('div'); sec.className='panel';
-    sec.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div><b>Winning Color</b></div>
-        <div class="mini">Next draw: ${new Date(startMs).toLocaleTimeString('en-KE',{timeZone:TZ,hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})} Nairobi</div>
-      </div>
-      <div id="win" class="section"></div>`;
-    box.appendChild(sec);
-
-    const win = $('#win');
-    function ball(c){ const cls=c==='RED'?'red':c==='GREEN'?'green':c==='BLUE'?'blue':'yellow'; return `<span class="ball ${cls}">●</span> ${c}`; }
-    (data.picks||[]).forEach(p=>{
-      const s=document.createElement('span'); s.className='pill'; s.innerHTML=ball(p.color)+' @ '+Number(p.price).toFixed(2); win.appendChild(s);
-    });
-  }
-
-  /* ===== RACES ===== */
-  async function showRaces(type){
-    const box = $('#content'); box.innerHTML='';
-    const races = await api('/api/races?type='+encodeURIComponent(type));
-    if(!races.length){ box.textContent='No races yet.'; return; }
-
-    const soon = races[0]?.start_time ? new Date(races[0].start_time).getTime() : null;
-    if(soon) setCountdown(type==='DOG' ? $('#ctd-dog') : $('#ctd-horse'), soon);
-
-    for (const r of races){
-      const wrap=document.createElement('div'); wrap.className='panel'; wrap.style.marginBottom='8px';
-      wrap.innerHTML=`
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <b>${r.track} • R${r.race_no}</b>
-          <span class="badge">${new Date(r.start_time).toLocaleTimeString('en-KE',{timeZone:TZ,hour:"2-digit",minute:"2-digit",hour12:false})} Nairobi</span>
-        </div>
-        <div class="section">
-          <span class="pill" data-k="MAIN">MAIN</span>
-          <span class="pill" data-k="FORECAST">FORECAST</span>
-          <span class="pill" data-k="QUINELLA">QUINELLA</span>
-          <span class="pill" data-k="TRICAST">TRICAST</span>
-        </div>
-        <div class="section" id="race-${r.id}"></div>`;
-      box.appendChild(wrap);
-
-      const sel = await api('/api/selections?race_event_id='+r.id);
-      const by={}; sel.forEach(s=>{ (by[s.label] ||= []).push(s); });
-      function draw(group){
-        const pane=$('#race-'+r.id); pane.innerHTML='';
-        (by[group]||[]).forEach(s=>{
-          const b=document.createElement('span'); b.className='btn-odd'; b.textContent=Number(s.price).toFixed(2); pane.appendChild(b);
-        });
-      }
-      draw('MAIN');
-      wrap.addEventListener('click', e=>{ const t=e.target.closest('.pill'); if(!t) return; draw(t.dataset.k); });
-    }
-  }
-
-  /* ===== Router ===== */
-  function activate(el){
-    $$('.tile').forEach(x=>x.classList.remove('active')); el.classList.add('active');
-    const kind=el.getAttribute('data-kind'), code=el.getAttribute('data-code');
-    if(kind==='FOOTBALL') showLeague(code);
-    if(kind==='COLOR') showColor();
-    if(kind==='RACE') showRaces(code);
-  }
-  $('#tiles').addEventListener('click', e=>{ const t=e.target.closest('.tile'); if(!t) return; activate(t); });
-
-  // initial
-  activate(document.querySelector('.tile.active'));
-})();
+  grid.innerHTML = html;
+}
+load();
 </script>
 </body>
 </html>
