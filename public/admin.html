@@ -1,84 +1,90 @@
 <!doctype html>
 <html>
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Admin — Mastermind</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Admin — Mastermind Bet</title>
 <style>
-  :root{--bg:#0b1220;--panel:#0f172a;--line:#1f2937;--text:#e2e8f0}
-  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Arial}
-  header{padding:12px 16px;border-bottom:1px solid var(--line);background:#0c1426}
-  main{padding:16px;display:grid;gap:12px;grid-template-columns:1fr 1fr}
-  .card{background:#0f172a;border:1px solid #223048;border-radius:12px;padding:12px}
-  input,button{background:#0b1528;color:#e2e8f0;border:1px solid #223048;border-radius:8px;padding:8px}
-  label{display:block;margin:6px 0 2px}
+  body{margin:0;background:#0b0f17;color:#eaf2ff;font:14px system-ui,Segoe UI,Roboto}
+  header{display:flex;gap:12px;padding:12px;background:#111a2a;border-bottom:1px solid #1a253b}
+  a{color:#cfe0ff;text-decoration:none;background:#18233a;border:1px solid #243353;padding:6px 10px;border-radius:999px}
+  .wrap{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px}
+  .card{background:#121826;border:1px solid #1a253b;border-radius:14px;overflow:hidden}
+  h2{margin:0;padding:10px 12px;background:#192235;border-bottom:1px solid #1a253b}
+  .shelf{padding:12px;display:flex;flex-direction:column;gap:10px}
+  input{background:#10192b;border:1px solid #263a60;color:#cfe0ff;border-radius:10px;padding:8px 10px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .btn{background:#ffb703;border:0;padding:10px 14px;border-radius:10px;font-weight:700;cursor:pointer;color:#111}
   table{width:100%;border-collapse:collapse}
-  td,th{border-bottom:1px solid #223048;padding:6px;text-align:left}
+  th,td{padding:8px;border-bottom:1px solid #1a253b;text-align:left}
+  th{color:#9eb5e4}
 </style>
 </head>
 <body>
-<header><h3 style="margin:0">Admin</h3></header>
-<main>
+<header>
+  <a href="/pos">POS</a><a href="/virtual">Virtual</a><a href="/history">History</a>
+  <div style="margin-left:auto">Admin</div>
+</header>
+
+<div class="wrap">
   <section class="card">
-    <h4>Limits</h4>
-    <div id="limits"></div>
-    <div style="display:flex;gap:6px;margin-top:8px">
-      <input id="min" type="number" placeholder="Min stake"/>
-      <input id="max" type="number" placeholder="Max stake"/>
-      <input id="cap" type="number" placeholder="Max payout"/>
-      <button id="saveL">Save</button>
+    <h2>System Limits</h2>
+    <div class="shelf">
+      <div class="row"><label>Min Stake</label><input id="minStake" type="number" value="20"></div>
+      <div class="row"><label>Max Stake</label><input id="maxStake" type="number" value="1000"></div>
+      <div class="row"><label>Max Payout</label><input id="maxPayout" type="number" value="20000"></div>
+      <button class="btn" id="saveLimits">Save</button>
+      <div id="limMsg"></div>
     </div>
   </section>
 
   <section class="card">
-    <h4>Agents</h4>
-    <table id="agt"></table>
-    <div style="display:flex;gap:6px;margin-top:8px">
-      <input id="acode" placeholder="Code (e.g. AG002)"/>
-      <input id="aname" placeholder="Name"/>
-      <input id="adep" type="number" placeholder="Add Balance (KES)"/>
-      <button id="saveA">Create/Top-up</button>
+    <h2>Agents</h2>
+    <div class="shelf">
+      <div class="row">
+        <input id="agCode" placeholder="Code e.g. AG001">
+        <input id="agName" placeholder="Name e.g. ZUKA Cashier">
+        <input id="agAddBal" type="number" placeholder="Top-up e.g. 5000">
+        <button class="btn" id="saveAgent">Create/Top-up</button>
+      </div>
+      <table id="agents"><thead><tr><th>Code</th><th>Name</th><th>Balance</th><th>Active</th></tr></thead><tbody></tbody></table>
     </div>
   </section>
-</main>
+</div>
+
 <script>
-async function api(u,o){ const r=await fetch(u,o); if(!r.ok) throw new Error(await r.text()); return r.json(); }
-function fmt(n){ return Number(n).toFixed(2); }
-
 async function loadLimits(){
-  const l = await api('/admin/limits'); document.getElementById('limits').textContent = JSON.stringify(l);
-  document.getElementById('min').value = l.min_stake;
-  document.getElementById('max').value = l.max_stake;
-  document.getElementById('cap').value = l.max_payout;
+  const r = await fetch('/admin/limits'); const j = await r.json();
+  document.getElementById('minStake').value = j.min_stake;
+  document.getElementById('maxStake').value = j.max_stake;
+  document.getElementById('maxPayout').value = j.max_payout;
 }
-async function saveLimits(){
-  const body = {
-    min_stake:Number(document.getElementById('min').value),
-    max_stake:Number(document.getElementById('max').value),
-    max_payout:Number(document.getElementById('cap').value)
+document.getElementById('saveLimits').onclick = async ()=>{
+  const payload = {
+    min_stake: Number(document.getElementById('minStake').value),
+    max_stake: Number(document.getElementById('maxStake').value),
+    max_payout: Number(document.getElementById('maxPayout').value),
   };
-  await api('/admin/limits',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  loadLimits();
-}
+  const r = await fetch('/admin/limits',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  document.getElementById('limMsg').textContent = r.ok ? 'Saved ✅' : 'Failed';
+};
 
 async function loadAgents(){
-  const rows = await api('/admin/agents');
-  const t = document.getElementById('agt');
-  t.innerHTML = '<tr><th>Code</th><th>Name</th><th>Balance</th><th>Active</th></tr>' +
-    rows.map(a=>`<tr><td>${a.code}</td><td>${a.name}</td><td>${fmt(a.balance)}</td><td>${a.is_active?'Yes':'No'}</td></tr>`).join('');
+  const r = await fetch('/admin/agents'); const list = await r.json();
+  document.querySelector('#agents tbody').innerHTML = list.map(a=>
+    `<tr><td>${a.code}</td><td>${a.name}</td><td>${(a.balance||0).toFixed(2)}</td><td>${a.is_active?'Yes':'No'}</td></tr>`
+  ).join('');
 }
-async function saveAgent(){
-  const body = {
-    code: document.getElementById('acode').value.trim(),
-    name: document.getElementById('aname').value.trim(),
-    add_balance: Number(document.getElementById('adep').value||0)
+document.getElementById('saveAgent').onclick = async ()=>{
+  const payload = {
+    code: document.getElementById('agCode').value.trim(),
+    name: document.getElementById('agName').value.trim(),
+    add_balance: Number(document.getElementById('agAddBal').value || 0),
   };
-  await api('/admin/agents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  loadAgents();
-}
-
-document.getElementById('saveL').onclick = saveLimits;
-document.getElementById('saveA').onclick = saveAgent;
+  const r = await fetch('/admin/agents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  await loadAgents();
+  alert(r.ok ? 'Agent updated ✅' : 'Failed');
+};
 
 loadLimits(); loadAgents();
 </script>
