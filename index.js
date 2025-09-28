@@ -11,14 +11,14 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // pretty routes (root -> POS)
-app.get(/^\/pos\/?$/i, (_, res) => res.sendFile(path.join(__dirname, 'public', 'pos.html')));
+app.get(/^\/pos\/?$/i,   (_, res) => res.sendFile(path.join(__dirname, 'public', 'pos.html')));
 app.get(/^\/virtual\/?$/i, (_, res) => res.sendFile(path.join(__dirname, 'public', 'virtual.html')));
 app.get(/^\/history\/?$/i, (_, res) => res.sendFile(path.join(__dirname, 'public', 'history.html')));
-app.get(/^\/admin\/?$/i, (_, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
-app.get('/', (_, res) => res.sendFile(path.join(__dirname, 'public', 'pos.html')));
-app.get(/^\/dogs\/?$/i,   (_, res) => res.sendFile(path.join(__dirname, 'public', 'dogs.html')));
-app.get(/^\/horses\/?$/i, (_, res) => res.sendFile(path.join(__dirname, 'public', 'horses.html')));
-app.get(/^\/colors\/?$/i, (_, res) => res.sendFile(path.join(__dirname, 'public', 'colors.html')));
+app.get(/^\/admin\/?$/i,   (_, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
+app.get(/^\/dogs\/?$/i,    (_, res) => res.sendFile(path.join(__dirname, 'public', 'dogs.html')));
+app.get(/^\/horses\/?$/i,  (_, res) => res.sendFile(path.join(__dirname, 'public', 'horses.html')));
+app.get(/^\/colors\/?$/i,  (_, res) => res.sendFile(path.join(__dirname, 'public', 'colors.html')));
+app.get('/',               (_, res) => res.sendFile(path.join(__dirname, 'public', 'pos.html')));
 
 // health
 app.get('/health', (_, res) => res.json({ ok: true }));
@@ -114,8 +114,9 @@ app.get('/api/selections', async (req, res) => {
   }
 });
 
-// color game: next draw + picks
-// color game: next draw + picks (choose earliest draw that already has WINNING COLOR selections)
+/* ========= COLORS ========= */
+
+// Next “eligible” draw (must already have WINNING COLOR selections)
 app.get('/api/colors/draws/latest', async (_req, res) => {
   try {
     const qd = await db.query(
@@ -160,39 +161,47 @@ app.get('/api/colors/draws/latest', async (_req, res) => {
   }
 });
 
-app.get('/api/colors/draws/latest', async (_req, res) => {
+// Upcoming N draws (for the pills on top)
+app.get('/api/colors/draws', async (req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.query.limit || '10', 10), 1), 30);
   try {
-    const qd = await db.query(
+    const r = await db.query(
       `SELECT id, draw_no, start_time, status
        FROM color_draws
        WHERE status='scheduled'
        ORDER BY start_time
-       LIMIT 1`
+       LIMIT $1`,
+      [limit]
     );
-    const d = qd.rows[0];
-    if (!d) return res.json(null);
+    res.json(r.rows);
+  } catch {
+    res.status(500).json({ error: 'failed to load draws' });
+  }
+});
 
-    const qp = await db.query(
-      `SELECT s.id, s.name AS color, s.price
+// selections for a given draw (WINNING COLOR + NUMBER OF COLORS)
+app.get('/api/colors/draws/:id/selections', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: 'invalid id' });
+
+    const win = await db.query(
+      `SELECT s.id, s.name AS label, s.price
        FROM selections s
-       JOIN markets m ON m.id = s.market_id
+       JOIN markets m ON m.id=s.market_id
        WHERE m.color_draw_id=$1 AND m.label='WINNING COLOR'
-       ORDER BY s.name`,
-      [d.id]
+       ORDER BY s.name`, [id]
     );
-    // also number-of-colors if present
-    const noc = await db.query(
-      `SELECT s.id, s.name, s.price
+    const num = await db.query(
+      `SELECT s.id, s.name AS label, s.price
        FROM selections s
        JOIN markets m ON m.id=s.market_id
        WHERE m.color_draw_id=$1 AND m.label='NUMBER OF COLORS'
-       ORDER BY s.name`,
-      [d.id]
+       ORDER BY s.name`, [id]
     );
-
-    res.json({ draw: d, picks: qp.rows, number_of_colors: noc.rows });
+    res.json({ winning_color: win.rows, number_of_colors: num.rows });
   } catch {
-    res.status(500).json({ error: 'failed to load color draw' });
+    res.status(500).json({ error: 'failed to load selections' });
   }
 });
 
@@ -261,7 +270,7 @@ app.get('/virtual/league/:code', async (req, res) => {
   }
 });
 
-// colors summary for countdown
+// colors summary for countdown (still used by POS splash)
 app.get('/virtual/colors', async (_req, res) => {
   try {
     const qd = await db.query(
@@ -437,61 +446,7 @@ app.get('/api/tickets', async (req, res) => {
   }
 });
 
-/* ========= ADMIN (lightweight) ========= */
-
-// limits
-app.get('/admin/limits', async (_req, res) => {
-  try { res.json(await getLimits()); } catch { res.status(500).json({ error: 'failed' }); }
-});
-app.post('/admin/limits', async (req, res) => {
-  try {
-    const { min_stake, max_stake, max_payout } = req.body || {};
-    await db.query('BEGIN');
-    await db.query(`INSERT INTO settings(key,value) VALUES('min_stake',$1)
-      ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value`, [String(min_stake)]);
-    await db.query(`INSERT INTO settings(key,value) VALUES('max_stake',$1)
-      ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value`, [String(max_stake)]);
-    await db.query(`INSERT INTO settings(key,value) VALUES('max_payout',$1)
-      ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value`, [String(max_payout)]);
-    await db.query('COMMIT');
-    res.json({ ok: true });
-  } catch (e) {
-    await db.query('ROLLBACK').catch(()=>{});
-    res.status(400).json({ error: e.message || 'failed' });
-  }
-});
-
-// agents
-app.get('/admin/agents', async (_req, res) => {
-  const r = await db.query('SELECT code,name,balance_cents,is_active FROM agents ORDER BY code');
-  res.json(r.rows.map(a => ({ code:a.code, name:a.name, balance:(a.balance_cents||0)/100, is_active:a.is_active })));
-});
-app.post('/admin/agents', async (req, res) => {
-  const { code, name, add_balance } = req.body||{};
-  try{
-    await db.query('BEGIN');
-    await db.query(
-      `INSERT INTO agents(code,name,balance_cents) VALUES($1,$2,$3)
-       ON CONFLICT (code) DO UPDATE SET name=EXCLUDED.name`,
-      [code, name||code, Math.round(Number(add_balance||0)*100)]
-    );
-    if (add_balance) {
-      await db.query('UPDATE agents SET balance_cents = balance_cents + $1 WHERE code=$2',
-        [Math.round(Number(add_balance)*100), code]);
-    }
-    await db.query('COMMIT');
-    res.json({ ok:true });
-  }catch(e){
-    await db.query('ROLLBACK').catch(()=>{});
-    res.status(400).json({ error: e.message||'failed' });
-  }
-});
-
-/* ========= AUTO-SETTLER (demo) =========
-   Every 30s:
-   - For any market whose parent start_time is in the past, pick ONE winning selection.
-   - Then mark tickets 'won' if all its selections are winners, otherwise 'lost' once all are resulted.
-*/
+/* ========= AUTO-SETTLER (demo) ========= */
 async function autoSettle() {
   try {
     // Mark one winner per eligible market
