@@ -115,6 +115,60 @@ app.get('/api/selections', async (req, res) => {
 });
 
 // color game: next draw + picks
+// list next N color draws (used for toggle tabs on Colors page)
+app.get('/api/colors/draws', async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit || 5), 1), 20);
+    const r = await db.query(
+      `SELECT id, draw_no, start_time, status
+       FROM color_draws
+       WHERE status='scheduled' AND start_time >= NOW() - INTERVAL '5 minutes'
+       ORDER BY start_time
+       LIMIT $1`,
+      [limit]
+    );
+    res.json(r.rows);
+  } catch {
+    res.status(500).json({ error: 'failed to load draws' });
+  }
+});
+
+// get a specific draw (same shape as /latest)
+app.get('/api/colors/draws/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: 'invalid id' });
+
+    const dRes = await db.query(
+      `SELECT id, draw_no, start_time, status
+       FROM color_draws WHERE id=$1`, [id]
+    );
+    const d = dRes.rows[0];
+    if (!d) return res.json(null);
+
+    const win = await db.query(
+      `SELECT s.id, s.name AS color, s.price
+       FROM selections s
+       JOIN markets m ON m.id = s.market_id
+       WHERE m.color_draw_id=$1 AND m.label='WINNING COLOR'
+       ORDER BY s.name`,
+      [id]
+    );
+    const noc = await db.query(
+      `SELECT s.id, s.name, s.price
+       FROM selections s
+       JOIN markets m ON m.id=s.market_id
+       WHERE m.color_draw_id=$1 AND m.label='NUMBER OF COLORS'
+       ORDER BY s.name`,
+      [id]
+    );
+
+    res.json({ draw: d, picks: win.rows, number_of_colors: noc.rows });
+  } catch {
+    res.status(500).json({ error: 'failed to load draw' });
+  }
+});
+
 app.get('/api/colors/draws/latest', async (_req, res) => {
   try {
     const qd = await db.query(
