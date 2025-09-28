@@ -5,55 +5,60 @@
 <title>Mastermind — Virtuals</title>
 <style>
 :root{
-  --bg:#0b1220; --panel:#0f172a; --line:#1f2937; --text:#e2e8f0; --tile:#111827;
-  --accent:#f59e0b;
+  --bg:#0b1220; --panel:#0f172a; --line:#1f2937; --text:#e2e8f0; --tile:#111827; --chip:#0b1528; --accent:#f59e0b;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Arial}
-header{position:sticky;top:0;background:#0c1426;border-bottom:1px solid var(--line);padding:12px 16px;z-index:10}
+header{position:sticky;top:0;background:#0c1426;border-bottom:1px solid var(--line);padding:12px 16px;z-index:10;display:flex;justify-content:space-between;align-items:center}
 h1{margin:0;font-size:18px}
+.top{display:flex;gap:12px;align-items:center}
+.badge{background:#0b1528;border:1px solid #243047;border-radius:999px;padding:6px 10px}
 .wrap{display:grid;grid-template-columns:1fr 340px;gap:12px;padding:12px}
 @media(max-width:1024px){.wrap{grid-template-columns:1fr}}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px}
 .tiles{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:10px;margin-bottom:10px}
 @media(max-width:1200px){.tiles{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:600px){.tiles{grid-template-columns:repeat(2,1fr)}}
-.tile{cursor:pointer;border:1px solid #223048;background:var(--tile);border-radius:16px;padding:12px;display:flex;gap:10px;align-items:center;transition:transform .12s ease, box-shadow .12s ease}
+.tile{cursor:pointer;border:1px solid #223048;background:var(--tile);border-radius:16px;padding:12px;display:flex;gap:10px;align-items:center;justify-content:space-between;transition:transform .12s ease, box-shadow .12s ease}
 .tile:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.35)}
 .tile.active{outline:2px solid var(--accent)}
+.ctd{font:600 12px/1 system-ui;color:#c9d3e7}
 .tbl{width:100%;border-collapse:collapse}
-.tbl th,.tbl td{border-bottom:1px solid #223048;padding:6px 8px;font-size:14px}
-.btn-odd{display:inline-block;min-width:58px;text-align:center;background:#0b1528;border:1px solid #334155;border-radius:8px;padding:6px 8px;margin:2px;cursor:pointer}
+.tbl th,.tbl td{border-bottom:1px solid #223048;padding:6px 8px;font-size:14px;white-space:nowrap}
+.btn-odd{display:inline-block;min-width:52px;text-align:center;background:#0b1528;border:1px solid #334155;border-radius:8px;padding:6px 8px;margin:2px;cursor:pointer}
 .btn-odd:hover{outline:2px solid var(--accent)}
-/* glossy balls */
-.ball{width:34px;height:34px;border-radius:999px;display:inline-grid;place-items:center;font:700 14px/1 system-ui;color:#fff;margin-right:6px;border:1px solid rgba(0,0,0,.3);box-shadow:inset 0 -8px 14px rgba(0,0,0,.35), inset 0 10px 18px rgba(255,255,255,.12), 0 3px 8px rgba(0,0,0,.45)}
-.ball-label{font-size:11px;margin-left:4px;color:#cfd6e6}
+.pill{display:inline-block;padding:6px 10px;border:1px solid #334155;border-radius:10px;margin:2px 4px;cursor:pointer;background:#0b1528}
+.pill:hover{outline:2px solid var(--accent)}
+.section{margin-top:10px}
+.ball{width:38px;height:38px;border-radius:999px;display:inline-grid;place-items:center;font:700 14px/1 system-ui;color:#fff;margin-right:6px;border:1px solid rgba(0,0,0,.3);box-shadow:inset 0 -8px 14px rgba(0,0,0,.35), inset 0 10px 18px rgba(255,255,255,.12), 0 3px 8px rgba(0,0,0,.45)}
 .ball.red{background:radial-gradient(circle at 30% 25%, #ff8a8a, #d71d1d 55%, #8b1111)}
 .ball.green{background:radial-gradient(circle at 30% 25%, #79ffb5, #10b981 55%, #0a5e46)}
 .ball.blue{background:radial-gradient(circle at 30% 25%, #8ac7ff, #2563eb 55%, #163986)}
 .ball.yellow{background:radial-gradient(circle at 30% 25%, #ffe99a, #f59e0b 55%, #7a4e02)}
-.clock{font-weight:700;color:#9fb0c8}
-.tabbar{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 10px}
-.tab{padding:6px 10px;border-radius:999px;border:1px solid #334155;background:#111827;cursor:pointer}
-.tab.active{background:#ef4444;border-color:#ef4444}
 </style>
 </head>
 <body>
-<header><h1>Mastermind Virtuals</h1></header>
+<header>
+  <div class="top">
+    <h1>Mastermind Virtuals</h1>
+    <span class="badge">Jackpot: <b id="jp">1,268.00</b> KSh</span>
+  </div>
+  <div class="top">
+    <span class="badge">Balance: <b id="bal">0.00</b> KSh</span>
+    <span class="badge">Next: <b id="global-ctd">--:--</b></span>
+  </div>
+</header>
 
 <div class="wrap">
   <div class="panel">
     <!-- Tiles -->
     <div id="tiles" class="tiles">
-      <div class="tile active" data-kind="FOOTBALL" data-code="EPL"><strong>EPL</strong></div>
-      <div class="tile" data-kind="FOOTBALL" data-code="UCL"><strong>UCL</strong></div>
-      <div class="tile" data-kind="FOOTBALL" data-code="LALIGA"><strong>LaLiga</strong></div>
-      <div class="tile" data-kind="COLOR" data-code="COLOR">
-        <div class="ball red">●</div><div class="ball green">●</div><div class="ball blue">●</div><div class="ball yellow">●</div>
-        <span class="ball-label">Color Pool</span>
-      </div>
-      <div class="tile" data-kind="RACE" data-code="DOG"><strong>Dogs</strong></div>
-      <div class="tile" data-kind="RACE" data-code="HORSE"><strong>Horses</strong></div>
+      <div class="tile active" data-kind="FOOTBALL" data-code="UCL"><strong>Champions</strong><span class="ctd" data-count="UCL">--:--</span></div>
+      <div class="tile" data-kind="FOOTBALL" data-code="EPL"><strong>EPL</strong><span class="ctd" data-count="EPL">--:--</span></div>
+      <div class="tile" data-kind="FOOTBALL" data-code="LALIGA"><strong>Liga</strong><span class="ctd" data-count="LALIGA">--:--</span></div>
+      <div class="tile" data-kind="COLOR" data-code="COLOR"><strong>COLOR</strong><span class="ctd" id="ctd-color">--:--</span></div>
+      <div class="tile" data-kind="RACE" data-code="DOG"><strong>Dogs</strong><span class="ctd" id="ctd-dog">--:--</span></div>
+      <div class="tile" data-kind="RACE" data-code="HORSE"><strong>Horses</strong><span class="ctd" id="ctd-horse">--:--</span></div>
     </div>
 
     <div id="content"></div>
@@ -63,187 +68,184 @@ h1{margin:0;font-size:18px}
     <div style="display:flex;justify-content:space-between;align-items:center">
       <strong>Fastbet</strong><button id="refresh" class="tile" style="padding:6px 10px">Refresh</button>
     </div>
-    <div id="tickets" class="clock" style="margin-top:8px">—</div>
+    <div id="tickets" style="margin-top:8px;font-size:12px;color:#9fb0c8">Your quick slips will appear here.</div>
   </div>
 </div>
 
 <script>
-const $ = s=>document.querySelector(s);
-function api(u){ return fetch(u).then(r=>r.json()); }
-function btnOdd(o,cb){ const b=document.createElement('span'); b.className='btn-odd'; b.textContent=(typeof o==='number'&&o.toFixed)?o.toFixed(2):o; b.onclick=cb; return b; }
-function cd(t){ const s=Math.max(0,Math.floor((t-Date.now())/1000)); return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
+(function(){
+  /* helpers */
+  var $=q=>document.querySelector(q), $$=q=>Array.from(document.querySelectorAll(q));
+  function api(u){ return fetch(u).then(r=>r.json()); }
+  function btnOdd(o,cb){ var b=document.createElement('span'); b.className='btn-odd'; b.textContent=(+o===+o?Number(o).toFixed(2):'-'); b.onclick=cb; return b; }
+  function tick(el, end){ function f(){ var ms=Math.max(0,end-Date.now()); var s=Math.floor(ms/1000), m=Math.floor(s/60), ss=String(s%60).padStart(2,'0'); el.textContent=m+':'+ss; if(ms>0) requestAnimationFrame(f);} f(); }
 
-/* ---------- FOOTBALL TABLE WITH TABS ---------- */
-const TABS = [
-  { name:'MAIN', cols:['1','X','2','1X','12','X2','GG','NG','OV2.5','UN2.5'], map:(m)=>({
-    '1':m['1X2']?.Home,'X':m['1X2']?.Draw,'2':m['1X2']?.Away,
-    '1X':m['1X12X2']?.['1X'],'12':m['1X12X2']?.['12'],'X2':m['1X12X2']?.['X2'],
-    'GG':m['GG/NG']?.GG,'NG':m['GG/NG']?.NG,'OV2.5':m['OV/UN 2.5']?.OV2.5,'UN2.5':m['OV/UN 2.5']?.UN2.5
-  })},
-  { name:'OVER/UNDER', cols:['OV1.5','UN1.5','OV2.5','UN2.5'], map:(m)=>({
-    'OV1.5':m['OV/UN 1.5']?.OV1.5,'UN1.5':m['OV/UN 1.5']?.UN1.5,'OV2.5':m['OV/UN 2.5']?.OV2.5,'UN2.5':m['OV/UN 2.5']?.UN2.5
-  })},
-  { name:'HOME OV/UN', cols:['OV0.5(H)','UN0.5(H)','OV1.5(H)','UN1.5(H)','OV2.5(H)','UN2.5(H)'], map:(m)=>({
-    'OV0.5(H)':m['HOME OV/UN']?.['OV0.5'],'UN0.5(H)':m['HOME OV/UN']?.['UN0.5'],
-    'OV1.5(H)':m['HOME OV/UN']?.['OV1.5'],'UN1.5(H)':m['HOME OV/UN']?.['UN1.5'],
-    'OV2.5(H)':m['HOME OV/UN']?.['OV2.5'],'UN2.5(H)':m['HOME OV/UN']?.['UN2.5']
-  })},
-  { name:'AWAY OV/UN', cols:['OV0.5(A)','UN0.5(A)','OV1.5(A)','UN1.5(A)','OV2.5(A)','UN2.5(A)'], map:(m)=>({
-    'OV0.5(A)':m['AWAY OV/UN']?.['OV0.5'],'UN0.5(A)':m['AWAY OV/UN']?.['UN0.5'],
-    'OV1.5(A)':m['AWAY OV/UN']?.['OV1.5'],'UN1.5(A)':m['AWAY OV/UN']?.['UN1.5'],
-    'OV2.5(A)':m['AWAY OV/UN']?.['OV2.5'],'UN2.5(A)':m['AWAY OV/UN']?.['UN2.5']
-  })},
-  { name:'1X2 OV/UN 1.5', cols:['1+OV1.5','X+OV1.5','2+OV1.5','1+UN1.5','X+UN1.5','2+UN1.5'], map:(m)=>m['1X2 OV/UN 1.5']||{} },
-  { name:'1X2 OV/UN 2.5', cols:['1+OV2.5','X+OV2.5','2+OV2.5','1+UN2.5','X+UN2.5','2+UN2.5'], map:(m)=>m['1X2 OV/UN 2.5']||{} },
-];
+  /* top */
+  (function topBar(){
+    var p=new URL(location.href).searchParams;
+    var bal=p.get('balance'); if(bal) $('#bal').textContent = Number(bal).toFixed(2);
+    var jp=1268.0; setInterval(()=>{ jp=Math.round((jp+Math.random()*0.7)*100)/100; $('#jp').textContent=jp.toLocaleString(); }, 4500);
+  })();
 
-async function showFootball(code){
-  const box=$('#content'); box.innerHTML='';
-  const state=await api('/virtual/state'); // for timers
-  let endsAt = Date.now()+180000-(Date.now()%180000);
-  const lg = (state.leagues||[]).find(l=>l.code===code);
-  if(lg) endsAt = lg.endsAt;
+  /* tile countdowns */
+  async function refreshCTD(){
+    try{
+      var st=await api('/virtual/state');
+      (st.leagues||[]).forEach(function(le){
+        var el=document.querySelector('[data-count="'+le.code+'"]'); if(!el) return;
+        tick(el, new Date(le.endsAt).getTime());
+        $('#global-ctd').textContent = el.textContent;
+      });
+    }catch{}
+    try{ var c=await api('/virtual/colors'); if(c){ tick($('#ctd-color'), new Date(c.starts_at).getTime()); } }catch{}
+  }
+  refreshCTD(); setInterval(refreshCTD, 10000);
 
-  const head=document.createElement('div');
-  head.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center">
-    <h3 style="margin:8px 0">${code} • League</h3><div class="clock" id="fb-clock">--:--</div></div>
-    <div class="tabbar" id="fb-tabs"></div>
-    <div id="fb-wrap"></div>`;
-  box.appendChild(head);
-  setInterval(()=>$('#fb-clock').textContent=cd(endsAt),500);
+  /* FOOTBALL (league table view with all markets visible like the screenshot) */
+  async function showLeague(code){
+    var box=$('#content'); box.innerHTML='';
+    var data = await api('/virtual/league/'+encodeURIComponent(code));
+    var fx = data.fixtures||[]; if(!fx.length){ box.textContent='No fixtures yet.'; return; }
 
-  const league=await api('/virtual/league/'+encodeURIComponent(code)); // fixtures + markets
-  const tabs=$('#fb-tabs');
-  TABS.forEach((t,i)=>{
-    const b=document.createElement('span'); b.className='tab'+(i===0?' active':''); b.textContent=t.name;
-    b.onclick=()=>{ tabs.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); b.classList.add('active'); render(t); };
-    tabs.appendChild(b);
-  });
-  render(TABS[0]);
+    var t=document.createElement('table'); t.className='tbl';
+    t.innerHTML='<thead><tr>\
+      <th>#</th><th>Match</th>\
+      <th>1</th><th>X</th><th>2</th>\
+      <th>1X</th><th>12</th><th>X2</th>\
+      <th>GG</th><th>NG</th>\
+      <th>OV2.5</th><th>UN2.5</th>\
+      <th>OU1.5</th><th>U1.5</th>\
+      </tr></thead><tbody></tbody>';
+    var tb=t.querySelector('tbody');
 
-  function render(t){
-    const wrap=$('#fb-wrap'); wrap.innerHTML='';
-    const tbl=document.createElement('table'); tbl.className='tbl';
-    tbl.innerHTML='<thead><tr><th>#</th><th>Match</th>'+t.cols.map(c=>'<th>'+c+'</th>').join('')+'</tr></thead><tbody></tbody>';
-    const tb=tbl.querySelector('tbody');
-
-    (league.fixtures||[]).forEach((f,idx)=>{
-      const tr=document.createElement('tr');
-      tr.innerHTML='<td>'+(idx+1)+'</td><td>'+f.home.slice(0,3).toUpperCase()+' vs '+f.away.slice(0,3).toUpperCase()+'</td>'+t.cols.map(()=>'<td></td>').join('');
+    fx.forEach(function(f,i){
+      var mk=f.markets||{}, m12=mk['1X2']||{}, dc=mk['Double Chance']||mk['DC']||{}, ggn=mk['GG/NG']||{}, ou25=mk['OV/UN 2.5']||mk['O/U 2.5']||{};
+      var tr=document.createElement('tr');
+      tr.innerHTML='<td>'+(i+1)+'</td><td>'+f.home.slice(0,3).toUpperCase()+' vs '+f.away.slice(0,3).toUpperCase()+'</td>'
+        +'<td></td><td></td><td></td>'
+        +'<td></td><td></td><td></td>'
+        +'<td></td><td></td>'
+        +'<td></td><td></td>'
+        +'<td></td><td></td>';
       tb.appendChild(tr);
 
-      const m=t.map(f.markets||{});
-      t.cols.forEach((name,i)=>{
-        const val=m[name];
-        if (typeof val==='number'){
-          tr.children[i+2].appendChild(btnOdd(val,()=>{}));
-        } else {
-          tr.children[i+2].appendChild(btnOdd('-',()=>{}));
-          tr.children[i+2].firstChild.style.opacity=.5;
+      tr.children[2].appendChild(btnOdd(m12['Home']||m12['1'], ()=>{}));
+      tr.children[3].appendChild(btnOdd(m12['Draw']||m12['X'], ()=>{}));
+      tr.children[4].appendChild(btnOdd(m12['Away']||m12['2'], ()=>{}));
+
+      tr.children[5].appendChild(btnOdd(dc['1X'], ()=>{}));
+      tr.children[6].appendChild(btnOdd(dc['12'], ()=>{}));
+      tr.children[7].appendChild(btnOdd(dc['X2'], ()=>{}));
+
+      tr.children[8].appendChild(btnOdd(ggn['GG'], ()=>{}));
+      tr.children[9].appendChild(btnOdd(ggn['NG'], ()=>{}));
+
+      tr.children[10].appendChild(btnOdd(ou25['OV2.5'], ()=>{}));
+      tr.children[11].appendChild(btnOdd(ou25['UN2.5'], ()=>{}));
+
+      var ou15 = mk['OV/UN 1.5']||mk['O/U 1.5']||{};
+      tr.children[12].appendChild(btnOdd(ou15['OV1.5'], ()=>{}));
+      tr.children[13].appendChild(btnOdd(ou15['UN1.5'], ()=>{}));
+
+      // per-row expand button for deeper markets
+      var exp=document.createElement('tr');
+      exp.innerHTML='<td></td><td colspan="12">\
+        <div class="section" style="display:flex;gap:8px;flex-wrap:wrap">\
+          <span class="pill" data-k="HOME">HOME OV/UN</span>\
+          <span class="pill" data-k="AWAY">AWAY OV/UN</span>\
+          <span class="pill" data-k="1X2OU15">1X2 OV/UN 1.5</span>\
+          <span class="pill" data-k="1X2OU25">1X2 OV/UN 2.5</span>\
+          <span class="pill" data-k="TG">TOTAL GOALS</span>\
+        </div>\
+        <div class="section" id="pane-'+f.id+'"></div>\
+      </td><td></td>';
+      tb.appendChild(exp);
+
+      function pane(kind){
+        var p=$('#pane-'+f.id); p.innerHTML='';
+        if(kind==='HOME'){
+          var mkh=mk['HOME OV/UN']||{};
+          ['OV0.5','UN0.5','OV1.5','UN1.5','OV2.5','UN2.5'].forEach(k=> p.appendChild(btnOdd(mkh[k],()=>{})));
+        } else if(kind==='AWAY'){
+          var mka=mk['AWAY OV/UN']||{};
+          ['OV0.5','UN0.5','OV1.5','UN1.5','OV2.5','UN2.5'].forEach(k=> p.appendChild(btnOdd(mka[k],()=>{})));
+        } else if(kind==='1X2OU15'){
+          var mkc=mk['1X2 OV/UN 1.5']||{};
+          ['1+OV1.5','X+OV1.5','2+OV1.5','1+UN1.5','X+UN1.5','2+UN1.5'].forEach(k=> p.appendChild(btnOdd(mkc[k],()=>{})));
+        } else if(kind==='1X2OU25'){
+          var mkd=mk['1X2 OV/UN 2.5']||{};
+          ['1+OV2.5','X+OV2.5','2+OV2.5','1+UN2.5','X+UN2.5','2+UN2.5'].forEach(k=> p.appendChild(btnOdd(mkd[k],()=>{})));
+        } else if(kind==='TG'){
+          var mke=mk['TOTAL GOALS']||{};
+          ['0','1','2','3','4','5+'].forEach(k=> p.appendChild(btnOdd(mke[k],()=>{})));
         }
+      }
+      exp.addEventListener('click', e=>{
+        var t=e.target.closest('.pill'); if(!t) return;
+        pane(t.dataset.k);
       });
     });
-    wrap.appendChild(tbl);
-  }
-}
 
-/* ---------- COLOR with WIN/NUM & TIMER ---------- */
-async function showColor(){
-  const box=$('#content'); box.innerHTML='';
-  const d=await api('/virtual/colors');
-  if(!d){ box.textContent='No scheduled draw.'; return; }
-  const head=document.createElement('div');
-  head.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center">
-      <h3 style="margin:8px 0">Color Pool — Draw #${d.draw_no}</h3>
-      <div class="clock" id="col-clock">--:--</div>
-    </div>`;
-  box.appendChild(head);
-  const endsAt=new Date(d.starts_at).getTime(); setInterval(()=>$('#col-clock').textContent=cd(endsAt),500);
-
-  const latest = await api('/api/colors/draws/latest');
-  const sel = await api(`/api/selections?color_draw_id=${latest.draw.id}`);
-  const by={}; sel.forEach(s=>(by[s.label] ||= []).push(s));
-
-  function row(label, arr, render){
-    if(!arr||!arr.length) return;
-    const p=document.createElement('div'); p.className='panel'; p.style.marginTop='8px';
-    p.innerHTML='<div style="margin-bottom:6px"><strong>'+label+'</strong></div><div></div>';
-    const body=p.lastElementChild;
-    arr.forEach(s=> body.appendChild(render(s)));
-    box.appendChild(p);
+    box.appendChild(t);
   }
 
-  row('WINNING COLOR', by['WINNING COLOR'] || d.picks, (s)=>{
-    const c=(s.color||s.name), cls=c==='RED'?'red':c==='GREEN'?'green':c==='BLUE'?'blue':'yellow';
-    const el=document.createElement('span'); el.className='btn-odd';
-    el.innerHTML=`<span class="ball ${cls}">${c[0]}</span> @ ${s.price}`;
-    return el;
-  });
+  /* COLOR */
+  async function showColor(){
+    var box=$('#content'); box.innerHTML='';
+    var data=await api('/virtual/colors'); if(!data){ box.textContent='No scheduled draw.'; return; }
+    tick($('#ctd-color'), new Date(data.starts_at).getTime());
 
-  row('NUMBER OF COLORS', by['NUMBER OF COLORS'], (s)=>{
-    const el=document.createElement('span'); el.className='btn-odd'; el.textContent=s.name+' @ '+s.price; return el;
-  });
-}
+    var picks=data.picks||[];
+    var sec=document.createElement('div'); sec.className='panel';
+    sec.innerHTML='<div><b>Winning Color</b></div><div id="win" class="section"></div><div class="section"><b>Number of Colors</b><div class="muted">Shown when backend provides this market.</div><div id="noc" class="section"></div></div>';
+    box.appendChild(sec);
 
-/* ---------- RACES with TABS & TIMER ---------- */
-const R_TABS=['MAIN','FORECAST','QUINELLA','TRICAST'];
-async function showRaces(type){
-  const box=$('#content'); box.innerHTML='';
-  const races=await api('/api/races?type='+encodeURIComponent(type));
-  if(!races.length){ box.textContent='No races yet.'; return; }
-  const r=races[0]; const endsAt=new Date(r.start_time).getTime();
+    var win=$('#win');
+    function ball(c){ var cls=c==='RED'?'red':c==='GREEN'?'green':c==='BLUE'?'blue':'yellow'; return '<span class="ball '+cls+'">●</span> '+c; }
+    picks.forEach(p=>{ var s=document.createElement('span'); s.className='pill'; s.innerHTML=ball(p.color)+' @ '+p.price; win.appendChild(s); });
+  }
 
-  const head=document.createElement('div');
-  head.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center">
-      <h3 style="margin:8px 0">${type==='DOG'?'Dogs':'Horses'} — ${r.track} • R${r.race_no}</h3>
-      <div class="clock" id="race-clock">--:--</div>
-    </div>
-    <div class="tabbar" id="rtabs"></div>
-    <div id="rwrap"></div>`;
-  box.appendChild(head);
-  setInterval(()=>$('#race-clock').textContent=cd(endsAt),500);
+  /* RACES */
+  async function showRaces(type){
+    var box=$('#content'); box.innerHTML='';
+    var races=await api('/api/races?type='+encodeURIComponent(type));
+    if(!races.length){ box.textContent='No races yet.'; return; }
+    var soon=races[0]?.start_time ? new Date(races[0].start_time).getTime() : null;
+    if(soon) tick(type==='DOG' ? $('#ctd-dog') : $('#ctd-horse'), soon);
 
-  const all=await api('/api/selections?race_event_id='+r.id);
-  const by={}; all.forEach(s=>(by[s.label] ||= []).push(s));
+    for (const r of races){
+      var wrap=document.createElement('div'); wrap.className='panel'; wrap.style.marginBottom='8px';
+      wrap.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><b>'+r.track+'</b><span class="badge">'+new Date(r.start_time).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})+'</span></div>\
+      <div class="section"><span class="pill" data-k="MAIN">MAIN</span><span class="pill" data-k="FORECAST">FORECAST</span><span class="pill" data-k="QUINELLA">QUINELLA</span><span class="pill" data-k="TRICAST">TRICAST</span></div>\
+      <div class="section" id="race-'+r.id+'"></div>';
+      box.appendChild(wrap);
 
-  const tabs=$('#rtabs');
-  R_TABS.forEach((nm,i)=>{
-    const b=document.createElement('span'); b.className='tab'+(i===0?' active':''); b.textContent=nm;
-    b.onclick=()=>{ tabs.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); b.classList.add('active'); render(nm); };
-    tabs.appendChild(b);
-  });
-  render('MAIN');
-
-  function render(which){
-    const wrap=$('#rwrap'); wrap.innerHTML='';
-    function row(label, arr){
-      if(!arr||!arr.length) return;
-      const p=document.createElement('div'); p.className='panel'; p.style.marginTop='8px';
-      p.innerHTML='<div style="margin-bottom:6px"><strong>'+label+'</strong></div><div></div>';
-      const body=p.lastElementChild;
-      arr.forEach(s=> body.appendChild(btnOdd(s.price,()=>{})));
-      wrap.appendChild(p);
+      const sel = await api('/api/selections?race_event_id='+r.id);
+      const by={}; sel.forEach(s=>{ (by[s.label] ||= []).push(s); });
+      function draw(group){
+        var pane=$('#race-'+r.id); pane.innerHTML='';
+        (by[group]||[]).forEach(s=> pane.appendChild(btnOdd(s.price, ()=>{})));
+      }
+      draw('MAIN');
+      wrap.addEventListener('click', e=>{
+        var t=e.target.closest('.pill'); if(!t) return;
+        draw(t.dataset.k);
+      });
     }
-    if (which==='MAIN'){ row('WINNER',by['WINNER']); row('PLACE',by['PLACE']); row('SHOW',by['SHOW']); }
-    if (which==='FORECAST'){ row('FORECAST',by['FORECAST']); }
-    if (which==='QUINELLA'){ row('QUINELLA',by['QUINELLA']); }
-    if (which==='TRICAST'){ row('TRICAST',by['TRICAST']); }
   }
-}
 
-/* ---------- Router ---------- */
-function activate(el){
-  document.querySelectorAll('.tile').forEach(x=>x.classList.remove('active'));
-  el.classList.add('active');
-  const kind=el.dataset.kind, code=el.dataset.code;
-  if(kind==='FOOTBALL') showFootball(code);
-  if(kind==='COLOR') showColor();
-  if(kind==='RACE') showRaces(code);
-}
-document.getElementById('tiles').addEventListener('click', e=>{
-  const t=e.target.closest('.tile'); if(!t) return; activate(t);
-});
-activate(document.querySelector('.tile.active'));
+  /* router */
+  function activate(el){
+    $$('.tile').forEach(x=>x.classList.remove('active')); el.classList.add('active');
+    var kind=el.getAttribute('data-kind'), code=el.getAttribute('data-code');
+    if(kind==='FOOTBALL') showLeague(code);
+    if(kind==='COLOR') showColor();
+    if(kind==='RACE') showRaces(code);
+  }
+  $('#tiles').addEventListener('click', e=>{ var t=e.target.closest('.tile'); if(!t) return; activate(t); });
+
+  activate(document.querySelector('.tile.active'));
+})();
 </script>
 </body>
 </html>
