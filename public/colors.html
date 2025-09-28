@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Colors — Mastermind Bet</title>
+<link rel="icon" href="data:," />
+<style>
+  :root{
+    --bg:#0b0f17; --panel:#121826; --panel-2:#192235; --accent:#ffb703; --muted:#8aa0c7; --text:#eaf2ff; --ok:#06d6a0;
+  }
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial}
+  header{display:flex;align-items:center;gap:8px;padding:12px 16px;background:linear-gradient(90deg,#1b2436, #0f1523);}
+  a{color:#cfe0ff;text-decoration:none;background:#18233a;border:1px solid #243353;padding:6px 10px;border-radius:999px}
+  .brand{font-weight:800}
+  .wrap{display:grid;grid-template-columns:2fr 1fr;gap:16px;padding:16px}
+  .card{background:var(--panel);border:1px solid #1a253b;border-radius:14px;overflow:hidden}
+  .card h2{margin:0;padding:10px 12px;background:var(--panel-2);border-bottom:1px solid #1a253b;font-size:14px}
+  .shelf{padding:12px;display:flex;flex-direction:column;gap:10px}
+  .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .badge{display:inline-block;background:#223356;border:1px solid #2a416b;padding:4px 8px;border-radius:8px;margin-right:6px}
+  .odd{display:inline-block;min-width:64px;text-align:center;padding:6px 8px;border-radius:8px;background:#0e1626;border:1px solid #213150;cursor:pointer}
+  .odd.pick{background:var(--ok);border-color:#10a57f;color:#08231d;font-weight:700}
+  input{background:#10192b;border:1px solid #263a60;color:#cfe0ff;border-radius:10px;padding:8px 10px}
+  .btn{background:var(--accent);border:0;padding:10px 14px;border-radius:10px;font-weight:700;cursor:pointer}
+  .btn.secondary{background:#223356;color:#cfe0ff;border:1px solid #2a416b}
+  .totals{display:flex;justify-content:space-between;padding:10px 12px;background:#0f1727;border-top:1px solid #1a253b}
+  .info{color:var(--muted);font-size:12px}
+  .count{font-weight:700}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">🎨 Colors — Mastermind Bet</div>
+  <a href="/pos">POS</a><a href="/dogs">Dogs</a><a href="/horses">Horses</a><a href="/admin">Admin</a><a href="/history">History</a>
+</header>
+
+<div class="wrap">
+  <section class="card">
+    <h2>Next Draw</h2>
+    <div class="shelf" id="drawBox">
+      <div class="info">Loading…</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Betslip</h2>
+    <div class="shelf">
+      <div class="row">
+        <label>Agent Code</label><input id="agentCode" placeholder="(optional)">
+      </div>
+      <div id="slip"></div>
+      <div class="row">
+        <label>Stake</label><input id="stake" type="number" min="20" value="50">
+        <button class="btn" id="place">Place Bet</button>
+        <button class="btn secondary" id="clear">Clear</button>
+      </div>
+      <div class="totals"><div>Lines: <span id="lineCount">0</span></div><div>Est. Odds: <span id="estOdds">1.00</span></div></div>
+      <div class="info" id="msg"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+const box = document.getElementById('drawBox');
+const slipDiv = document.getElementById('slip');
+const lineCount = document.getElementById('lineCount');
+const estOdds = document.getElementById('estOdds');
+const msg = document.getElementById('msg');
+const state = { slip: [], draw_id: null };
+
+function fmt(n){ return Number(n).toFixed(2); }
+function rhtml(s){ return String(s).replace(/[&<>"]/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m])); }
+
+function addToSlip(x){
+  if(state.slip.find(s=>s.id===x.id)) return;
+  state.slip.push(x); renderSlip();
+}
+function removeFromSlip(id){ state.slip = state.slip.filter(s=>s.id!==id); renderSlip(); }
+function renderSlip(){
+  slipDiv.innerHTML = state.slip.map(s =>
+    `<div class="row"><span class="badge">${rhtml(s.market)}</span>
+     <strong>${rhtml(s.pick)}</strong> <span class="badge">@ ${fmt(s.price)}</span>
+     <button class="btn secondary" onclick="removeFromSlip(${s.id})">x</button></div>`
+  ).join('') || '<div class="info">No selections yet.</div>';
+  lineCount.textContent = state.slip.length;
+  estOdds.textContent = fmt(state.slip.reduce((a,b)=>a*b.price,1)||1);
+}
+
+function countdown(ts){
+  function tick(){
+    const now = Date.now(), end = new Date(ts).getTime();
+    const d = Math.max(0, end - now);
+    const s = Math.floor(d/1000);
+    const mm = String(Math.floor(s/60)).padStart(2,'0');
+    const ss = String(s%60).padStart(2,'0');
+    const el = document.getElementById('cd');
+    if(el){ el.textContent = `${mm}:${ss}`; }
+    if(d<=0){ clearInterval(iv); load(); }
+  }
+  tick();
+  const iv = setInterval(tick, 500);
+}
+
+async function load(){
+  box.innerHTML = '<div class="info">Loading…</div>';
+  const latest = await (await fetch('/api/colors/draws/latest')).json();
+  if(!latest){ box.innerHTML = '<div class="info">No scheduled draw.</div>'; return; }
+  state.draw_id = latest.draw.id;
+
+  // fetch all selections for this draw so we can group by markets
+  const all = await (await fetch(`/api/selections?color_draw_id=${state.draw_id}`)).json();
+  const groups = {};
+  all.forEach(s => { (groups[s.label] ||= []).push(s); });
+
+  const colors = (groups['WINNING COLOR']||[]).map(s =>
+    `<span class="odd" onclick='addToSlip(${JSON.stringify({id:s.id, market:s.label, pick:s.name, price:Number(s.price)})})'>
+      ${rhtml(s.name)}<br>${fmt(s.price)}
+    </span>`
+  ).join(' ');
+
+  const counts = (groups['NUMBER OF COLORS']||[]).map(s =>
+    `<span class="odd" onclick='addToSlip(${JSON.stringify({id:s.id, market:s.label, pick:s.name, price:Number(s.price)})})'>
+      ${rhtml(s.name)}<br>${fmt(s.price)}
+    </span>`
+  ).join(' ');
+
+  box.innerHTML = `
+    <div class="row"><span class="badge">Draw #</span> <strong>${latest.draw.draw_no}</strong></div>
+    <div class="row"><span class="badge">Starts</span> ${new Date(latest.draw.start_time).toLocaleString()} &nbsp; <span class="badge">⏳ <span id="cd">--:--</span></span></div>
+    <div class="row"><span class="badge">WINNING COLOR</span> ${colors || '<span class="info">N/A</span>'}</div>
+    <div class="row"><span class="badge">NUMBER OF COLORS</span> ${counts || '<span class="info">N/A</span>'}</div>
+  `;
+  countdown(latest.draw.start_time);
+}
+
+document.getElementById('clear').onclick = ()=>{ state.slip=[]; renderSlip(); };
+document.getElementById('place').onclick = async ()=>{
+  const stake = Number(document.getElementById('stake').value||0);
+  const agent_code = (document.getElementById('agentCode').value||'').trim()||null;
+  const items = state.slip.map(x=>({ selection_id:x.id }));
+  msg.textContent = '…';
+  const res = await fetch('/api/tickets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agent_code,stake,items})});
+  const j = await res.json();
+  if(!res.ok){ msg.textContent='❌ '+(j.error||'Failed'); return; }
+  msg.textContent = `✅ Ticket #${j.ticket_id} placed. Payout up to ${j.potential_payout}`;
+  state.slip=[]; renderSlip();
+};
+
+load();
+</script>
+</body>
+</html>
