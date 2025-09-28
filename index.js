@@ -16,6 +16,9 @@ app.get(/^\/virtual\/?$/i, (_, res) => res.sendFile(path.join(__dirname, 'public
 app.get(/^\/history\/?$/i, (_, res) => res.sendFile(path.join(__dirname, 'public', 'history.html')));
 app.get(/^\/admin\/?$/i, (_, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 app.get('/', (_, res) => res.sendFile(path.join(__dirname, 'public', 'pos.html')));
+app.get(/^\/dogs\/?$/i,   (_, res) => res.sendFile(path.join(__dirname, 'public', 'dogs.html')));
+app.get(/^\/horses\/?$/i, (_, res) => res.sendFile(path.join(__dirname, 'public', 'horses.html')));
+app.get(/^\/colors\/?$/i, (_, res) => res.sendFile(path.join(__dirname, 'public', 'colors.html')));
 
 // health
 app.get('/health', (_, res) => res.json({ ok: true }));
