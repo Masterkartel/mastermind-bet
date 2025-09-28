@@ -110,20 +110,43 @@ app.get('/api/selections', async function (req, res) {
   }
 });
 
-// color game: next draw + picks (also used by virtual tiles)
+// color game: next draw + GROUPED markets for POS/virtuals
 app.get('/api/colors/draws/latest', async function (_req, res) {
   try {
     const qd = await db.query(
       "SELECT id, draw_no, start_time, status FROM color_draws WHERE status='scheduled' ORDER BY start_time LIMIT 1"
     );
-    const d = qd.rows.length ? qd.rows[0] : null;
-    if (!d) return res.json(null);
+    if (!qd.rows.length) return res.json(null);
+    const d = qd.rows[0];
 
-    const qp = await db.query(
-      'SELECT s.id, s.name AS color, s.price FROM selections s JOIN markets m ON m.id = s.market_id WHERE m.color_draw_id=$1 ORDER BY s.name',
+    // Fetch all markets & selections for this draw, grouped by market label
+    const q = await db.query(
+      [
+        "SELECT m.id AS market_id, m.label AS market_label,",
+        "       s.id AS selection_id, s.name AS name, s.price AS price",
+        "FROM markets m",
+        "JOIN selections s ON s.market_id = m.id",
+        "WHERE m.color_draw_id=$1",
+        "ORDER BY m.label, s.id"
+      ].join(' '),
       [d.id]
     );
-    res.json({ draw: d, picks: qp.rows });
+
+    const byLabel = {};
+    for (let i = 0; i < q.rows.length; i++) {
+      const r = q.rows[i];
+      if (!byLabel[r.market_label]) byLabel[r.market_label] = [];
+      byLabel[r.market_label].push({
+        id: r.selection_id,
+        name: r.name,
+        price: Number(r.price)
+      });
+    }
+
+    res.json({
+      draw: d,
+      markets: Object.keys(byLabel).map(label => ({ label, picks: byLabel[label] }))
+    });
   } catch (_e) {
     res.status(500).json({ error: 'failed to load color draw' });
   }
