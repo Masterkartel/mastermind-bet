@@ -16,6 +16,7 @@
   @media(max-width:960px){ main{grid-template-columns:1fr} }
   .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px}
   .muted{color:var(--muted)}
+
   /* tiles */
   .tiles{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:10px;margin-bottom:10px}
   @media(max-width:1200px){.tiles{grid-template-columns:repeat(3,1fr)}}
@@ -25,19 +26,29 @@
   .tile.active{outline:2px solid var(--accent)}
   .badge{font-size:12px;border:1px solid #2a3b60;padding:2px 6px;border-radius:999px;color:#bcd}
   .big{font-weight:700}
-  /* fixtures + pills */
-  .fixture{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px dashed #26334d;border-radius:12px;padding:8px 10px;margin-bottom:8px}
-  .market{margin:8px 0}
+
+  /* table */
+  .tbl{width:100%;border-collapse:collapse;margin-top:6px}
+  .tbl th,.tbl td{border-bottom:1px solid #223048;padding:6px 8px;font-size:14px;text-align:center}
+  .tbl th:first-child,.tbl td:first-child{text-align:left}
+  .tabbar{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .tab{font-size:12px;padding:6px 10px;border:1px solid #334155;border-radius:10px;background:#0b1528;cursor:pointer}
+  .tab.active{outline:2px solid var(--accent)}
+
+  /* pills */
   .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #334155;border-radius:10px;margin:4px 6px 0 0;cursor:pointer;background:#0b1528;white-space:nowrap}
   .pill:hover{outline:2px solid var(--accent)}
+
   /* betslip */
   .betslip li{display:flex;justify-content:space-between;margin:6px 0;gap:8px}
   button,input{background:#0b1528;color:var(--text);border:1px solid #243047;border-radius:10px;padding:8px 10px}
   button.primary{background:#115e38;border-color:#115e38}
   button.danger{background:#7f1d1d;border-color:#7f1d1d}
+
   /* glossy info card */
   .gloss{position:relative;overflow:hidden}
   .gloss::before{content:"";position:absolute;inset:-60% -40% auto -40%;height:160%;background:linear-gradient(120deg,rgba(255,255,255,.08),rgba(255,255,255,0));transform:rotate(-12deg)}
+
   /* pool balls */
   .ball{width:24px;height:24px;border-radius:999px;display:inline-grid;place-items:center;font:700 12px/1 system-ui;color:#fff;border:1px solid rgba(0,0,0,.3);box-shadow:inset 0 -8px 14px rgba(0,0,0,.35), inset 0 10px 18px rgba(255,255,255,.12), 0 3px 8px rgba(0,0,0,.45)}
   .ball-label{font-size:12px;color:#cfd6e6}
@@ -45,6 +56,7 @@
   .ball.green{background:radial-gradient(circle at 30% 25%, #79ffb5, #10b981 55%, #0a5e46)}
   .ball.blue{background:radial-gradient(circle at 30% 25%, #8ac7ff, #2563eb 55%, #163986)}
   .ball.yellow{background:radial-gradient(circle at 30% 25%, #ffe99a, #f59e0b 55%, #7a4e02)}
+
   /* number-of-colors grid */
   .noc-grid{display:grid;grid-template-columns:120px repeat(5, minmax(90px,1fr));gap:8px}
   .noc-grid .hdr{font-size:12px;color:#9fb0c8}
@@ -111,6 +123,7 @@
 <script>
 const $ = s => document.querySelector(s);
 let slip = []; // {selection_id,label,price}
+let footGroup = 'MAIN'; // active football sub-market group
 
 function fmt(n){ return Number(n).toFixed(2); }
 async function api(url,opts){ const r=await fetch(url,opts); if(!r.ok) throw new Error(await r.text()); return r.json(); }
@@ -140,7 +153,6 @@ async function placeTicket(){
       method:'POST',headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ stake, items: slip.map(x=>({selection_id:x.selection_id})) })
     });
-    // simple receipt
     $('#printArea').innerHTML = `
       <div class="card" style="background:#fff;color:#111">
         <h3 style="margin:0 0 6px 0">Mastermind Bet</h3>
@@ -152,49 +164,187 @@ async function placeTicket(){
   }catch(e){ alert('Ticket failed: '+e.message); }
 }
 
-/* ---------- LOADERS ---------- */
+/* ---------- FOOTBALL ---------- */
+const GROUPS = [
+  'MAIN',
+  'OVER/UNDER',
+  'HOME OV/UN',
+  'AWAY OV/UN',
+  '1X2 OV/UN 1.5',
+  '1X2 OV/UN 2.5'
+];
+
+function normalize(s){ return String(s||'').trim().toUpperCase(); }
+function firstLabel(obj, labels){
+  const L = Object.create(null);
+  (labels||[]).forEach(l=>L[normalize(l)]=1);
+  for(const k in obj){ if(L[normalize(k)]) return obj[k]; }
+  return null;
+}
+function pickPrice(markets, labelCandidates, nameCandidates){
+  const m = firstLabel(markets, labelCandidates);
+  if(!m) return null;
+  const names = (Array.isArray(nameCandidates)?nameCandidates:[nameCandidates]).map(normalize);
+  for(const n in m){
+    if(names.includes(normalize(n))) return m[n];
+  }
+  return null;
+}
+
 async function loadFootball(code){
   const fx = await api(`/api/fixtures?competition_code=${encodeURIComponent(code)}`);
   const box = $('#list');
-  box.innerHTML = `<h3 style="margin:8px 0">Football • ${code}</h3>` +
-    fx.map(f=>`
-      <div class="fixture">
-        <div>${new Date(f.start_time).toLocaleString([], {hour:'2-digit',minute:'2-digit'})}</div>
-        <div><strong>${f.home}</strong> vs <strong>${f.away}</strong></div>
-        <div><button class="pill" data-fx="${f.id}">Markets</button></div>
-      </div>`).join('');
 
-  // click to load markets
-  box.querySelectorAll('[data-fx]').forEach(b=>{
-    b.onclick = async ()=>{
-      const sel = await api(`/api/selections?fixture_id=${b.dataset.fx}`);
-      const marketsByLabel = {};
-      sel.forEach(s => (marketsByLabel[s.label] ||= []).push(s));
-      const mkHtml = Object.entries(marketsByLabel).map(([label,arr])=>`
-        <div class="market">
-          <div><strong>${label}</strong></div>
-          <div>
-            ${arr.map(s=>`<span class="pill" data-sid="${s.id}" data-label="${label}:${s.name}" data-price="${s.price}">
-              ${s.name} @ ${s.price}
-            </span>`).join('')}
-          </div>
-        </div>`).join('');
-      b.parentElement.insertAdjacentHTML('beforeend', `<div style="margin-top:6px">${mkHtml}</div>`);
-      // attach clicks
-      b.parentElement.querySelectorAll('[data-sid]').forEach(p=>{
-        p.onclick=()=>{
-          const sid = Number(p.dataset.sid);
-          if (!slip.some(x=>x.selection_id===sid)){
-            slip.push({ selection_id:sid, label:p.dataset.label, price:p.dataset.price });
-            renderSlip();
-          }
-        };
-      });
-      b.remove(); // prevent duplicate blocks
-    };
+  // Sub-tabs for arranged groups
+  const tabbar = `
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h3 style="margin:8px 0">Football • ${code}</h3>
+      <div class="tabbar">
+        ${GROUPS.map(g=>`<span class="tab ${g===footGroup?'active':''}" data-footgrp="${g}">${g}</span>`).join('')}
+      </div>
+    </div>
+  `;
+
+  const table = document.createElement('table');
+  table.className='tbl';
+
+  function headerFor(group){
+    if(group==='MAIN'){
+      return ['#','Match','1','X','2','1X','12','X2','GG','NG','OV 2.5','UN 2.5'];
+    }
+    if(group==='OVER/UNDER'){
+      return ['#','Match','OV 1.5','UN 1.5','OV 2.5','UN 2.5'];
+    }
+    if(group==='HOME OV/UN'){
+      return ['#','Match','H OV 0.5','H UN 0.5','H OV 1.5','H UN 1.5','H OV 2.5','H UN 2.5'];
+    }
+    if(group==='AWAY OV/UN'){
+      return ['#','Match','A OV 0.5','A UN 0.5','A OV 1.5','A UN 1.5','A OV 2.5','A UN 2.5'];
+    }
+    if(group==='1X2 OV/UN 1.5'){
+      return ['#','Match','1+OV1.5','X+OV1.5','2+OV1.5','1+UN1.5','X+UN1.5','2+UN1.5'];
+    }
+    if(group==='1X2 OV/UN 2.5'){
+      return ['#','Match','1+OV2.5','X+OV2.5','2+OV2.5','1+UN2.5','X+UN2.5','2+UN2.5'];
+    }
+    return ['#','Match'];
+  }
+
+  table.innerHTML = `<thead><tr>${
+    headerFor(footGroup).map(h=>`<th>${h}</th>`).join('')
+  }</tr></thead><tbody></tbody>`;
+  const tb = table.querySelector('tbody');
+
+  // Build each row, fetch selections for fixture and map labels
+  for (let i=0;i<fx.length;i++){
+    const f = fx[i];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${i+1}</td><td style="text-align:left">${f.home} vs ${f.away}</td>` +
+      headerFor(footGroup).slice(2).map(_=>`<td></td>`).join('');
+    tb.appendChild(tr);
+
+    const sel = await api(`/api/selections?fixture_id=${f.id}`);
+    // markets[label][name] = price
+    const markets = {};
+    sel.forEach(s=>{
+      const L = normalize(s.label);
+      if(!markets[L]) markets[L] = {};
+      markets[L][normalize(s.name)] = Number(s.price);
+      // keep original id mapping for add-to-slip
+      if(!markets[L]._map) markets[L]._map = {};
+      markets[L]._map[normalize(s.name)] = s.id;
+    });
+
+    function cell(colIdx, labelCandidates, nameCandidates, showText){
+      const price = pickPrice(markets, labelCandidates, nameCandidates);
+      const mapLabel = firstLabel(markets, labelCandidates);
+      const nameKey = Array.isArray(nameCandidates)?nameCandidates[0]:nameCandidates;
+      const selId = mapLabel && markets[mapLabel]._map ? markets[mapLabel]._map[normalize(nameKey)] : null;
+      tr.children[colIdx].innerHTML = price
+        ? `<span class="pill" data-sid="${selId}" data-label="${labelCandidates[0]}:${showText||nameKey}" data-price="${price}">${fmt(price)}</span>`
+        : `—`;
+    }
+
+    // Fill cells per group
+    if(footGroup==='MAIN'){
+      // 1X2
+      cell(2, ['1X2'], ['Home','1','H'], '1');
+      cell(3, ['1X2'], ['Draw','X'], 'X');
+      cell(4, ['1X2'], ['Away','2','A'], '2');
+      // DC
+      cell(5, ['DC','DOUBLE CHANCE'], ['1X']);
+      cell(6, ['DC','DOUBLE CHANCE'], ['12']);
+      cell(7, ['DC','DOUBLE CHANCE'], ['X2']);
+      // GG/NG
+      cell(8, ['GG/NG','BTS','BOTH TEAMS TO SCORE'], ['GG','YES'], 'GG');
+      cell(9, ['GG/NG','BTS','BOTH TEAMS TO SCORE'], ['NG','NO'], 'NG');
+      // O/U 2.5
+      cell(10, ['OV/UN 2.5','OVER/UNDER 2.5','O/U 2.5'], ['OV2.5','OVER 2.5'], 'OV2.5');
+      cell(11, ['OV/UN 2.5','OVER/UNDER 2.5','O/U 2.5'], ['UN2.5','UNDER 2.5'], 'UN2.5');
+    }
+    if(footGroup==='OVER/UNDER'){
+      cell(2, ['OV/UN 1.5','OVER/UNDER 1.5','O/U 1.5'], ['OV1.5','OVER 1.5'], 'OV1.5');
+      cell(3, ['OV/UN 1.5','OVER/UNDER 1.5','O/U 1.5'], ['UN1.5','UNDER 1.5'], 'UN1.5');
+      cell(4, ['OV/UN 2.5','OVER/UNDER 2.5','O/U 2.5'], ['OV2.5','OVER 2.5'], 'OV2.5');
+      cell(5, ['OV/UN 2.5','OVER/UNDER 2.5','O/U 2.5'], ['UN2.5','UNDER 2.5'], 'UN2.5');
+    }
+    if(footGroup==='HOME OV/UN'){
+      cell(2, ['HOME OV/UN 0.5','HOME O/U 0.5'], ['OV0.5','OVER 0.5'], 'H OV0.5');
+      cell(3, ['HOME OV/UN 0.5','HOME O/U 0.5'], ['UN0.5','UNDER 0.5'], 'H UN0.5');
+      cell(4, ['HOME OV/UN 1.5','HOME O/U 1.5'], ['OV1.5','OVER 1.5'], 'H OV1.5');
+      cell(5, ['HOME OV/UN 1.5','HOME O/U 1.5'], ['UN1.5','UNDER 1.5'], 'H UN1.5');
+      cell(6, ['HOME OV/UN 2.5','HOME O/U 2.5'], ['OV2.5','OVER 2.5'], 'H OV2.5');
+      cell(7, ['HOME OV/UN 2.5','HOME O/U 2.5'], ['UN2.5','UNDER 2.5'], 'H UN2.5');
+    }
+    if(footGroup==='AWAY OV/UN'){
+      cell(2, ['AWAY OV/UN 0.5','AWAY O/U 0.5'], ['OV0.5','OVER 0.5'], 'A OV0.5');
+      cell(3, ['AWAY OV/UN 0.5','AWAY O/U 0.5'], ['UN0.5','UNDER 0.5'], 'A UN0.5');
+      cell(4, ['AWAY OV/UN 1.5','AWAY O/U 1.5'], ['OV1.5','OVER 1.5'], 'A OV1.5');
+      cell(5, ['AWAY OV/UN 1.5','AWAY O/U 1.5'], ['UN1.5','UNDER 1.5'], 'A UN1.5');
+      cell(6, ['AWAY OV/UN 2.5','AWAY O/U 2.5'], ['OV2.5','OVER 2.5'], 'A OV2.5');
+      cell(7, ['AWAY OV/UN 2.5','AWAY O/U 2.5'], ['UN2.5','UNDER 2.5'], 'A UN2.5');
+    }
+    if(footGroup==='1X2 OV/UN 1.5'){
+      const L=['1X2 OV/UN 1.5','1X2 O/U 1.5'];
+      cell(2, L, ['1+OV1.5','1 & OVER 1.5'], '1+OV1.5');
+      cell(3, L, ['X+OV1.5','X & OVER 1.5'], 'X+OV1.5');
+      cell(4, L, ['2+OV1.5','2 & OVER 1.5'], '2+OV1.5');
+      cell(5, L, ['1+UN1.5','1 & UNDER 1.5'], '1+UN1.5');
+      cell(6, L, ['X+UN1.5','X & UNDER 1.5'], 'X+UN1.5');
+      cell(7, L, ['2+UN1.5','2 & UNDER 1.5'], '2+UN1.5');
+    }
+    if(footGroup==='1X2 OV/UN 2.5'){
+      const L=['1X2 OV/UN 2.5','1X2 O/U 2.5'];
+      cell(2, L, ['1+OV2.5','1 & OVER 2.5'], '1+OV2.5');
+      cell(3, L, ['X+OV2.5','X & OVER 2.5'], 'X+OV2.5');
+      cell(4, L, ['2+OV2.5','2 & OVER 2.5'], '2+OV2.5');
+      cell(5, L, ['1+UN2.5','1 & UNDER 2.5'], '1+UN2.5');
+      cell(6, L, ['X+UN2.5','X & UNDER 2.5'], 'X+UN2.5');
+      cell(7, L, ['2+UN2.5','2 & UNDER 2.5'], '2+UN2.5');
+    }
+  }
+
+  box.innerHTML = tabbar;
+  box.appendChild(table);
+
+  // attach slip clicks
+  box.addEventListener('click', (e)=>{
+    const p = e.target.closest('[data-sid]');
+    if(!p) return;
+    const sid = Number(p.dataset.sid);
+    if (!slip.some(x=>x.selection_id===sid)){
+      slip.push({ selection_id:sid, label:p.dataset.label, price:p.dataset.price });
+      renderSlip();
+    }
+  });
+
+  // tabs switching
+  box.querySelectorAll('[data-footgrp]').forEach(t=>{
+    t.onclick = () => { footGroup = t.dataset.footgrp; loadFootball(code); };
   });
 }
 
+/* ---------- COLORS ---------- */
 function ballHtml(name){
   const cls = name==='RED'?'red':name==='GREEN'?'green':name==='BLUE'?'blue':'yellow';
   return `<span class="ball ${cls}"></span><span class="ball-label">${name}</span>`;
@@ -206,12 +356,11 @@ async function loadColors(){
   if(!data){ box.innerHTML = '<div class="muted">No scheduled draw.</div>'; return; }
 
   const markets = data.markets || [];
-  const find = (label)=> markets.find(m=>m.label.toUpperCase()===label);
+  const find = (label)=> markets.find(m=>String(m.label||'').toUpperCase()===label);
 
   const win = find('WINNING COLOR');
   const noc = find('NUMBER OF COLORS');
 
-  // Winning Color — show exactly 4 (RED/GREEN/BLUE/YELLOW)
   const winHtml = win ? `
     <div class="market">
       <div><strong>Winning Color</strong></div>
@@ -225,7 +374,6 @@ async function loadColors(){
       </div>
     </div>` : '';
 
-  // Number of Colors — group by color prefix (RED BLUE GREEN YELLOW) with 0 / 2+ / 3+ / 4+ / 5+
   let nocHtml = '';
   if(noc){
     const groups = {};
@@ -235,7 +383,7 @@ async function loadColors(){
       const band  = parts.slice(1).join(' ');
       (groups[color] ||= []).push({ id:p.id, band, price:p.price });
     });
-    const order = ['BLUE','GREEN','RED','YELLOW']; // match your screenshot order
+    const order = ['BLUE','GREEN','RED','YELLOW'];
     const bandOrder = ['0','2+','3+','4+','5+'];
 
     nocHtml = `
@@ -270,7 +418,6 @@ async function loadColors(){
     ${nocHtml}
   `;
 
-  // attach clicks (both blocks)
   box.querySelectorAll('[data-sid]').forEach(p=>{
     p.onclick=()=>{
       const sid = Number(p.dataset.sid);
@@ -282,6 +429,7 @@ async function loadColors(){
   });
 }
 
+/* ---------- RACES ---------- */
 async function loadRaces(type){ // DOG or HORSE
   const races = await api(`/api/races?type=${type}`);
   const box = $('#list');
@@ -330,7 +478,6 @@ function activateTile(el){
   if (kind==='COLOR') loadColors();
   if (kind==='RACE') loadRaces(code);
 }
-
 document.getElementById('tiles').addEventListener('click', (e)=>{
   const t = e.target.closest('.tile'); if(!t) return;
   activateTile(t);
