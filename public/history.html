@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Ticket History — Mastermind</title>
+<style>
+  :root{--bg:#0b1220;--panel:#0f172a;--line:#1f2937;--text:#e2e8f0;--win:#10b981;--lose:#ef4444}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Arial}
+  header{padding:12px 16px;border-bottom:1px solid var(--line);background:#0c1426}
+  main{padding:16px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
+  .card{position:relative;background:#0f172a;border:1px solid #223048;border-radius:12px;padding:10px}
+  .wm{position:absolute;inset:0;display:grid;place-items:center;font:800 36px/1 system-ui;opacity:.12;pointer-events:none}
+  .wm.win{color:var(--win)} .wm.lost{color:var(--lose)}
+  .mini{color:#9fb0c8;font-size:12px}
+  .b{font-weight:700}
+</style>
+</head>
+<body>
+<header><h3 style="margin:0">Recent Tickets</h3></header>
+<main>
+  <div id="grid" class="grid"></div>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+async function api(u){ const r=await fetch(u); if(!r.ok) throw new Error('err'); return r.json(); }
+function fmt(n){ return Number(n).toFixed(2); }
+
+async function load(){
+  const items = await api('/api/tickets?limit=60');
+  const anchor = location.hash.replace('#','');
+  const grid = $('#grid');
+  grid.innerHTML = items.map(t=>{
+    const wm = t.status==='won' ? '<div class="wm win">WON</div>' : t.status==='lost' ? '<div class="wm lost">LOST</div>' : '';
+    return `<div class="card" id="t${t.id}">
+      ${wm}
+      <div><span class="b">#${t.id}</span> • <span class="mini">${new Date(t.created_at).toLocaleString()}</span></div>
+      <div class="mini">Stake KES <b>${fmt(t.stake_kes)}</b> • Potential KES <b>${fmt(t.potential_kes)}</b></div>
+      <div class="mini">Status: <b>${t.status.toUpperCase()}</b></div>
+    </div>`;
+  }).join('');
+  if(anchor){ const el=document.getElementById('t'+anchor); if(el){ el.scrollIntoView({behavior:'smooth', block:'center'}); el.style.outline='2px solid #f59e0b'; setTimeout(()=>el.style.outline='',2000);} }
+}
+load(); setInterval(load, 10000);
+</script>
+</body>
+</html>
