@@ -1,92 +1,92 @@
 <!doctype html>
 <html>
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Admin — Mastermind Bet</title>
 <style>
-  body{margin:0;background:#0b0f17;color:#eaf2ff;font:14px system-ui,Segoe UI,Roboto}
-  header{display:flex;gap:12px;padding:12px;background:#111a2a;border-bottom:1px solid #1a253b}
-  a{color:#cfe0ff;text-decoration:none;background:#18233a;border:1px solid #243353;padding:6px 10px;border-radius:999px}
-  .wrap{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px}
-  .card{background:#121826;border:1px solid #1a253b;border-radius:14px;overflow:hidden}
-  h2{margin:0;padding:10px 12px;background:#192235;border-bottom:1px solid #1a253b}
-  .shelf{padding:12px;display:flex;flex-direction:column;gap:10px}
-  input{background:#10192b;border:1px solid #263a60;color:#cfe0ff;border-radius:10px;padding:8px 10px}
-  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .btn{background:#ffb703;border:0;padding:10px 14px;border-radius:10px;font-weight:700;cursor:pointer;color:#111}
+  body{margin:0;background:#0b1a2b;color:#e7f0ff;font-family:system-ui,Segoe UI,Roboto,Ubuntu,Arial}
+  .wrap{max-width:1000px;margin:28px auto;padding:0 14px}
+  .card{background:#0f2238;border:1px solid #123356;border-radius:12px;padding:14px;margin-bottom:14px}
+  input,button{padding:8px 10px;border-radius:8px;border:1px solid #1e4162;background:#0e2a46;color:#e7f0ff;outline:none}
+  button{background:#ffbe0b;color:#111;border:none;cursor:pointer;font-weight:700}
+  h1{font-size:20px;margin:12px 0}
   table{width:100%;border-collapse:collapse}
-  th,td{padding:8px;border-bottom:1px solid #1a253b;text-align:left}
-  th{color:#9eb5e4}
+  th,td{border-bottom:1px solid #163a5b;padding:8px 6px;text-align:left}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  .muted{opacity:.8}
 </style>
 </head>
 <body>
-<header>
-  <a href="/pos">POS</a><a href="/virtual">Virtual</a><a href="/history">History</a>
-  <div style="margin-left:auto">Admin</div>
-</header>
-
 <div class="wrap">
-  <section class="card">
-    <h2>System Limits</h2>
-    <div class="shelf">
-      <div class="row"><label>Min Stake</label><input id="minStake" type="number" value="20"></div>
-      <div class="row"><label>Max Stake</label><input id="maxStake" type="number" value="1000"></div>
-      <div class="row"><label>Max Payout</label><input id="maxPayout" type="number" value="20000"></div>
-      <button class="btn" id="saveLimits">Save</button>
-      <div id="limMsg"></div>
+  <div class="card" id="loginBox">
+    <h1>Admin Login</h1>
+    <div class="row">
+      <input id="phone" placeholder="Phone (10 digits)" value="0715151010"/>
+      <input id="password" type="password" placeholder="Password" value="Oury2933#"/>
+      <button id="loginBtn">Login</button>
     </div>
-  </section>
+    <div id="msg" class="muted"></div>
+  </div>
 
-  <section class="card">
-    <h2>Agents</h2>
-    <div class="shelf">
-      <div class="row">
-        <input id="agCode" placeholder="Code e.g. AG001">
-        <input id="agName" placeholder="Name e.g. ZUKA Cashier">
-        <input id="agAddBal" type="number" placeholder="Top-up e.g. 5000">
-        <button class="btn" id="saveAgent">Create/Top-up</button>
-      </div>
-      <table id="agents"><thead><tr><th>Code</th><th>Name</th><th>Balance</th><th>Active</th></tr></thead><tbody></tbody></table>
+  <div class="card" id="panel" style="display:none">
+    <h1>Agents</h1>
+    <div class="row">
+      <input id="a_phone" placeholder="Agent phone (10 digits)"/>
+      <input id="a_name" placeholder="Agent name"/>
+      <input id="a_pin" placeholder="6 digit PIN"/>
+      <button id="createAgent">Create / Reset</button>
     </div>
-  </section>
+    <div style="height:10px"></div>
+    <table id="agentsTbl">
+      <thead><tr><th>Phone</th><th>Name</th><th>Status</th><th>Balance</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="row" style="margin-top:10px">
+      <button id="refresh">Refresh List</button>
+      <button id="logout">Logout</button>
+      <a href="/pos" style="margin-left:auto;color:#9fd0ff">Go to POS</a>
+    </div>
+  </div>
 </div>
-
 <script>
-async function loadLimits(){
-  const r = await fetch('/admin/limits'); const j = await r.json();
-  document.getElementById('minStake').value = j.min_stake;
-  document.getElementById('maxStake').value = j.max_stake;
-  document.getElementById('maxPayout').value = j.max_payout;
+async function me(){ const r = await fetch('/me'); return r.json(); }
+async function login(){
+  const phone = document.getElementById('phone').value.trim();
+  const password = document.getElementById('password').value;
+  const r = await fetch('/auth/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,password})});
+  const j = await r.json();
+  if(!r.ok){ document.getElementById('msg').textContent = j.error||'login failed'; return; }
+  document.getElementById('loginBox').style.display='none';
+  document.getElementById('panel').style.display='';
+  loadAgents();
 }
-document.getElementById('saveLimits').onclick = async ()=>{
-  const payload = {
-    min_stake: Number(document.getElementById('minStake').value),
-    max_stake: Number(document.getElementById('maxStake').value),
-    max_payout: Number(document.getElementById('maxPayout').value),
-  };
-  const r = await fetch('/admin/limits',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-  document.getElementById('limMsg').textContent = r.ok ? 'Saved ✅' : 'Failed';
-};
-
 async function loadAgents(){
-  const r = await fetch('/admin/agents'); const list = await r.json();
-  document.querySelector('#agents tbody').innerHTML = list.map(a=>
-    `<tr><td>${a.code}</td><td>${a.name}</td><td>${(a.balance||0).toFixed(2)}</td><td>${a.is_active?'Yes':'No'}</td></tr>`
-  ).join('');
+  const r = await fetch('/admin/api/agents/list');
+  const rows = await r.json();
+  const tb = document.querySelector('#agentsTbl tbody');
+  tb.innerHTML = rows.map(x=> `<tr>
+    <td>${x.phone}</td><td>${x.name}</td><td>${x.is_active?'Active':'Off'}</td><td>${x.balance.toFixed(2)}</td>
+  </tr>`).join('');
 }
-document.getElementById('saveAgent').onclick = async ()=>{
-  const payload = {
-    code: document.getElementById('agCode').value.trim(),
-    name: document.getElementById('agName').value.trim(),
-    add_balance: Number(document.getElementById('agAddBal').value || 0),
-  };
-  const r = await fetch('/admin/agents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-  await loadAgents();
-  alert(r.ok ? 'Agent updated ✅' : 'Failed');
+document.getElementById('loginBtn').onclick = login;
+document.getElementById('refresh').onclick = loadAgents;
+document.getElementById('logout').onclick = async ()=>{ await fetch('/auth/logout',{method:'POST'}); location.reload(); };
+document.getElementById('createAgent').onclick = async ()=>{
+  const phone = document.getElementById('a_phone').value.trim();
+  const name  = document.getElementById('a_name').value.trim();
+  const pin   = document.getElementById('a_pin').value.trim();
+  const r = await fetch('/admin/api/agents/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,name,pin})});
+  const j = await r.json();
+  if(!r.ok){ alert(j.error||'failed'); return; }
+  alert('Agent created/reset');
+  loadAgents();
 };
 
-loadLimits(); loadAgents();
+(async ()=>{
+  const u = await me();
+  if (u && u.role==='admin'){ document.getElementById('loginBox').style.display='none'; document.getElementById('panel').style.display=''; loadAgents(); }
+})();
 </script>
 </body>
 </html>
