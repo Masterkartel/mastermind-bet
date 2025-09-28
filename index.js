@@ -7,275 +7,306 @@ const db = require('./db');
 const app = express();
 app.use(express.json());
 
-// serve /public (pos.html, virtual.html)
+// serve static
 app.use(express.static(path.join(__dirname, 'public')));
 
-// pretty routes (case-insensitive) + root → pos
-app.get(/^\/pos\/?$/i, function (_req, res) {
-  res.sendFile(path.join(__dirname, 'public', 'pos.html'));
-});
-app.get(/^\/virtual\/?$/i, function (_req, res) {
-  res.sendFile(path.join(__dirname, 'public', 'virtual.html'));
-});
-app.get('/', function (_req, res) {
-  res.sendFile(path.join(__dirname, 'public', 'pos.html'));
-});
+// pretty routes (root -> POS)
+app.get(/^\/pos\/?$/i, (_, res) => res.sendFile(path.join(__dirname, 'public', 'pos.html')));
+app.get(/^\/virtual\/?$/i, (_, res) => res.sendFile(path.join(__dirname, 'public', 'virtual.html')));
+app.get(/^\/history\/?$/i, (_, res) => res.sendFile(path.join(__dirname, 'public', 'history.html')));
+app.get(/^\/admin\/?$/i, (_, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
+app.get('/', (_, res) => res.sendFile(path.join(__dirname, 'public', 'pos.html')));
 
-// simple health
-app.get('/health', function (_req, res) {
-  res.json({ ok: true });
-});
+// health
+app.get('/health', (_, res) => res.json({ ok: true }));
+
+/* ===== Helpers ===== */
+async function getNum(key, fallback) {
+  const r = await db.query('SELECT value FROM settings WHERE key=$1', [key]);
+  if (!r.rows.length) return fallback;
+  const n = Number(r.rows[0].value);
+  return Number.isFinite(n) ? n : fallback;
+}
+async function getLimits() {
+  const [min_stake, max_stake, max_payout] = await Promise.all([
+    getNum('min_stake', 20),
+    getNum('max_stake', 1000),
+    getNum('max_payout', 20000),
+  ]);
+  return { min_stake, max_stake, max_payout };
+}
 
 /* ========= LISTS ========= */
 
 // competitions
-app.get('/api/competitions', async function (_req, res) {
+app.get('/api/competitions', async (_req, res) => {
   try {
-    const r = await db.query(
-      'SELECT id, code, name FROM competitions ORDER BY code'
-    );
+    const r = await db.query('SELECT id, code, name FROM competitions ORDER BY code');
     res.json(r.rows);
-  } catch (_e) {
+  } catch {
     res.status(500).json({ error: 'failed to load competitions' });
   }
 });
 
 // fixtures (by competition_code optional)
-app.get('/api/fixtures', async function (req, res) {
+app.get('/api/fixtures', async (req, res) => {
   try {
-    const competition_code = req.query.competition_code;
-    var q = [
-      'SELECT f.id, c.code AS competition, f.start_time, f.status,',
-      '       th.name AS home, ta.name AS away',
-      'FROM fixtures f',
-      'JOIN competitions c ON c.id=f.competition_id',
-      'JOIN teams th ON th.id=f.home_team_id',
-      'JOIN teams ta ON ta.id=f.away_team_id'
-    ].join(' ');
-    var p = [];
-    if (competition_code) {
-      q += ' WHERE c.code=$1';
-      p.push(competition_code);
-    }
+    const code = req.query.competition_code;
+    let q = `
+      SELECT f.id, c.code AS competition, f.start_time, f.status,
+             th.name AS home, ta.name AS away
+      FROM fixtures f
+      JOIN competitions c ON c.id=f.competition_id
+      JOIN teams th ON th.id=f.home_team_id
+      JOIN teams ta ON ta.id=f.away_team_id
+    `;
+    const p = [];
+    if (code) { q += ' WHERE c.code=$1'; p.push(code); }
     q += ' ORDER BY f.start_time';
     const r = await db.query(q, p);
     res.json(r.rows);
-  } catch (_e) {
+  } catch {
     res.status(500).json({ error: 'failed to load fixtures' });
   }
 });
 
 // races (DOG | HORSE)
-app.get('/api/races', async function (req, res) {
+app.get('/api/races', async (req, res) => {
   try {
     const type = req.query.type ? String(req.query.type).toUpperCase() : null;
-    var q = 'SELECT id, rtype, track, race_no, start_time, status FROM race_events';
-    var p = [];
-    if (type) {
-      q += ' WHERE rtype=$1';
-      p.push(type);
-    }
+    let q = 'SELECT id, rtype, track, race_no, start_time, status FROM race_events';
+    const p = [];
+    if (type) { q += ' WHERE rtype=$1'; p.push(type); }
     q += ' ORDER BY start_time';
     const r = await db.query(q, p);
     res.json(r.rows);
-  } catch (_e) {
+  } catch {
     res.status(500).json({ error: 'failed to load races' });
   }
 });
 
 // selections (fixture_id | race_event_id | color_draw_id)
-app.get('/api/selections', async function (req, res) {
+app.get('/api/selections', async (req, res) => {
   try {
     const fixture_id = req.query.fixture_id ? Number(req.query.fixture_id) : null;
     const race_event_id = req.query.race_event_id ? Number(req.query.race_event_id) : null;
     const color_draw_id = req.query.color_draw_id ? Number(req.query.color_draw_id) : null;
 
-    var q = [
-      'SELECT s.id, m.kind, m.label, s.name, s.price',
-      'FROM selections s',
-      'JOIN markets m ON m.id = s.market_id'
-    ].join(' ');
-    var p = [];
-    var w = [];
-
+    let q = `
+      SELECT s.id, m.kind, m.label, s.name, s.price, s.is_winner
+      FROM selections s
+      JOIN markets m ON m.id = s.market_id
+    `;
+    const p = []; const w = [];
     if (fixture_id) { p.push(fixture_id); w.push('m.fixture_id=$' + p.length); }
     if (race_event_id) { p.push(race_event_id); w.push('m.race_event_id=$' + p.length); }
     if (color_draw_id) { p.push(color_draw_id); w.push('m.color_draw_id=$' + p.length); }
     if (w.length) q += ' WHERE ' + w.join(' AND ');
+    q += ' ORDER BY m.id, s.id';
 
     const r = await db.query(q, p);
     res.json(r.rows);
-  } catch (_e) {
+  } catch {
     res.status(500).json({ error: 'failed to load selections' });
   }
 });
 
-// color game: next draw + GROUPED markets for POS/virtuals
-app.get('/api/colors/draws/latest', async function (_req, res) {
+// color game: next draw + picks
+app.get('/api/colors/draws/latest', async (_req, res) => {
   try {
     const qd = await db.query(
-      "SELECT id, draw_no, start_time, status FROM color_draws WHERE status='scheduled' ORDER BY start_time LIMIT 1"
+      `SELECT id, draw_no, start_time, status
+       FROM color_draws
+       WHERE status='scheduled'
+       ORDER BY start_time
+       LIMIT 1`
     );
-    if (!qd.rows.length) return res.json(null);
     const d = qd.rows[0];
+    if (!d) return res.json(null);
 
-    // Fetch all markets & selections for this draw, grouped by market label
-    const q = await db.query(
-      [
-        "SELECT m.id AS market_id, m.label AS market_label,",
-        "       s.id AS selection_id, s.name AS name, s.price AS price",
-        "FROM markets m",
-        "JOIN selections s ON s.market_id = m.id",
-        "WHERE m.color_draw_id=$1",
-        "ORDER BY m.label, s.id"
-      ].join(' '),
+    const qp = await db.query(
+      `SELECT s.id, s.name AS color, s.price
+       FROM selections s
+       JOIN markets m ON m.id = s.market_id
+       WHERE m.color_draw_id=$1 AND m.label='WINNING COLOR'
+       ORDER BY s.name`,
+      [d.id]
+    );
+    // also number-of-colors if present
+    const noc = await db.query(
+      `SELECT s.id, s.name, s.price
+       FROM selections s
+       JOIN markets m ON m.id=s.market_id
+       WHERE m.color_draw_id=$1 AND m.label='NUMBER OF COLORS'
+       ORDER BY s.name`,
       [d.id]
     );
 
-    const byLabel = {};
-    for (let i = 0; i < q.rows.length; i++) {
-      const r = q.rows[i];
-      if (!byLabel[r.market_label]) byLabel[r.market_label] = [];
-      byLabel[r.market_label].push({
-        id: r.selection_id,
-        name: r.name,
-        price: Number(r.price)
-      });
-    }
-
-    res.json({
-      draw: d,
-      markets: Object.keys(byLabel).map(label => ({ label, picks: byLabel[label] }))
-    });
-  } catch (_e) {
+    res.json({ draw: d, picks: qp.rows, number_of_colors: noc.rows });
+  } catch {
     res.status(500).json({ error: 'failed to load color draw' });
   }
 });
 
-/* ========= VIRTUAL DASH HELPERS (timers/summary) ========= */
+/* ========= VIRTUAL DASH HELPERS ========= */
 
-// next kickoff per league — used for tile countdowns
-app.get('/virtual/state', async function (_req, res) {
+// next kickoff per league
+app.get('/virtual/state', async (_req, res) => {
   try {
     const r = await db.query(
-      [
-        "SELECT c.code, MIN(f.start_time) AS next_start",
-        "FROM competitions c",
-        "JOIN fixtures f ON f.competition_id=c.id AND f.status='scheduled'",
-        "GROUP BY c.code",
-        "ORDER BY c.code"
-      ].join(' ')
+      `SELECT c.code, MIN(f.start_time) AS next_start
+       FROM competitions c
+       JOIN fixtures f ON f.competition_id=c.id AND f.status='scheduled'
+       GROUP BY c.code ORDER BY c.code`
     );
-    const leagues = r.rows.map(function (row) {
-      return { code: row.code, round: 1, endsAt: new Date(row.next_start).getTime() };
-    });
-    res.json({ leagues: leagues });
-  } catch (_e) {
+    const leagues = r.rows.map(row => ({
+      code: row.code,
+      round: 1,
+      endsAt: new Date(row.next_start).getTime(),
+    }));
+    res.json({ leagues });
+  } catch {
     res.json({ leagues: [] });
   }
 });
 
-// league detail (fixtures with grouped markets) for virtual table
-app.get('/virtual/league/:code', async function (req, res) {
+// league detail with grouped markets
+app.get('/virtual/league/:code', async (req, res) => {
   try {
     const code = String(req.params.code || '');
     const fx = await db.query(
-      [
-        "SELECT f.id, th.name AS home, ta.name AS away, f.start_time",
-        "FROM fixtures f",
-        "JOIN competitions c ON c.id=f.competition_id",
-        "JOIN teams th ON th.id=f.home_team_id",
-        "JOIN teams ta ON ta.id=f.away_team_id",
-        "WHERE c.code=$1 AND f.status='scheduled'",
-        "ORDER BY f.start_time, f.id"
-      ].join(' '),
+      `SELECT f.id, th.name AS home, ta.name AS away, f.start_time
+       FROM fixtures f
+       JOIN competitions c ON c.id=f.competition_id
+       JOIN teams th ON th.id=f.home_team_id
+       JOIN teams ta ON ta.id=f.away_team_id
+       WHERE c.code=$1 AND f.status='scheduled'
+       ORDER BY f.start_time, f.id`,
       [code]
     );
 
-    var out = [];
-    for (var i = 0; i < fx.rows.length; i++) {
-      var f = fx.rows[i];
-      var mk = await db.query(
-        [
-          "SELECT m.id, m.label, s.id AS selection_id, s.name, s.price",
-          "FROM markets m",
-          "JOIN selections s ON s.market_id=m.id",
-          "WHERE m.fixture_id=$1",
-          "ORDER BY m.id, s.id"
-        ].join(' '),
+    const out = [];
+    for (const f of fx.rows) {
+      const mk = await db.query(
+        `SELECT m.id, m.label, s.id AS selection_id, s.name, s.price
+         FROM markets m
+         JOIN selections s ON s.market_id=m.id
+         WHERE m.fixture_id=$1
+         ORDER BY m.id, s.id`,
         [f.id]
       );
-      var markets = {};
-      for (var k = 0; k < mk.rows.length; k++) {
-        var r = mk.rows[k];
-        if (!markets[r.label]) markets[r.label] = {};
-        markets[r.label][r.name] = Number(r.price);
-      }
-      out.push({ id: f.id, home: f.home, away: f.away, kickoff: f.start_time, markets: markets });
+      const grouped = {};
+      mk.rows.forEach(r => {
+        grouped[r.label] ||= {};
+        grouped[r.label][r.name] = Number(r.price);
+      });
+      out.push({
+        id: f.id,
+        home: f.home, away: f.away,
+        kickoff: f.start_time,
+        markets: grouped,
+      });
     }
-    res.json({ code: code, fixtures: out });
-  } catch (_e) {
+    res.json({ code, fixtures: out });
+  } catch {
     res.status(500).json({ error: 'failed to load league' });
   }
 });
 
-// colors summary with starts_at for countdown
-app.get('/virtual/colors', async function (_req, res) {
+// colors summary for countdown
+app.get('/virtual/colors', async (_req, res) => {
   try {
     const qd = await db.query(
-      "SELECT id, draw_no, start_time FROM color_draws WHERE status='scheduled' ORDER BY start_time LIMIT 1"
+      `SELECT id, draw_no, start_time
+       FROM color_draws
+       WHERE status='scheduled'
+       ORDER BY start_time LIMIT 1`
     );
     if (!qd.rows.length) return res.json(null);
     const d = qd.rows[0];
     const ps = await db.query(
-      "SELECT s.id, s.name AS color, s.price FROM selections s JOIN markets m ON m.id=s.market_id WHERE m.color_draw_id=$1 ORDER BY s.name",
+      `SELECT s.id, s.name AS color, s.price
+       FROM selections s JOIN markets m ON m.id=s.market_id
+       WHERE m.color_draw_id=$1 AND m.label='WINNING COLOR'
+       ORDER BY s.name`,
       [d.id]
     );
     res.json({ draw_no: d.draw_no, starts_at: d.start_time, picks: ps.rows });
-  } catch (_e) {
+  } catch {
     res.json(null);
+  }
+});
+
+/* ========= AGENTS ========= */
+
+app.get('/api/agents/:code', async (req, res) => {
+  try {
+    const r = await db.query('SELECT code,name,balance_cents,is_active FROM agents WHERE code=$1', [req.params.code]);
+    if (!r.rows.length) return res.status(404).json({ error: 'not found' });
+    const a = r.rows[0];
+    res.json({ code: a.code, name: a.name, balance: (a.balance_cents||0)/100, is_active: a.is_active });
+  } catch {
+    res.status(500).json({ error: 'failed' });
   }
 });
 
 /* ========= TICKETS ========= */
 
-// place ticket
-app.post('/api/tickets', async function (req, res) {
+// place ticket (enforce limits + agent balance + payout cap)
+app.post('/api/tickets', async (req, res) => {
+  const { agent_code, stake, items } = req.body || {};
   try {
-    const agent_code = req.body ? req.body.agent_code : null;
-    const stake = req.body ? req.body.stake : null;
-    const items = req.body ? req.body.items : null;
-
     if (!stake || !items || !items.length) {
       return res.status(400).json({ error: 'stake/items required' });
     }
+    const { min_stake, max_stake, max_payout } = await getLimits();
+    const stakeNum = Number(stake);
+    if (!(stakeNum >= min_stake && stakeNum <= max_stake)) {
+      return res.status(400).json({ error: `Stake must be between ${min_stake} and ${max_stake}` });
+    }
 
-    var ids = items.map(function (i) { return Number(i.selection_id); }).filter(Boolean);
+    const ids = items.map(i => Number(i.selection_id)).filter(Boolean);
     if (!ids.length) return res.status(400).json({ error: 'invalid selection ids' });
 
     await db.query('BEGIN');
 
-    const selRes = await db.query(
-      'SELECT id, price FROM selections WHERE id = ANY($1::int[])',
-      [ids]
-    );
+    // agent check + balance
+    let agentRow = null;
+    if (agent_code) {
+      const ar = await db.query('SELECT id, balance_cents, is_active FROM agents WHERE code=$1 FOR UPDATE', [agent_code]);
+      if (!ar.rows.length) throw new Error('Invalid agent');
+      agentRow = ar.rows[0];
+      if (!agentRow.is_active) throw new Error('Agent disabled');
+    }
+
+    const selRes = await db.query('SELECT id, price FROM selections WHERE id = ANY($1::int[])', [ids]);
     if (selRes.rows.length !== ids.length) throw new Error('Invalid selection id');
 
-    var productOdds = 1.0;
-    selRes.rows.forEach(function (s) { productOdds *= Number(s.price); });
-    const stakeCents = Math.round(Number(stake) * 100);
-    const payoutCents = Math.round(stakeCents * productOdds);
+    // compute capped payout
+    let productOdds = 1.0;
+    selRes.rows.forEach(s => (productOdds *= Number(s.price)));
+    const stakeCents = Math.round(stakeNum * 100);
+    let payoutCents = Math.round(stakeCents * productOdds);
+    const cap = Math.round(Number(max_payout) * 100);
+    if (payoutCents > cap) payoutCents = cap;
+
+    // balance enforcement
+    if (agentRow) {
+      if ((agentRow.balance_cents || 0) < stakeCents) throw new Error('Insufficient balance');
+      await db.query('UPDATE agents SET balance_cents = balance_cents - $1 WHERE id=$2', [stakeCents, agentRow.id]);
+    }
 
     const tRes = await db.query(
-      "INSERT INTO tickets (agent_code, stake_cents, potential_payout_cents) VALUES ($1,$2,$3) RETURNING id, created_at, status",
+      `INSERT INTO tickets (agent_code, stake_cents, potential_payout_cents)
+       VALUES ($1,$2,$3) RETURNING id, created_at, status`,
       [agent_code || null, stakeCents, payoutCents]
     );
     const t = tRes.rows[0];
 
-    for (var i = 0; i < selRes.rows.length; i++) {
-      const s = selRes.rows[i];
+    for (const s of selRes.rows) {
       await db.query(
-        "INSERT INTO ticket_items (ticket_id, selection_id, unit_odds) VALUES ($1,$2,$3)",
+        `INSERT INTO ticket_items (ticket_id, selection_id, unit_odds)
+         VALUES ($1,$2,$3)`,
         [t.id, s.id, s.price]
       );
     }
@@ -286,35 +317,38 @@ app.post('/api/tickets', async function (req, res) {
       stake: stakeCents / 100,
       potential_payout: payoutCents / 100,
       created_at: t.created_at,
-      status: t.status
+      status: t.status,
     });
   } catch (e) {
-    await db.query('ROLLBACK').catch(function () { });
-    res.status(400).json({ error: String(e && e.message ? e.message : e) });
+    await db.query('ROLLBACK').catch(()=>{});
+    res.status(400).json({ error: e.message || String(e) });
   }
 });
 
-// reprint / ticket details
-app.get('/api/tickets/:id', async function (req, res) {
+// ticket detail
+app.get('/api/tickets/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ error: 'invalid id' });
 
     const tRes = await db.query(
-      "SELECT id, agent_code, stake_cents, potential_payout_cents, status, created_at FROM tickets WHERE id=$1",
+      `SELECT id, agent_code, stake_cents, potential_payout_cents, status, created_at
+       FROM tickets WHERE id=$1`,
       [id]
     );
     if (!tRes.rows.length) return res.status(404).json({ error: 'not found' });
     const t = tRes.rows[0];
 
     const linesRes = await db.query(
-      [
-        "SELECT ti.id, m.label AS market, s.name AS pick, ti.unit_odds AS price",
-        "FROM ticket_items ti",
-        "JOIN selections s ON s.id = ti.selection_id",
-        "JOIN markets m    ON m.id = s.market_id",
-        "WHERE ti.ticket_id=$1 ORDER BY ti.id"
-      ].join(' '),
+      `SELECT ti.id,
+              m.label AS market,
+              s.name AS pick,
+              ti.unit_odds AS price
+       FROM ticket_items ti
+       JOIN selections s ON s.id = ti.selection_id
+       JOIN markets m    ON m.id = s.market_id
+       WHERE ti.ticket_id=$1
+       ORDER BY ti.id`,
       [id]
     );
 
@@ -326,18 +360,154 @@ app.get('/api/tickets/:id', async function (req, res) {
       potential_kes: (t.potential_payout_cents || 0) / 100,
       status: t.status,
       created_at: t.created_at,
-      lines: linesRes.rows.map(function (r) {
-        return { id: r.id, market: r.market, pick: r.pick, price: Number(r.price) };
-      })
+      lines: linesRes.rows.map(r => ({ id: r.id, market: r.market, pick: r.pick, price: Number(r.price) })),
     });
-  } catch (_e) {
+  } catch {
     res.status(400).json({ error: 'failed to load ticket' });
   }
 });
 
-/* ========= START ========= */
-
-const port = process.env.PORT || 3000;
-app.listen(port, function () {
-  console.log('API on :' + port);
+// ticket history (latest N)
+app.get('/api/tickets', async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit || 50), 1), 200);
+    const r = await db.query(
+      `SELECT id, agent_code, stake_cents, potential_payout_cents, status, created_at
+       FROM tickets ORDER BY created_at DESC LIMIT $1`,
+      [limit]
+    );
+    res.json(r.rows.map(t => ({
+      id: t.id,
+      stake_kes: (t.stake_cents||0)/100,
+      potential_kes: (t.potential_payout_cents||0)/100,
+      status: t.status,
+      created_at: t.created_at,
+      agent_code: t.agent_code,
+    })));
+  } catch {
+    res.status(500).json({ error: 'failed to load history' });
+  }
 });
+
+/* ========= ADMIN (lightweight) ========= */
+
+// limits
+app.get('/admin/limits', async (_req, res) => {
+  try { res.json(await getLimits()); } catch { res.status(500).json({ error: 'failed' }); }
+});
+app.post('/admin/limits', async (req, res) => {
+  try {
+    const { min_stake, max_stake, max_payout } = req.body || {};
+    await db.query('BEGIN');
+    await db.query(`INSERT INTO settings(key,value) VALUES('min_stake',$1)
+      ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value`, [String(min_stake)]);
+    await db.query(`INSERT INTO settings(key,value) VALUES('max_stake',$1)
+      ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value`, [String(max_stake)]);
+    await db.query(`INSERT INTO settings(key,value) VALUES('max_payout',$1)
+      ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value`, [String(max_payout)]);
+    await db.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) {
+    await db.query('ROLLBACK').catch(()=>{});
+    res.status(400).json({ error: e.message || 'failed' });
+  }
+});
+
+// agents
+app.get('/admin/agents', async (_req, res) => {
+  const r = await db.query('SELECT code,name,balance_cents,is_active FROM agents ORDER BY code');
+  res.json(r.rows.map(a => ({ code:a.code, name:a.name, balance:(a.balance_cents||0)/100, is_active:a.is_active })));
+});
+app.post('/admin/agents', async (req, res) => {
+  const { code, name, add_balance } = req.body||{};
+  try{
+    await db.query('BEGIN');
+    await db.query(
+      `INSERT INTO agents(code,name,balance_cents) VALUES($1,$2,$3)
+       ON CONFLICT (code) DO UPDATE SET name=EXCLUDED.name`,
+      [code, name||code, Math.round(Number(add_balance||0)*100)]
+    );
+    if (add_balance) {
+      await db.query('UPDATE agents SET balance_cents = balance_cents + $1 WHERE code=$2',
+        [Math.round(Number(add_balance)*100), code]);
+    }
+    await db.query('COMMIT');
+    res.json({ ok:true });
+  }catch(e){
+    await db.query('ROLLBACK').catch(()=>{});
+    res.status(400).json({ error: e.message||'failed' });
+  }
+});
+
+/* ========= AUTO-SETTLER (demo) =========
+   Every 30s:
+   - Find fixtures/races/colors that have started in the past 1–5 minutes and not resulted.
+   - Randomly mark one selection per market as winner.
+   - Any ticket with all winning selections => status 'won', else 'lost' (when all its markets resulted).
+*/
+async function autoSettle() {
+  try {
+    // mark winners for any not-resulted market whose parent started
+    await db.query(`
+      WITH parent AS (
+        SELECT m.id AS market_id
+        FROM markets m
+        LEFT JOIN fixtures f ON f.id=m.fixture_id
+        LEFT JOIN race_events r ON r.id=m.race_event_id
+        LEFT JOIN color_draws c ON c.id=m.color_draw_id
+        WHERE (
+          (f.id IS NOT NULL AND f.start_time <= NOW())
+          OR (r.id IS NOT NULL AND r.start_time <= NOW())
+          OR (c.id IS NOT NULL AND c.start_time <= NOW())
+        )
+        AND NOT EXISTS (SELECT 1 FROM selections s WHERE s.market_id=m.id AND s.is_winner IS TRUE)
+      ),
+      winners AS (
+        SELECT s.id
+        FROM selections s
+        JOIN parent p ON p.market_id=s.market_id
+        -- pick a random winner per market
+        QUALIFY 1=1
+      )
+      UPDATE selections s
+      SET is_winner = TRUE, resulted_at = NOW()
+      WHERE s.id IN (
+        SELECT id FROM (
+          SELECT s2.id,
+                 ROW_NUMBER() OVER (PARTITION BY s2.market_id ORDER BY random()) AS rn
+          FROM selections s2
+          JOIN parent p2 ON p2.market_id=s2.market_id
+        ) z WHERE z.rn=1
+      );
+    `);
+
+    // settle tickets fully resulted
+    const toSettle = await db.query(`
+      SELECT t.id
+      FROM tickets t
+      WHERE t.status='open'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM ticket_items ti
+          JOIN selections s ON s.id=ti.selection_id
+          WHERE ti.ticket_id=t.id AND s.is_winner IS NULL
+        ) -- all resulted
+    `);
+
+    for (const row of toSettle.rows) {
+      const tid = row.id;
+      const r = await db.query(`
+        SELECT bool_and(s.is_winner) AS allwin
+        FROM ticket_items ti
+        JOIN selections s ON s.id=ti.selection_id
+        WHERE ti.ticket_id=$1`, [tid]);
+      const status = r.rows[0].allwin ? 'won' : 'lost';
+      await db.query('UPDATE tickets SET status=$1 WHERE id=$2', [status, tid]);
+    }
+  } catch (_) {}
+}
+setInterval(autoSettle, 30000);
+
+/* ========= START ========= */
+const port = process.env.PORT || 3000;
+app.listen(port, () => console.log(`API on :${port}`));
