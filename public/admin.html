@@ -15,13 +15,13 @@
   button[disabled]{opacity:.6;cursor:not-allowed}
   h1{font-size:20px;margin:12px 0}
   table{width:100%;border-collapse:collapse}
-  th,td{border-bottom:1px solid var(--line2);padding:8px 6px;text-align:left}
+  th,td{border-bottom:1px solid var(--line2);padding:8px 6px;text-align:left;vertical-align:middle}
   .row{display:flex;gap:8px;flex-wrap:wrap}
   .muted{opacity:.85}
   .topbar{background:var(--line);padding:6px 10px;font-size:14px;text-align:right;color:var(--muted)}
   .floatbtn{padding:6px 10px;font-size:12px;margin-left:4px}
   .right{margin-left:auto}
-  /* dialog */
+  /* dialogs */
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:50}
   .dialog{width:min(520px,92vw);background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
   .dialog h2{margin:0 0 10px 0;font-size:18px}
@@ -29,6 +29,7 @@
   .grid label{color:#cfe4ff}
   .row-end{display:flex;gap:10px;justify-content:flex-end;margin-top:12px}
   .toast{position:fixed;right:10px;bottom:10px;background:#08304f;color:#cfe4ff;border:1px solid #0e426b;padding:10px 12px;border-radius:10px;display:none}
+  .btnline > button{margin-right:6px}
 </style>
 </head>
 <body>
@@ -50,7 +51,7 @@
   <div class="card" id="panel" style="display:none">
     <h1>Agents</h1>
     <div class="row">
-      <input id="a_phone" placeholder="Agent phone (10 digits)"/>
+      <input id="a_phone" placeholder="Agent code (e.g. 0715… or AG001)"/>
       <input id="a_name" placeholder="Agent name"/>
       <input id="a_pin" placeholder="6 digit PIN"/>
       <button id="createAgent">Create / Reset</button>
@@ -58,7 +59,11 @@
     </div>
     <div style="height:10px"></div>
     <table id="agentsTbl">
-      <thead><tr><th>Phone</th><th>Name</th><th>Status</th><th>Balance (KES)</th><th>Float</th></tr></thead>
+      <thead>
+        <tr>
+          <th>Code</th><th>Name</th><th>Status</th><th>Balance (KES)</th><th>Actions</th>
+        </tr>
+      </thead>
       <tbody></tbody>
     </table>
     <div class="row" style="margin-top:10px">
@@ -89,11 +94,28 @@
   </div>
 </div>
 
+<!-- Reset PIN Dialog -->
+<div class="overlay" id="pinDlg">
+  <div class="dialog">
+    <h2>Reset Agent PIN</h2>
+    <div class="grid">
+      <label>Agent</label><div id="pin_agent" class="muted"></div>
+      <label>New PIN</label>
+      <input id="pin_input" placeholder="000000" value="000000" maxlength="6" />
+      <label>Hint</label>
+      <div class="muted">Must be 6 digits. Default is <b>000000</b>.</div>
+    </div>
+    <div class="row-end">
+      <button id="pin_cancel">Cancel</button>
+      <button id="pin_apply">Reset PIN</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
 const $ = s => document.querySelector(s);
-const $$ = s => document.querySelectorAll(s);
 function fmtKES(n){ return Number(n||0).toLocaleString('en-KE',{style:'currency',currency:'KES'}); }
 
 async function me(){ const r = await fetch('/me'); return r.json(); }
@@ -101,10 +123,7 @@ async function me(){ const r = await fetch('/me'); return r.json(); }
 async function login(){
   const phone = $('#phone').value.trim();
   const password = $('#password').value;
-  const r = await fetch('/auth/admin/login',{
-    method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({phone,password})
-  });
+  const r = await fetch('/auth/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,password})});
   const j = await r.json();
   if(!r.ok){ $('#msg').textContent = j.error||'login failed'; return; }
   $('#loginBox').style.display='none';
@@ -119,16 +138,20 @@ async function loadAgents(){
   agentsCache = rows;
   $('#list_hint').textContent = `${rows.length} agent${rows.length===1?'':'s'}`;
   const tb = $('#agentsTbl tbody');
-  tb.innerHTML = rows.map(x=> `<tr>
-    <td>${x.phone}</td>
-    <td>${x.name}</td>
-    <td>${x.is_active?'Active':'Off'}</td>
-    <td>${fmtKES(x.balance)}</td>
-    <td><button class="floatbtn" onclick="openAdjust('${x.phone}')">Adjust…</button></td>
-  </tr>`).join('');
+  tb.innerHTML = rows.map(x=> `
+    <tr>
+      <td>${x.phone}</td>
+      <td>${x.name}</td>
+      <td>${x.is_active?'Active':'Off'}</td>
+      <td>${fmtKES(x.balance)}</td>
+      <td class="btnline">
+        <button class="floatbtn" onclick="openAdjust('${x.phone}')">Adjust…</button>
+        <button class="floatbtn" onclick="openPin('${x.phone}')">Reset PIN</button>
+      </td>
+    </tr>`).join('');
 }
 
-// Dialog state
+// ---------- Adjust float ----------
 let currentPhone = null;
 function openAdjust(phone){
   currentPhone = phone;
@@ -139,74 +162,73 @@ function openAdjust(phone){
   $('#dlg').style.display='flex';
   $('#dlg_amount').focus();
 }
-function closeAdjust(){
-  $('#dlg').style.display='none';
-  currentPhone = null;
-}
-
+function closeAdjust(){ $('#dlg').style.display='none'; currentPhone = null; }
 $('#dlg_cancel').onclick = closeAdjust;
 $('#dlg_amount').addEventListener('input', ()=>{
   const v = Number($('#dlg_amount').value);
   $('#dlg_preview').textContent = Number.isFinite(v)&&v!==0 ? fmtKES(v) : 'KES 0.00';
 });
-
-async function applyAdjust(){
-  const btn = $('#dlg_apply');
+$('#dlg_apply').onclick = async ()=>{
   const amount = Number($('#dlg_amount').value);
   const note = $('#dlg_note').value.trim();
   if(!currentPhone) return;
   if(!Number.isFinite(amount) || amount===0){ toast('Enter a non-zero numeric amount'); return; }
-  btn.disabled = true;
+  const btn = $('#dlg_apply'); btn.disabled=true;
   try{
-    const r = await fetch('/admin/api/agents/mint',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({phone: currentPhone, amount, note})
-    });
-    const j = await r.json();
-    if(!r.ok) throw new Error(j.error||'adjust failed');
+    const r = await fetch('/admin/api/agents/mint',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone: currentPhone, amount, note})});
+    const j = await r.json(); if(!r.ok) throw new Error(j.error||'adjust failed');
     toast(`Adjusted ${currentPhone}: ${fmtKES(amount)}`);
-    closeAdjust();
-    loadAgents();
+    closeAdjust(); loadAgents();
   }catch(e){ toast(e.message||'Failed'); }
-  finally{ btn.disabled = false; }
-}
-$('#dlg_apply').onclick = applyAdjust;
+  finally{ btn.disabled=false; }
+};
 
-function toast(msg){
-  const t = $('#toast');
-  t.textContent = msg;
-  t.style.display = 'block';
-  setTimeout(()=> t.style.display='none', 2800);
+// ---------- Reset PIN ----------
+let pinPhone = null;
+function openPin(phone){
+  pinPhone = phone;
+  $('#pin_agent').textContent = phone;
+  $('#pin_input').value = '000000';
+  $('#pinDlg').style.display='flex';
+  $('#pin_input').focus();
 }
+function closePin(){ $('#pinDlg').style.display='none'; pinPhone = null; }
+$('#pin_cancel').onclick = closePin;
+$('#pin_apply').onclick = async ()=>{
+  if(!pinPhone) return;
+  const pin = $('#pin_input').value.trim();
+  if(!/^\d{6}$/.test(pin)){ toast('PIN must be exactly 6 digits'); return; }
+  const btn = $('#pin_apply'); btn.disabled=true;
+  try{
+    const r = await fetch('/admin/api/agents/reset-pin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone: pinPhone, new_pin: pin})});
+    const j = await r.json(); if(!r.ok) throw new Error(j.error||'reset failed');
+    toast(`Reset PIN for ${pinPhone} to ${j.pin}`);
+    closePin();
+  }catch(e){ toast(e.message||'Failed'); }
+  finally{ btn.disabled=false; }
+};
 
-$('#loginBtn').onclick = login;
-$('#refresh').onclick = loadAgents;
-$('#logout').onclick = async ()=>{ await fetch('/auth/logout',{method:'POST'}); location.reload(); };
-$('#createAgent').onclick = async ()=>{
-  const phone = $('#a_phone').value.trim();
-  const name  = $('#a_name').value.trim();
-  const pin   = $('#a_pin').value.trim();
-  if(!/^\d{10}$/.test(phone)) return toast('Phone must be 10 digits');
-  if(!name) return toast('Name required');
-  if(!/^\d{6}$/.test(pin)) return toast('PIN must be 6 digits');
-  const r = await fetch('/admin/api/agents/create',{
-    method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({phone,name,pin})
-  });
-  const j = await r.json();
-  if(!r.ok){ toast(j.error||'Create failed'); return; }
-  toast('Agent created/reset');
-  $('#a_phone').value=''; $('#a_name').value=''; $('#a_pin').value='';
+function toast(msg){ const t = document.getElementById('toast'); t.textContent = msg; t.style.display='block'; setTimeout(()=> t.style.display='none', 2800); }
+
+document.getElementById('loginBtn').onclick = login;
+document.getElementById('refresh').onclick = loadAgents;
+document.getElementById('logout').onclick = async ()=>{ await fetch('/auth/logout',{method:'POST'}); location.reload(); };
+document.getElementById('createAgent').onclick = async ()=>{
+  const phone = document.getElementById('a_phone').value.trim();
+  const name  = document.getElementById('a_name').value.trim();
+  const pin   = document.getElementById('a_pin').value.trim();
+  if (!/^[A-Za-z0-9_-]{3,20}$/.test(phone)) { toast('Agent code must be 3–20 letters/digits (_ or -)'); return; }
+  if(!name) { toast('Name required'); return; }
+  if(!/^\d{6}$/.test(pin)){ toast('PIN must be 6 digits'); return; }
+  const r = await fetch('/admin/api/agents/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,name,pin})});
+  const j = await r.json(); if(!r.ok){ toast(j.error||'Create failed'); return; }
+  toast('Agent created/reset'); document.getElementById('a_phone').value=''; document.getElementById('a_name').value=''; document.getElementById('a_pin').value='';
   loadAgents();
 };
 
 (async ()=>{
   const u = await me();
-  if (u && u.role==='admin'){
-    $('#loginBox').style.display='none';
-    $('#panel').style.display='';
-    loadAgents();
-  }
+  if (u && u.role==='admin'){ document.getElementById('loginBox').style.display='none'; document.getElementById('panel').style.display=''; loadAgents(); }
   startClock();
 })();
 
@@ -214,7 +236,7 @@ async function startClock(){
   async function tick(){
     try{
       const r = await fetch('/api/time'); const j = await r.json();
-      if(j && j.unix_ms) $('#clock').textContent = new Date(j.unix_ms).toLocaleTimeString('en-KE');
+      if(j && j.unix_ms) document.getElementById('clock').textContent = new Date(j.unix_ms).toLocaleTimeString('en-KE');
     }catch{}
   }
   tick(); setInterval(tick,1000);
