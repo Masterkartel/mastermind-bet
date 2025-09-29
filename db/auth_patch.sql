@@ -1,6 +1,5 @@
 -- db/auth_patch.sql
--- Auth + user hierarchy for Mastermind Bet (safe to re-run)
-
+-- Auth + user hierarchy + sessions + compatibility for Mastermind Bet
 BEGIN;
 
 -- 0) Needed for hashing
@@ -14,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
   name          TEXT NOT NULL,
   password_hash TEXT,          -- for admin (and optionally agent)
   pin_hash      TEXT,          -- for agent/cashier 6-digit PIN
+  pass_hash     TEXT,          -- compatibility: index.js expects this
   is_active     BOOLEAN NOT NULL DEFAULT TRUE,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -59,18 +59,33 @@ CREATE TABLE IF NOT EXISTS cashiers (
   UNIQUE (agent_code, name)
 );
 
--- 5) Helpers
+-- 5) SESSIONS (used by index.js)
+CREATE TABLE IF NOT EXISTS sessions (
+  token       TEXT PRIMARY KEY,
+  user_id     INT REFERENCES users(id) ON DELETE SET NULL,
+  role        TEXT NOT NULL CHECK (role IN ('admin','agent','cashier')),
+  agent_code  TEXT,
+  cashier_id  INT,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 
--- 5a) Set/Change a user's PASSWORD (bcrypt)
+-- 6) Helpers
+
+-- 6a) Set/Change a user's PASSWORD (bcrypt)
 CREATE OR REPLACE FUNCTION set_user_password(p_user_id INT, p_password TEXT)
 RETURNS VOID LANGUAGE plpgsql AS $$
 BEGIN
   UPDATE users
-     SET password_hash = crypt(p_password, gen_salt('bf')), pin_hash = NULL
+     SET password_hash = crypt(p_password, gen_salt('bf')),
+         pass_hash     = crypt(p_password, gen_salt('bf')),
+         pin_hash = NULL
    WHERE id = p_user_id;
 END$$;
 
--- 5b) Set/Change a user's 6-digit PIN (bcrypt)
+-- 6b) Set/Change a user's 6-digit PIN (bcrypt)
 CREATE OR REPLACE FUNCTION set_user_pin(p_user_id INT, p_pin TEXT)
 RETURNS VOID LANGUAGE plpgsql AS $$
 BEGIN
@@ -78,11 +93,13 @@ BEGIN
     RAISE EXCEPTION 'PIN must be exactly 6 digits';
   END IF;
   UPDATE users
-     SET pin_hash = crypt(p_pin, gen_salt('bf')), password_hash = NULL
+     SET pin_hash = crypt(p_pin, gen_salt('bf')),
+         password_hash = NULL,
+         pass_hash = NULL
    WHERE id = p_user_id;
 END$$;
 
--- 5c) Check login with password (returns user row on success)
+-- 6c) Check login with password
 CREATE OR REPLACE FUNCTION login_with_password(p_phone TEXT, p_password TEXT)
 RETURNS users LANGUAGE sql AS $$
   SELECT *
@@ -94,7 +111,7 @@ RETURNS users LANGUAGE sql AS $$
   LIMIT 1;
 $$;
 
--- 5d) Check login with PIN (returns user row on success)
+-- 6d) Check login with PIN
 CREATE OR REPLACE FUNCTION login_with_pin(p_phone TEXT, p_pin TEXT)
 RETURNS users LANGUAGE sql AS $$
   SELECT *
@@ -106,7 +123,7 @@ RETURNS users LANGUAGE sql AS $$
   LIMIT 1;
 $$;
 
--- 5e) Create an AGENT user + link to agents row (by code). Default PIN=000000
+-- 6e) Create an AGENT user + link to agents row
 CREATE OR REPLACE FUNCTION create_agent_user(p_phone TEXT, p_name TEXT, p_agent_code TEXT, p_pin TEXT DEFAULT '000000')
 RETURNS INT LANGUAGE plpgsql AS $$
 DECLARE uid INT;
@@ -124,10 +141,10 @@ BEGIN
   RETURN uid;
 END$$;
 
--- 5f) Create a CASHIER under an agent (by agent_code) with a 6-digit PIN
+-- 6f) Create a CASHIER under an agent
 CREATE OR REPLACE FUNCTION create_cashier(p_agent_code TEXT, p_name TEXT, p_pin TEXT)
 RETURNS INT LANGUAGE plpgsql AS $$
-DECLARE cid INT; phone_stub TEXT; uid INT;
+DECLARE cid INT; phone_stub TEXT;
 BEGIN
   IF p_pin !~ '^[0-9]{6}$' THEN
     RAISE EXCEPTION 'PIN must be exactly 6 digits';
@@ -146,19 +163,20 @@ BEGIN
   RETURN cid;
 END$$;
 
--- 6) Seed the main ADMIN (phone 0715151010 / password Oury2933#)
+-- 7) Seed the main ADMIN (phone 0715151010 / password Oury2933#)
 DO $$
 DECLARE admin_id INT;
 BEGIN
   SELECT id INTO admin_id FROM users WHERE phone = '0715151010';
   IF admin_id IS NULL THEN
-    INSERT INTO users(role, phone, name, password_hash)
-    VALUES ('admin', '0715151010', 'Mastermind Admin', crypt('Oury2933#', gen_salt('bf')))
+    INSERT INTO users(role, phone, name, password_hash, pass_hash)
+    VALUES ('admin', '0715151010', 'Mastermind Admin', crypt('Oury2933#', gen_salt('bf')), crypt('Oury2933#', gen_salt('bf')))
     RETURNING id INTO admin_id;
   ELSE
     UPDATE users
        SET role='admin',
            password_hash = crypt('Oury2933#', gen_salt('bf')),
+           pass_hash     = crypt('Oury2933#', gen_salt('bf')),
            pin_hash = NULL,
            is_active = TRUE
      WHERE id = admin_id;
