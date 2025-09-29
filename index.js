@@ -1,5 +1,7 @@
 // index.js — Mastermind Bet API with Auth (Admin / Agent / Cashier)
 require('dotenv').config();
+process.env.TZ = 'Africa/Nairobi'; // Nairobi time pinned
+
 const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
@@ -24,8 +26,12 @@ app.get(/^\/horses\/?$/i,  (_, res) => res.sendFile(path.join(__dirname, 'public
 app.get(/^\/colors\/?$/i,  (_, res) => res.sendFile(path.join(__dirname, 'public', 'colors.html')));
 app.get('/',               (_, res) => res.sendFile(path.join(__dirname, 'public', 'pos.html')));
 
-// health
+// health + Nairobi time
 app.get('/health', (_, res) => res.json({ ok: true }));
+app.get('/api/time', (_req, res) => {
+  const now = new Date();
+  res.json({ iso: now.toISOString(), tz: 'Africa/Nairobi', unix_ms: now.getTime() });
+});
 
 /* ===== Helpers ===== */
 async function getNum(key, fallback) {
@@ -120,7 +126,7 @@ app.post('/auth/agent/login', async (req, res) => {
     );
     if (!ru.rows.length) return res.status(401).json({ error: 'invalid credentials' });
 
-    // ensure agents table row (code = phone)
+    // ensure agents row (code = phone)
     const code = phone;
     let ag = await db.query(`SELECT code FROM agents WHERE code=$1`, [code]);
     if (!ag.rows.length) {
@@ -138,8 +144,7 @@ app.post('/auth/agent/login', async (req, res) => {
   }
 });
 
-// Cashier login (agent_code + cashier name + PIN) OR (cashier id + PIN)
-// Simplify: name + PIN + agent_code
+// Cashier login (agent_code + cashier name + PIN)
 app.post('/auth/cashier/login', async (req, res) => {
   const { agent_code, name, pin } = req.body || {};
   try {
@@ -156,8 +161,6 @@ app.post('/auth/cashier/login', async (req, res) => {
     if (!r.rows.length) return res.status(401).json({ error: 'invalid credentials' });
 
     const c = r.rows[0];
-
-    // create a synthetic "cashier user" session that carries agent_code + cashier_id
     const s = await createSession({
       user_id: 0, role: 'cashier', agent_code: c.agent_code, cashier_id: c.id
     });
@@ -189,7 +192,7 @@ app.get('/me', async (req,res)=>{
 
 /* ========= ADMIN API ========= */
 
-// Create Agent (admin only)
+// Create/Reset Agent (admin only)
 app.post('/admin/api/agents/create', requireRole(['admin']), async (req, res) => {
   const { phone, name, pin } = req.body || {};
   try{
@@ -199,7 +202,7 @@ app.post('/admin/api/agents/create', requireRole(['admin']), async (req, res) =>
 
     await db.query('BEGIN');
 
-    // upsert users row (role agent)
+    // upsert users row (role agent). Note: we store pin into pass_hash for your login check.
     const u = await db.query(
       `INSERT INTO users(role,phone,name,pass_hash,is_active)
        VALUES('agent',$1,$2,crypt($3, gen_salt('bf',10)), true)
@@ -228,30 +231,59 @@ app.post('/admin/api/agents/create', requireRole(['admin']), async (req, res) =>
   }
 });
 
-app.post('/admin/api/agents/reset-pin', requireRole(['admin']), async (req,res)=>{
-  const { phone, new_pin } = req.body || {};
-  try{
-    if (!phone) return res.status(400).json({ error:'phone required' });
-    if (!new_pin || !/^\d{6}$/.test(new_pin)) return res.status(400).json({ error:'PIN must be 6 digits' });
-    await db.query(
-      `UPDATE users SET pass_hash=crypt($2, gen_salt('bf',10))
-       WHERE role='agent' AND phone=$1`, [phone, new_pin]
-    );
-    res.json({ ok:true });
-  }catch(e){
-    res.status(400).json({ error: e.message||'failed' });
-  }
-});
-
+// List agents
 app.get('/admin/api/agents/list', requireRole(['admin']), async (_req,res)=>{
   const r = await db.query(
-    `SELECT a.code AS phone, a.name, a.is_active, coalesce(a.balance_cents,0) AS balance_cents
+    `SELECT a.code AS phone, a.name, a.is_active, COALESCE(a.balance_cents,0) AS balance_cents
      FROM agents a ORDER BY a.code`
   );
   res.json(r.rows.map(x => ({
     phone: x.phone, name: x.name, is_active: x.is_active,
     balance: (x.balance_cents||0)/100
   })));
+});
+
+// Mint/Topup/Withdraw agent float
+// POST /admin/api/agents/mint  { phone, amount }  amount>0 add; amount<0 withdraw
+app.post('/admin/api/agents/mint', requireRole(['admin']), async (req,res)=>{
+  const { phone, amount } = req.body || {};
+  try{
+    const amtK = Number(amount);
+    if (!phone) return res.status(400).json({ error:'phone required' });
+    if (!Number.isFinite(amtK) || amtK === 0) return res.status(400).json({ error:'amount must be non-zero number (KES)' });
+
+    const delta = Math.round(amtK * 100); // to cents
+
+    await db.query('BEGIN');
+    const ar = await db.query(`SELECT id, balance_cents FROM agents WHERE code=$1 FOR UPDATE`, [phone]);
+    if (!ar.rows.length) throw new Error('Agent not found');
+
+    const cur = ar.rows[0].balance_cents || 0;
+    const next = cur + delta;
+    if (next < 0) throw new Error('Insufficient agent float');
+
+    await db.query(`UPDATE agents SET balance_cents=$1 WHERE id=$2`, [next, ar.rows[0].id]);
+
+    // Ledger
+    await db.query(
+      `INSERT INTO float_ledger(actor_role, actor_id, from_entity, to_entity, amount_cents, action, note)
+       VALUES('admin',$1,$2,$3,$4,$5,$6)`,
+      [
+        req.session?.user_id || null,
+        delta < 0 ? 'agent' : 'treasury',
+        delta < 0 ? 'treasury' : 'agent',
+        Math.abs(delta),
+        (delta < 0 ? 'WITHDRAW' : 'MINT'),
+        phone
+      ]
+    );
+
+    await db.query('COMMIT');
+    res.json({ ok:true, phone, new_balance_kes: next/100 });
+  }catch(e){
+    await db.query('ROLLBACK').catch(()=>{});
+    res.status(400).json({ error: e.message||'failed' });
+  }
 });
 
 /* ========= AGENT API ========= */
@@ -296,10 +328,7 @@ app.post('/agent/api/cashiers/toggle', requireRole(['agent']), async (req,res)=>
   }
 });
 
-/* ========= EXISTING BUSINESS (selections/fixtures/races/colors/tickets/admin limits) ========= */
-/* (UNCHANGED parts below except Colors API added earlier) */
-
-/* ========= LISTS ========= */
+/* ========= EXISTING BUSINESS (fixtures/races/colors/tickets etc.) ========= */
 
 // competitions
 app.get('/api/competitions', async (_req, res) => {
@@ -348,7 +377,7 @@ app.get('/api/races', async (req, res) => {
   }
 });
 
-// selections (fixture_id | race_event_id | color_draw_id)
+// selections
 app.get('/api/selections', async (req, res) => {
   try {
     const fixture_id = req.query.fixture_id ? Number(req.query.fixture_id) : null;
@@ -374,9 +403,6 @@ app.get('/api/selections', async (req, res) => {
   }
 });
 
-/* ========= COLORS APIs added earlier (latest / draws / selections) ========= */
-/* ========= VIRTUAL, TICKETS, ADMIN LIMITS, AUTO-SETTLER (unchanged) ========= */
-
 // colors summary for countdown
 app.get('/virtual/colors', async (_req, res) => {
   try {
@@ -401,7 +427,7 @@ app.get('/virtual/colors', async (_req, res) => {
   }
 });
 
-/* ========= ADMIN limits (unchanged) ========= */
+/* ========= ADMIN limits ========= */
 app.get('/admin/limits', async (_req, res) => {
   try { res.json(await getLimits()); } catch { res.status(500).json({ error: 'failed' }); }
 });
@@ -423,7 +449,7 @@ app.post('/admin/limits', async (req, res) => {
   }
 });
 
-/* ========= TICKETS (unchanged) ========= */
+/* ========= TICKETS ========= */
 app.post('/api/tickets', async (req, res) => {
   const { agent_code, stake, items } = req.body || {};
   try {
