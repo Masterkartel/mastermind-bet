@@ -102,7 +102,7 @@ async function mint(phone, amount){
 async function withdraw(phone, amount){
   const r = await fetch('/admin/api/agents/mint',{
     method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({phone, amount:-amount})
+    body:JSON.stringify({phone, amount: -Math.abs(amount)})
   });
   const j = await r.json();
   if(!r.ok){ alert(j.error||'withdraw failed'); return; }
