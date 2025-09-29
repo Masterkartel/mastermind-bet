@@ -51,9 +51,10 @@
   <div class="card" id="panel" style="display:none">
     <h1>Agents</h1>
     <div class="row">
-      <input id="a_phone" placeholder="Agent code (e.g. 0715… or AG001)"/>
+      <input id="a_phone" placeholder="Phone (10 digits)" maxlength="10" />
       <input id="a_name" placeholder="Agent name"/>
-      <input id="a_pin" placeholder="6 digit PIN"/>
+      <input id="a_location" placeholder="Location (e.g. Umoja 2)"/>
+      <input id="a_pin" placeholder="6 digit PIN" maxlength="6"/>
       <button id="createAgent">Create / Reset</button>
       <span class="right muted" id="list_hint"></span>
     </div>
@@ -61,7 +62,7 @@
     <table id="agentsTbl">
       <thead>
         <tr>
-          <th>Code</th><th>Name</th><th>Status</th><th>Balance (KES)</th><th>Actions</th>
+          <th>Phone</th><th>Name</th><th>Location</th><th>Status</th><th>Balance (KES)</th><th>Actions</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -141,7 +142,8 @@ async function loadAgents(){
   tb.innerHTML = rows.map(x=> `
     <tr>
       <td>${x.phone}</td>
-      <td>${x.name}</td>
+      <td>${x.name||''}</td>
+      <td>${x.location||'-'}</td>
       <td>${x.is_active?'Active':'Off'}</td>
       <td>${fmtKES(x.balance)}</td>
       <td class="btnline">
@@ -216,13 +218,15 @@ document.getElementById('logout').onclick = async ()=>{ await fetch('/auth/logou
 document.getElementById('createAgent').onclick = async ()=>{
   const phone = document.getElementById('a_phone').value.trim();
   const name  = document.getElementById('a_name').value.trim();
+  const location = document.getElementById('a_location').value.trim();
   const pin   = document.getElementById('a_pin').value.trim();
-  if (!/^[A-Za-z0-9_-]{3,20}$/.test(phone)) { toast('Agent code must be 3–20 letters/digits (_ or -)'); return; }
+  if(!/^\d{10}$/.test(phone)) { toast('Phone must be 10 digits'); return; }
   if(!name) { toast('Name required'); return; }
   if(!/^\d{6}$/.test(pin)){ toast('PIN must be 6 digits'); return; }
-  const r = await fetch('/admin/api/agents/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,name,pin})});
+  const r = await fetch('/admin/api/agents/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,name,pin,location})});
   const j = await r.json(); if(!r.ok){ toast(j.error||'Create failed'); return; }
-  toast('Agent created/reset'); document.getElementById('a_phone').value=''; document.getElementById('a_name').value=''; document.getElementById('a_pin').value='';
+  toast('Agent created/reset');
+  document.getElementById('a_phone').value=''; document.getElementById('a_name').value=''; document.getElementById('a_location').value=''; document.getElementById('a_pin').value='';
   loadAgents();
 };
 
