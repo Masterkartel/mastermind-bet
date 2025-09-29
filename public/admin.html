@@ -16,7 +16,7 @@
   .row{display:flex;gap:8px;flex-wrap:wrap}
   .muted{opacity:.8}
   .topbar{background:#123356;padding:6px 10px;font-size:14px;text-align:right;color:#9fd0ff}
-  .floatbtn{padding:4px 6px;font-size:12px;margin-left:4px}
+  .floatbtn{padding:6px 10px;font-size:12px;margin-left:4px}
 </style>
 </head>
 <body>
@@ -83,29 +83,25 @@ async function loadAgents(){
     <td>${x.is_active?'Active':'Off'}</td>
     <td>${fmtKES(x.balance)}</td>
     <td>
-      <button class="floatbtn" onclick="mint('${x.phone}',1000)">+1k</button>
-      <button class="floatbtn" onclick="mint('${x.phone}',5000)">+5k</button>
-      <button class="floatbtn" onclick="withdraw('${x.phone}',1000)">-1k</button>
+      <button class="floatbtn" onclick="adjust('${x.phone}')">Adjust…</button>
     </td>
   </tr>`).join('');
 }
 
-async function mint(phone, amount){
+// Adjust float for an agent: positive = add, negative = withdraw
+async function adjust(phone){
+  const input = prompt(`Enter amount in KES for ${phone}\n(positive = add, negative = withdraw):`, "1000");
+  if (input === null) return; // cancelled
+  const amount = Number(input);
+  if (!Number.isFinite(amount) || amount === 0){
+    alert('Enter a non-zero numeric amount (e.g. 1500 or -750).'); return;
+  }
   const r = await fetch('/admin/api/agents/mint',{
     method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({phone, amount})
   });
   const j = await r.json();
-  if(!r.ok){ alert(j.error||'mint failed'); return; }
-  loadAgents();
-}
-async function withdraw(phone, amount){
-  const r = await fetch('/admin/api/agents/mint',{
-    method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({phone, amount: -Math.abs(amount)})
-  });
-  const j = await r.json();
-  if(!r.ok){ alert(j.error||'withdraw failed'); return; }
+  if(!r.ok){ alert(j.error||'adjust failed'); return; }
   loadAgents();
 }
 
