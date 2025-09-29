@@ -5,24 +5,37 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Admin — Mastermind Bet</title>
 <style>
-  body{margin:0;background:#0b1a2b;color:#e7f0ff;font-family:system-ui,Segoe UI,Roboto,Ubuntu,Arial}
+  :root{--bg:#0b1a2b;--panel:#0f2238;--line:#123356;--line2:#163a5b;--text:#e7f0ff;--accent:#ffbe0b;--muted:#9fd0ff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Segoe UI,Roboto,Ubuntu,Arial}
   .wrap{max-width:1000px;margin:28px auto;padding:0 14px}
-  .card{background:#0f2238;border:1px solid #123356;border-radius:12px;padding:14px;margin-bottom:14px}
-  input,button{padding:8px 10px;border-radius:8px;border:1px solid #1e4162;background:#0e2a46;color:#e7f0ff;outline:none}
-  button{background:#ffbe0b;color:#111;border:none;cursor:pointer;font-weight:700}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+  input,button,textarea,select{padding:8px 10px;border-radius:8px;border:1px solid #1e4162;background:#0e2a46;color:var(--text);outline:none}
+  button{background:var(--accent);color:#111;border:none;cursor:pointer;font-weight:700}
+  button[disabled]{opacity:.6;cursor:not-allowed}
   h1{font-size:20px;margin:12px 0}
   table{width:100%;border-collapse:collapse}
-  th,td{border-bottom:1px solid #163a5b;padding:8px 6px;text-align:left}
+  th,td{border-bottom:1px solid var(--line2);padding:8px 6px;text-align:left}
   .row{display:flex;gap:8px;flex-wrap:wrap}
-  .muted{opacity:.8}
-  .topbar{background:#123356;padding:6px 10px;font-size:14px;text-align:right;color:#9fd0ff}
+  .muted{opacity:.85}
+  .topbar{background:var(--line);padding:6px 10px;font-size:14px;text-align:right;color:var(--muted)}
   .floatbtn{padding:6px 10px;font-size:12px;margin-left:4px}
+  .right{margin-left:auto}
+  /* dialog */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:50}
+  .dialog{width:min(520px,92vw);background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .dialog h2{margin:0 0 10px 0;font-size:18px}
+  .grid{display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center}
+  .grid label{color:#cfe4ff}
+  .row-end{display:flex;gap:10px;justify-content:flex-end;margin-top:12px}
+  .toast{position:fixed;right:10px;bottom:10px;background:#08304f;color:#cfe4ff;border:1px solid #0e426b;padding:10px 12px;border-radius:10px;display:none}
 </style>
 </head>
 <body>
 <div class="topbar">
   <span id="clock">--:--:--</span> Nairobi Time
 </div>
+
 <div class="wrap">
   <div class="card" id="loginBox">
     <h1>Admin Login</h1>
@@ -41,6 +54,7 @@
       <input id="a_name" placeholder="Agent name"/>
       <input id="a_pin" placeholder="6 digit PIN"/>
       <button id="createAgent">Create / Reset</button>
+      <span class="right muted" id="list_hint"></span>
     </div>
     <div style="height:10px"></div>
     <table id="agentsTbl">
@@ -50,83 +64,147 @@
     <div class="row" style="margin-top:10px">
       <button id="refresh">Refresh List</button>
       <button id="logout">Logout</button>
-      <a href="/pos" style="margin-left:auto;color:#9fd0ff">Go to POS</a>
+      <a href="/pos" class="right" style="color:#9fd0ff">Go to POS</a>
     </div>
   </div>
 </div>
+
+<!-- Adjust Float Dialog -->
+<div class="overlay" id="dlg">
+  <div class="dialog">
+    <h2>Adjust Agent Float</h2>
+    <div class="grid">
+      <label>Agent</label><div id="dlg_agent" class="muted"></div>
+      <label>Amount (KES)</label>
+      <input id="dlg_amount" inputmode="numeric" placeholder="e.g. 1500 or -750" />
+      <label>Note (optional)</label>
+      <input id="dlg_note" placeholder="Reason e.g. top-up, correction"/>
+      <label>Preview</label>
+      <div id="dlg_preview" class="muted">KES 0.00</div>
+    </div>
+    <div class="row-end">
+      <button id="dlg_cancel">Cancel</button>
+      <button id="dlg_apply">Apply</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
 <script>
-function fmtKES(n){ return Number(n).toLocaleString('en-KE',{style:'currency',currency:'KES'}); }
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+function fmtKES(n){ return Number(n||0).toLocaleString('en-KE',{style:'currency',currency:'KES'}); }
 
 async function me(){ const r = await fetch('/me'); return r.json(); }
 
 async function login(){
-  const phone = document.getElementById('phone').value.trim();
-  const password = document.getElementById('password').value;
+  const phone = $('#phone').value.trim();
+  const password = $('#password').value;
   const r = await fetch('/auth/admin/login',{
     method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({phone,password})
   });
   const j = await r.json();
-  if(!r.ok){ document.getElementById('msg').textContent = j.error||'login failed'; return; }
-  document.getElementById('loginBox').style.display='none';
-  document.getElementById('panel').style.display='';
+  if(!r.ok){ $('#msg').textContent = j.error||'login failed'; return; }
+  $('#loginBox').style.display='none';
+  $('#panel').style.display='';
   loadAgents();
 }
 
+let agentsCache = [];
 async function loadAgents(){
   const r = await fetch('/admin/api/agents/list');
   const rows = await r.json();
-  const tb = document.querySelector('#agentsTbl tbody');
+  agentsCache = rows;
+  $('#list_hint').textContent = `${rows.length} agent${rows.length===1?'':'s'}`;
+  const tb = $('#agentsTbl tbody');
   tb.innerHTML = rows.map(x=> `<tr>
     <td>${x.phone}</td>
     <td>${x.name}</td>
     <td>${x.is_active?'Active':'Off'}</td>
     <td>${fmtKES(x.balance)}</td>
-    <td>
-      <button class="floatbtn" onclick="adjust('${x.phone}')">Adjust…</button>
-    </td>
+    <td><button class="floatbtn" onclick="openAdjust('${x.phone}')">Adjust…</button></td>
   </tr>`).join('');
 }
 
-// Adjust float for an agent: positive = add, negative = withdraw
-async function adjust(phone){
-  const input = prompt(`Enter amount in KES for ${phone}\n(positive = add, negative = withdraw):`, "1000");
-  if (input === null) return; // cancelled
-  const amount = Number(input);
-  if (!Number.isFinite(amount) || amount === 0){
-    alert('Enter a non-zero numeric amount (e.g. 1500 or -750).'); return;
-  }
-  const r = await fetch('/admin/api/agents/mint',{
-    method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({phone, amount})
-  });
-  const j = await r.json();
-  if(!r.ok){ alert(j.error||'adjust failed'); return; }
-  loadAgents();
+// Dialog state
+let currentPhone = null;
+function openAdjust(phone){
+  currentPhone = phone;
+  $('#dlg_agent').textContent = phone;
+  $('#dlg_amount').value = '';
+  $('#dlg_note').value = '';
+  $('#dlg_preview').textContent = fmtKES(0);
+  $('#dlg').style.display='flex';
+  $('#dlg_amount').focus();
+}
+function closeAdjust(){
+  $('#dlg').style.display='none';
+  currentPhone = null;
 }
 
-document.getElementById('loginBtn').onclick = login;
-document.getElementById('refresh').onclick = loadAgents;
-document.getElementById('logout').onclick = async ()=>{ await fetch('/auth/logout',{method:'POST'}); location.reload(); };
-document.getElementById('createAgent').onclick = async ()=>{
-  const phone = document.getElementById('a_phone').value.trim();
-  const name  = document.getElementById('a_name').value.trim();
-  const pin   = document.getElementById('a_pin').value.trim();
+$('#dlg_cancel').onclick = closeAdjust;
+$('#dlg_amount').addEventListener('input', ()=>{
+  const v = Number($('#dlg_amount').value);
+  $('#dlg_preview').textContent = Number.isFinite(v)&&v!==0 ? fmtKES(v) : 'KES 0.00';
+});
+
+async function applyAdjust(){
+  const btn = $('#dlg_apply');
+  const amount = Number($('#dlg_amount').value);
+  const note = $('#dlg_note').value.trim();
+  if(!currentPhone) return;
+  if(!Number.isFinite(amount) || amount===0){ toast('Enter a non-zero numeric amount'); return; }
+  btn.disabled = true;
+  try{
+    const r = await fetch('/admin/api/agents/mint',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({phone: currentPhone, amount, note})
+    });
+    const j = await r.json();
+    if(!r.ok) throw new Error(j.error||'adjust failed');
+    toast(`Adjusted ${currentPhone}: ${fmtKES(amount)}`);
+    closeAdjust();
+    loadAgents();
+  }catch(e){ toast(e.message||'Failed'); }
+  finally{ btn.disabled = false; }
+}
+$('#dlg_apply').onclick = applyAdjust;
+
+function toast(msg){
+  const t = $('#toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(()=> t.style.display='none', 2800);
+}
+
+$('#loginBtn').onclick = login;
+$('#refresh').onclick = loadAgents;
+$('#logout').onclick = async ()=>{ await fetch('/auth/logout',{method:'POST'}); location.reload(); };
+$('#createAgent').onclick = async ()=>{
+  const phone = $('#a_phone').value.trim();
+  const name  = $('#a_name').value.trim();
+  const pin   = $('#a_pin').value.trim();
+  if(!/^\d{10}$/.test(phone)) return toast('Phone must be 10 digits');
+  if(!name) return toast('Name required');
+  if(!/^\d{6}$/.test(pin)) return toast('PIN must be 6 digits');
   const r = await fetch('/admin/api/agents/create',{
     method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({phone,name,pin})
   });
   const j = await r.json();
-  if(!r.ok){ alert(j.error||'failed'); return; }
-  alert('Agent created/reset');
+  if(!r.ok){ toast(j.error||'Create failed'); return; }
+  toast('Agent created/reset');
+  $('#a_phone').value=''; $('#a_name').value=''; $('#a_pin').value='';
   loadAgents();
 };
 
 (async ()=>{
   const u = await me();
   if (u && u.role==='admin'){
-    document.getElementById('loginBox').style.display='none';
-    document.getElementById('panel').style.display='';
+    $('#loginBox').style.display='none';
+    $('#panel').style.display='';
     loadAgents();
   }
   startClock();
@@ -136,7 +214,7 @@ async function startClock(){
   async function tick(){
     try{
       const r = await fetch('/api/time'); const j = await r.json();
-      if(j && j.unix_ms) document.getElementById('clock').textContent = new Date(j.unix_ms).toLocaleTimeString('en-KE');
+      if(j && j.unix_ms) $('#clock').textContent = new Date(j.unix_ms).toLocaleTimeString('en-KE');
     }catch{}
   }
   tick(); setInterval(tick,1000);
