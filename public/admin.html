@@ -15,14 +15,19 @@
   th,td{border-bottom:1px solid #163a5b;padding:8px 6px;text-align:left}
   .row{display:flex;gap:8px;flex-wrap:wrap}
   .muted{opacity:.8}
+  .topbar{background:#123356;padding:6px 10px;font-size:14px;text-align:right;color:#9fd0ff}
+  .floatbtn{padding:4px 6px;font-size:12px;margin-left:4px}
 </style>
 </head>
 <body>
+<div class="topbar">
+  <span id="clock">--:--:--</span> Nairobi Time
+</div>
 <div class="wrap">
   <div class="card" id="loginBox">
     <h1>Admin Login</h1>
     <div class="row">
-      <input id="phone" placeholder="Phone (10 digits)" value="0715151010"/>
+      <input id="phone" value="0715151010" readonly/>
       <input id="password" type="password" placeholder="Password" value="Oury2933#"/>
       <button id="loginBtn">Login</button>
     </div>
@@ -39,7 +44,7 @@
     </div>
     <div style="height:10px"></div>
     <table id="agentsTbl">
-      <thead><tr><th>Phone</th><th>Name</th><th>Status</th><th>Balance</th></tr></thead>
+      <thead><tr><th>Phone</th><th>Name</th><th>Status</th><th>Balance (KES)</th><th>Float</th></tr></thead>
       <tbody></tbody>
     </table>
     <div class="row" style="margin-top:10px">
@@ -50,25 +55,60 @@
   </div>
 </div>
 <script>
+function fmtKES(n){ return Number(n).toLocaleString('en-KE',{style:'currency',currency:'KES'}); }
+
 async function me(){ const r = await fetch('/me'); return r.json(); }
+
 async function login(){
   const phone = document.getElementById('phone').value.trim();
   const password = document.getElementById('password').value;
-  const r = await fetch('/auth/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,password})});
+  const r = await fetch('/auth/admin/login',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({phone,password})
+  });
   const j = await r.json();
   if(!r.ok){ document.getElementById('msg').textContent = j.error||'login failed'; return; }
   document.getElementById('loginBox').style.display='none';
   document.getElementById('panel').style.display='';
   loadAgents();
 }
+
 async function loadAgents(){
   const r = await fetch('/admin/api/agents/list');
   const rows = await r.json();
   const tb = document.querySelector('#agentsTbl tbody');
   tb.innerHTML = rows.map(x=> `<tr>
-    <td>${x.phone}</td><td>${x.name}</td><td>${x.is_active?'Active':'Off'}</td><td>${x.balance.toFixed(2)}</td>
+    <td>${x.phone}</td>
+    <td>${x.name}</td>
+    <td>${x.is_active?'Active':'Off'}</td>
+    <td>${fmtKES(x.balance)}</td>
+    <td>
+      <button class="floatbtn" onclick="mint('${x.phone}',1000)">+1k</button>
+      <button class="floatbtn" onclick="mint('${x.phone}',5000)">+5k</button>
+      <button class="floatbtn" onclick="withdraw('${x.phone}',1000)">-1k</button>
+    </td>
   </tr>`).join('');
 }
+
+async function mint(phone, amount){
+  const r = await fetch('/admin/api/agents/mint',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({phone, amount})
+  });
+  const j = await r.json();
+  if(!r.ok){ alert(j.error||'mint failed'); return; }
+  loadAgents();
+}
+async function withdraw(phone, amount){
+  const r = await fetch('/admin/api/agents/mint',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({phone, amount:-amount})
+  });
+  const j = await r.json();
+  if(!r.ok){ alert(j.error||'withdraw failed'); return; }
+  loadAgents();
+}
+
 document.getElementById('loginBtn').onclick = login;
 document.getElementById('refresh').onclick = loadAgents;
 document.getElementById('logout').onclick = async ()=>{ await fetch('/auth/logout',{method:'POST'}); location.reload(); };
@@ -76,7 +116,10 @@ document.getElementById('createAgent').onclick = async ()=>{
   const phone = document.getElementById('a_phone').value.trim();
   const name  = document.getElementById('a_name').value.trim();
   const pin   = document.getElementById('a_pin').value.trim();
-  const r = await fetch('/admin/api/agents/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,name,pin})});
+  const r = await fetch('/admin/api/agents/create',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({phone,name,pin})
+  });
   const j = await r.json();
   if(!r.ok){ alert(j.error||'failed'); return; }
   alert('Agent created/reset');
@@ -85,8 +128,23 @@ document.getElementById('createAgent').onclick = async ()=>{
 
 (async ()=>{
   const u = await me();
-  if (u && u.role==='admin'){ document.getElementById('loginBox').style.display='none'; document.getElementById('panel').style.display=''; loadAgents(); }
+  if (u && u.role==='admin'){
+    document.getElementById('loginBox').style.display='none';
+    document.getElementById('panel').style.display='';
+    loadAgents();
+  }
+  startClock();
 })();
+
+async function startClock(){
+  async function tick(){
+    try{
+      const r = await fetch('/api/time'); const j = await r.json();
+      if(j && j.unix_ms) document.getElementById('clock').textContent = new Date(j.unix_ms).toLocaleTimeString('en-KE');
+    }catch{}
+  }
+  tick(); setInterval(tick,1000);
+}
 </script>
 </body>
 </html>
