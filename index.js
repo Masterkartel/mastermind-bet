@@ -192,7 +192,7 @@ app.get('/me', async (req,res)=>{
 
 /* ========= ADMIN API ========= */
 
-// Create/Reset Agent (admin only) — includes LOCATION
+// Create/Reset Agent (admin only) — now accepts 'location'
 app.post('/admin/api/agents/create', requireRole(['admin']), async (req, res) => {
   const { phone, name, pin, location } = req.body || {};
   try{
@@ -202,7 +202,7 @@ app.post('/admin/api/agents/create', requireRole(['admin']), async (req, res) =>
 
     await db.query('BEGIN');
 
-    // upsert users row (role agent). Store PIN into pass_hash (used by /auth/agent/login).
+    // upsert users row (role agent). Store pin in pass_hash (used by /auth/agent/login)
     const u = await db.query(
       `INSERT INTO users(role,phone,name,pass_hash,is_active)
        VALUES('agent',$1,$2,crypt($3, gen_salt('bf',10)), true)
@@ -214,14 +214,12 @@ app.post('/admin/api/agents/create', requireRole(['admin']), async (req, res) =>
        RETURNING id`, [phone, name, pin]
     );
 
-    // ensure agents row (code = phone) with LOCATION
+    // ensure agents row (code = phone) + location persisted
     await db.query(
       `INSERT INTO agents(code,name,location,balance_cents,is_active,owner_user_id)
        VALUES($1,$2,$3,0,true,$4)
        ON CONFLICT (code) DO UPDATE
-       SET name=EXCLUDED.name,
-           location=EXCLUDED.location,
-           is_active=true`,
+       SET name=EXCLUDED.name, location=EXCLUDED.location, is_active=true`,
       [phone, name, location || null, u.rows[0].id]
     );
 
@@ -233,34 +231,43 @@ app.post('/admin/api/agents/create', requireRole(['admin']), async (req, res) =>
   }
 });
 
-// Reset agent PIN (default 000000) — Admin only
+// Reset agent PIN (default 000000 unless new_pin provided)
 app.post('/admin/api/agents/reset-pin', requireRole(['admin']), async (req,res)=>{
   const { phone, new_pin } = req.body || {};
   try{
-    if (!phone || !/^\d{10}$/.test(phone)) return res.status(400).json({ error:'phone must be 10 digits' });
+    if (!phone) return res.status(400).json({ error: 'phone required' });
     const pin = new_pin && /^\d{6}$/.test(new_pin) ? new_pin : '000000';
-    await db.query(
-      `UPDATE users SET pass_hash=crypt($2, gen_salt('bf',10))
-       WHERE role='agent' AND phone=$1`,
-      [phone, pin]
+
+    const u = await db.query(
+      `INSERT INTO users(role,phone,name,pass_hash,is_active)
+       VALUES('agent',$1,$1,crypt($2, gen_salt('bf',10)), true)
+       ON CONFLICT (phone) DO UPDATE
+       SET pass_hash=EXCLUDED.pass_hash, role='agent', is_active=true
+       RETURNING id`, [phone, pin]
     );
+
+    await db.query(
+      `INSERT INTO agents(code,name,balance_cents,is_active,owner_user_id)
+       VALUES($1,$1,0,true,$2)
+       ON CONFLICT (code) DO UPDATE
+       SET is_active=true`,
+      [phone, u.rows[0].id]
+    );
+
     res.json({ ok:true, pin });
   }catch(e){
     res.status(400).json({ error: e.message||'failed' });
   }
 });
 
-// List agents (now includes location)
+// List agents (now returns location)
 app.get('/admin/api/agents/list', requireRole(['admin']), async (_req,res)=>{
   const r = await db.query(
     `SELECT a.code AS phone, a.name, a.location, a.is_active, COALESCE(a.balance_cents,0) AS balance_cents
      FROM agents a ORDER BY a.code`
   );
   res.json(r.rows.map(x => ({
-    phone: x.phone,
-    name: x.name,
-    location: x.location || '',
-    is_active: x.is_active,
+    phone: x.phone, name: x.name, location: x.location || null, is_active: x.is_active,
     balance: (x.balance_cents||0)/100
   })));
 });
@@ -271,7 +278,7 @@ app.post('/admin/api/agents/mint', requireRole(['admin']), async (req,res)=>{
   const { phone, amount, note } = req.body || {};
   try{
     const amtK = Number(amount);
-    if (!phone || !/^\d{10}$/.test(phone)) return res.status(400).json({ error:'phone must be 10 digits' });
+    if (!phone) return res.status(400).json({ error:'phone required' });
     if (!Number.isFinite(amtK) || amtK === 0) return res.status(400).json({ error:'amount must be non-zero number (KES)' });
 
     const delta = Math.round(amtK * 100); // to cents
@@ -296,7 +303,7 @@ app.post('/admin/api/agents/mint', requireRole(['admin']), async (req,res)=>{
         delta < 0 ? 'treasury' : 'agent',
         Math.abs(delta),
         (delta < 0 ? 'WITHDRAW' : 'MINT'),
-        note || phone
+        note ? String(note) : phone
       ]
     );
 
