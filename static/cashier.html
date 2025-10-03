@@ -1,118 +1,279 @@
 <!doctype html>
 <html>
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Mastermind Cashier</title>
-<style>
-body{font-family:Inter,system-ui,Arial,sans-serif;background:#0b0f19;color:#e6edf3;margin:0}
-header{padding:12px 16px;background:#0f1629;font-weight:800;display:flex;justify-content:space-between;align-items:center}
-header nav a{color:#f59e0b;margin-left:12px;text-decoration:none}
-main{padding:16px}
-.card{background:#0f1629;border:1px solid #1d2640;border-radius:14px;padding:12px;margin-bottom:12px}
-label{display:block;margin:6px 0 4px;color:#9aa4b2}
-select,input,button{padding:10px;border-radius:10px;border:1px solid #1d2640;background:#0c1428;color:#e6edf3}
-button{cursor:pointer;font-weight:700}
-.row{display:flex;gap:12px;flex-wrap:wrap}
-.row>div{flex:1 1 260px}
-a{color:#f59e0b}
-.pill{display:inline-block;background:#1d2640;border-radius:999px;padding:4px 10px;font-size:12px}
-.muted{color:#9aa4b2}
-table{width:100%;border-collapse:collapse}
-td,th{border-bottom:1px solid #1d2640;padding:8px;text-align:left}
-</style>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Mastermind — Cashier</title>
+  <style>
+    :root{
+      --bg:#0b0f19; --panel:#0f1629; --muted:#9aa4b2; --line:#1d2640; --text:#e6edf3; --accent:#f59e0b;
+      --green:#22c55e; --red:#ef4444; --blue:#3b82f6; --yellow:#eab308; --purple:#a855f7; --black:#111827;
+    }
+    *{box-sizing:border-box}
+    body{font-family:Inter,system-ui,Arial,sans-serif;background:var(--bg);color:var(--text);margin:0}
+    header{padding:14px 16px;background:var(--panel);display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)}
+    header .brand{font-weight:800;letter-spacing:.2px}
+    header .pill{background:#122046;border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:12px;color:var(--accent)}
+    main{padding:16px;max-width:1200px;margin:0 auto}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px;margin-bottom:12px}
+    label{display:block;margin:6px 0 4px;color:var(--muted);font-size:13px}
+    input,button{padding:10px;border-radius:10px;border:1px solid var(--line);background:#0c1428;color:var(--text)}
+    button{cursor:pointer;font-weight:700}
+    .muted{color:var(--muted)}
+    table{width:100%;border-collapse:collapse}
+    td,th{border-bottom:1px solid var(--line);padding:8px;text-align:left}
+
+    /* Tabs */
+    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+    .tab{padding:10px 14px;border-radius:10px;border:1px solid var(--line);background:#0c1428;cursor:pointer;font-weight:700}
+    .tab.active{outline:2px solid var(--accent);}
+
+    /* Selections grid/buttons */
+    .market{margin:8px 0}
+    .grid{display:grid;gap:8px}
+    .grid.cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .grid.cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+    .sel{display:block;text-align:center;padding:12px;border:1px solid var(--line);border-radius:12px;background:#0c1428;font-weight:700}
+    .sel:active{transform:scale(0.98)}
+
+    /* Color tiles */
+    .tile{height:60px;display:flex;align-items:center;justify-content:center;border-radius:12px;font-weight:800;color:#fff}
+
+    /* Racing lanes */
+    .lanes{display:grid;gap:6px}
+    .lane{position:relative; height:36px; background:#0c1428; border:1px dashed var(--line); border-radius:10px; overflow:hidden}
+    .lane .runner{position:absolute; top:6px; left:6px; height:24px; width:24px; border-radius:50%; background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800}
+    .lane .finish{position:absolute; right:6px; top:0; bottom:0; width:4px; background:var(--accent); opacity:.4}
+
+    /* Aviator */
+    .sky{position:relative;height:160px;background:linear-gradient(0deg,#0c1428,#0b0f19);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+    .plane{position:absolute;left:12px;bottom:16px;width:28px;height:14px;background:#ddd;border-radius:3px 10px 10px 3px;transform-origin:left center;box-shadow:0 0 6px #fff2}
+    .trail{position:absolute;left:0;bottom:22px;height:2px;background:#8ab4f8;opacity:.6}
+    .bust{position:absolute;right:10px;top:10px;background:#380d0d;color:#ffb4b4;border:1px solid #6b1a1a;border-radius:999px;padding:4px 8px;font-size:12px}
+    .mult{position:absolute;left:10px;top:10px;background:#082e16;color:#a7f3d0;border:1px solid #155e34;border-radius:999px;padding:4px 8px;font-size:12px}
+
+    /* Controls strip */
+    .controls{display:flex;gap:10px;flex-wrap:wrap}
+    .controls > *{flex:1 1 200px}
+  </style>
 </head>
 <body>
 <header>
-<div>Mastermind Cashier <span class="pill">KES</span></div>
-<nav>
-<a href="/static/agent.html">Agent</a>
-<a href="/static/admin.html">Admin</a>
-</nav>
+  <div class="brand">MASTERMIND — Cashier <span class="pill">KES</span></div>
+  <!-- Removed Admin/Agent links (use /static/admin.html and /static/agent.html directly) -->
 </header>
+
 <main>
-<div class="card">
-<div class="row">
-<div>
-<label>Game</label>
-<select id="game">
-<option value="colors">Colors</option>
-<option value="dog">Dogs</option>
-<option value="horse">Horses</option>
-<option value="football">Football (UCL/EPL/LaLiga)</option>
-<option value="aviator">Aviator (Crash)</option>
-</select>
-</div>
-<div>
-<label>Cashier ID</label>
-<input id="cashier" placeholder="shop-1" value="shop-1"/>
-</div>
-<div>
-<label>Stake (KES)</label>
-<input id="stake" type="number" min="10" step="10" value="100"/>
-</div>
-</div>
-<div style="height:8px"></div>
-<button onclick="loadEvents()">Load Events</button>
-</div>
+  <!-- Controls -->
+  <div class="card">
+    <div class="controls">
+      <div>
+        <label>Cashier ID</label>
+        <input id="cashier" placeholder="shop-1" value="shop-1"/>
+      </div>
+      <div>
+        <label>Stake (KES)</label>
+        <input id="stake" type="number" min="10" step="10" value="100"/>
+      </div>
+      <div style="align-self:flex-end">
+        <button id="reloadBtn">Reload Events</button>
+      </div>
+    </div>
+  </div>
 
+  <!-- Tabs -->
+  <div class="tabs" id="tabs">
+    <div class="tab active" data-game="football">Football</div>
+    <div class="tab" data-game="dog">Dogs</div>
+    <div class="tab" data-game="horse">Horses</div>
+    <div class="tab" data-game="colors">Colors</div>
+    <div class="tab" data-game="aviator">Aviator</div>
+  </div>
 
-<div id="events"></div>
+  <!-- Events container (visual per game) -->
+  <div class="card" id="events"></div>
 
-
-<div class="card">
-<h3>Recent Tickets</h3>
-<table id="tickets"><thead><tr><th>Ref</th><th>Sel</th><th>Odds</th><th>Stake</th><th>Status</th><th></th></tr></thead><tbody></tbody></table>
-</div>
+  <!-- Recent tickets -->
+  <div class="card">
+    <h3>Recent Tickets</h3>
+    <table id="tickets"><thead><tr><th>Ref</th><th>Game</th><th>Sel</th><th>Odds</th><th>Stake</th><th>Status</th><th></th></tr></thead><tbody></tbody></table>
+  </div>
 </main>
+
 <script>
-const api = location.origin.replace(/:\\d+$/, ':4000');
+const api = location.origin.replace(/:\d+$/, ':4000'); // app on 4000
+let CURRENT_GAME = 'football';
+
+document.getElementById('reloadBtn').onclick = loadEvents;
+document.getElementById('tabs').addEventListener('click', (e)=>{
+  const t = e.target.closest('.tab');
+  if(!t) return;
+  document.querySelectorAll('.tab').forEach(el=>el.classList.remove('active'));
+  t.classList.add('active');
+  CURRENT_GAME = t.dataset.game;
+  loadEvents();
+});
+
 async function loadEvents(){
-const game = document.getElementById('game').value;
-const res = await fetch(`${api}/events?game=${game}`); const events = await res.json();
-const container = document.getElementById('events'); container.innerHTML='';
-for(const ev of events){
-const mres = await fetch(`${api}/markets/${ev.id}`); if(!mres.ok) continue; const markets = await mres.json();
-const card = document.createElement('div'); card.className='card';
-let title = `${ev.game.toUpperCase()}`;
-if (ev.league) title += ` (${ev.league})`;
-card.innerHTML = `<div class="row"><div><b>${title}</b> — ${new Date(ev.runsAt).toLocaleTimeString()} <span class="muted">(${ev.status})</span></div></div>`;
-for(const m of markets){
-const wrap = document.createElement('div');
-wrap.innerHTML = `<div style="margin:8px 0"><b>Market: ${m.type}</b></div>`;
-const row = document.createElement('div'); row.className='row';
-for(const s of m.selections){
-const btn = document.createElement('button'); btn.textContent = `${s.name} @ ${m.odds[s.id]}`;
-btn.onclick = ()=> placeBet(ev.id, m.id, s.id);
-const slot = document.createElement('div'); slot.appendChild(btn); row.appendChild(slot);
-}
-wrap.appendChild(row); card.appendChild(wrap);
-}
-container.appendChild(card);
-}
-}
+  const res = await fetch(`${api}/events?game=${CURRENT_GAME}`);
+  const events = await res.json();
+  const box = document.getElementById('events');
+  box.innerHTML = ''; // clear
 
+  for(const ev of events){
+    const marketsRes = await fetch(`${api}/markets/${ev.id}`);
+    if(!marketsRes.ok) continue;
+    const markets = await marketsRes.json();
 
-async function placeBet(eventId, marketId, selectionId){
-const stake = Number(document.getElementById('stake').value||0);
-const cashierId = document.getElementById('cashier').value||'shop-1';
-const res = await fetch(`${api}/bets`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({eventId, marketId, selectionId, stake, cashierId})});
-const data = await res.json(); if(!data.ok){ alert('Failed: '+JSON.stringify(data)); return; }
-addTicketRow(data.bet);
-window.open(`${api}/receipt/${data.bet.id}`, '_blank');
+    const wrap = document.createElement('div');
+    wrap.className = 'card';
+
+    const title = `${(ev.game.toUpperCase())}${ev.league?` (${ev.league})`:''} — ${new Date(ev.runsAt).toLocaleTimeString()} <span class="muted">[${ev.status}]</span>`;
+    const h = document.createElement('div'); h.innerHTML = `<b>${title}</b>`;
+    wrap.appendChild(h);
+
+    // Visuals per game
+    if (ev.game === 'colors') buildColors(wrap, markets, ev);
+    else if (ev.game === 'dog' || ev.game === 'horse') buildRacing(wrap, markets, ev);
+    else if (ev.game === 'aviator') buildAviator(wrap, markets, ev);
+    else if (ev.game === 'football') buildFootball(wrap, markets, ev);
+
+    box.appendChild(wrap);
+  }
 }
 
+/* ==== BUILDERS ==== */
 
-function addTicketRow(b){
-const tb = document.querySelector('#tickets tbody');
-const tr = document.createElement('tr');
-tr.innerHTML = `<td>${b.ref}</td><td>${b.selectionId}</td><td>${b.odds}</td><td>${b.stake}</td><td>${b.status}</td><td><a target="_blank" href="${api}/receipt/${b.id}">receipt</a></td>`;
-tb.prepend(tr);
+function buildFootball(wrap, markets, ev){
+  for(const m of markets){
+    const head = document.createElement('div');
+    head.className = 'market'; head.innerHTML = `<div><b>Market: ${m.type}</b></div>`;
+    wrap.appendChild(head);
+
+    const row = document.createElement('div'); row.className = 'row';
+    for(const s of m.selections){
+      const btn = document.createElement('button');
+      btn.textContent = `${s.name} @ ${m.odds[s.id]}`;
+      btn.onclick = ()=> placeBet(ev.id, m.id, s.id, ev.game);
+      const slot = document.createElement('div'); slot.appendChild(btn);
+      row.appendChild(slot);
+    }
+    wrap.appendChild(row);
+  }
 }
 
+function buildColors(wrap, markets, ev){
+  const m = markets.find(x=>x.type==='WIN'); if(!m) return;
+  const grid = document.createElement('div'); grid.className='grid cols-3';
+  const colorMap = {RED:'var(--red)', BLUE:'var(--blue)', GREEN:'var(--green)', YELLOW:'var(--yellow)', PURPLE:'var(--purple)', BLACK:'var(--black)'};
+  for (const s of m.selections){
+    const cell = document.createElement('div');
+    cell.className='sel tile';
+    cell.style.background = colorMap[s.id] || '#333';
+    cell.textContent = `${s.id} @ ${m.odds[s.id]}`;
+    cell.onclick = ()=> placeBet(ev.id, m.id, s.id, ev.game);
+    grid.appendChild(cell);
+  }
+  wrap.appendChild(grid);
+}
 
+function buildRacing(wrap, markets, ev){
+  const m = markets.find(x=>x.type==='WIN'); if(!m) return;
+  const lanes = document.createElement('div');
+  lanes.className='lanes';
+  const selections = m.selections.slice(0); // R1..Rn
+  for(const s of selections){
+    const lane = document.createElement('div'); lane.className='lane';
+    const runner = document.createElement('div'); runner.className='runner'; runner.textContent = s.id.replace('R','');
+    const finish = document.createElement('div'); finish.className='finish';
+    lane.appendChild(runner); lane.appendChild(finish);
+    lanes.appendChild(lane);
+
+    // simple idle animation (wiggle) while waiting
+    let t = 0; const anim = setInterval(()=>{
+      t+=0.08;
+      const x = 6 + (Math.sin(t + Number(s.id.replace('R','')))*6 + 0) ; // wiggle
+      runner.style.left = x+'px';
+      if (ev.status==='SETTLED') clearInterval(anim);
+    }, 60);
+  }
+  wrap.appendChild(lanes);
+
+  // buttons (WIN market) below lanes
+  const grid = document.createElement('div'); grid.className='grid cols-4';
+  for(const s of m.selections){
+    const btn = document.createElement('div'); btn.className='sel'; btn.textContent = `${s.name} @ ${m.odds[s.id]}`;
+    btn.onclick = ()=> placeBet(ev.id, m.id, s.id, ev.game);
+    grid.appendChild(btn);
+  }
+  wrap.appendChild(grid);
+}
+
+function buildAviator(wrap, markets, ev){
+  const m = markets.find(x=>x.type==='AVIATOR_AUTO'); if(!m) return;
+  const sky = document.createElement('div'); sky.className='sky';
+  const plane = document.createElement('div'); plane.className='plane';
+  const trail = document.createElement('div'); trail.className='trail';
+  const mult = document.createElement('div'); mult.className='mult'; mult.textContent = '1.00x';
+  sky.appendChild(plane); sky.appendChild(trail); sky.appendChild(mult);
+
+  // animate plane gently rising; after RUN/SETTLED show bust
+  let t=0, curr=1.0;
+  const tick = setInterval(()=>{
+    t += 0.05;
+    curr = Math.min(50, +(1 + t*0.8).toFixed(2)); // climbs gradually
+    mult.textContent = curr.toFixed(2)+'x';
+    plane.style.transform = `translate(${t*50}px, ${-t*8}px) rotate(-8deg)`;
+    trail.style.width = `${t*50}px`;
+    if (ev.status==='SETTLED'){ clearInterval(tick); }
+  }, 80);
+
+  if (ev.status==='SETTLED'){
+    // show bust if known
+    fetch(`${api}/events/${ev.id}`).then(r=>r.json()).then(e=>{
+      if (e.result && e.result.bust){
+        const b = document.createElement('div'); b.className='bust'; b.textContent = `Bust: ${e.result.bust}x`;
+        sky.appendChild(b);
+      }
+    });
+  }
+  wrap.appendChild(sky);
+
+  // buttons row
+  const grid = document.createElement('div'); grid.className='grid cols-4 market';
+  for (const s of m.selections){
+    const div = document.createElement('div'); div.className='sel'; div.textContent = `${s.name} @ ${m.odds[s.id]}`;
+    div.onclick = ()=> placeBet(ev.id, m.id, s.id, ev.game);
+    grid.appendChild(div);
+  }
+  wrap.appendChild(grid);
+}
+
+/* ==== Tickets ==== */
+function addTicketRow(b, game){
+  const tb = document.querySelector('#tickets tbody');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${b.ref||b.id}</td><td>${game||'-'}</td><td>${b.selectionId||'-'}</td><td>${b.odds||'-'}</td><td>${b.stake}</td><td>${b.status}</td><td><a target="_blank" href="${api}/receipt/${b.id}">receipt</a></td>`;
+  tb.prepend(tr);
+}
+
+async function placeBet(eventId, marketId, selectionId, game){
+  const stake = Number(document.getElementById('stake').value||0);
+  const cashierId = document.getElementById('cashier').value||'shop-1';
+  const res = await fetch(`${api}/bets`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({eventId, marketId, selectionId, stake, cashierId})
+  });
+  const data = await res.json();
+  if(!data.ok){ alert('Failed: '+JSON.stringify(data)); return; }
+  addTicketRow(data.bet, game);
+  window.open(`${api}/receipt/${data.bet.id}`, '_blank');
+}
+
+/* ==== Boot ==== */
 loadEvents();
-setInterval(loadEvents, 15000);
+setInterval(loadEvents, 16000);
 </script>
 </body>
 </html>
