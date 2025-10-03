@@ -1,49 +1,25 @@
 name: Deploy to Droplet
 on:
-  push:
-    branches: [ main ]
-
+push:
+branches: [ main ]
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Start ssh-agent and add key
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
-
-      - name: Refresh droplet host key
-        run: |
-          ssh-keygen -R ${{ secrets.DO_SSH_HOST }} || true
-          mkdir -p ~/.ssh
-          ssh-keyscan -H ${{ secrets.DO_SSH_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Diagnostics
-        run: |
-          echo "Target: ${{ secrets.DO_SSH_USER }}@${{ secrets.DO_SSH_HOST }}"
-          test -n "${{ secrets.DO_SSH_USER }}" || (echo "Missing DO_SSH_USER" && exit 1)
-          test -n "${{ secrets.DO_SSH_HOST }}" || (echo "Missing DO_SSH_HOST" && exit 1)
-
-      - name: Test SSH connectivity
-        run: |
-          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes \
-            ${{ secrets.DO_SSH_USER }}@${{ secrets.DO_SSH_HOST }} "echo CONNECTED"
-
-      - name: Rsync code to server
-        run: |
-          rsync -az --delete --exclude=".git" --exclude="node_modules" \
-            -e "ssh -o StrictHostKeyChecking=yes" \
-            ./ ${{ secrets.DO_SSH_USER }}@${{ secrets.DO_SSH_HOST }}:/home/deploy/apps/mastermind-bet/
-
-      - name: Install deps & restart app (PM2)
-        run: |
-          ssh ${{ secrets.DO_SSH_USER }}@${{ secrets.DO_SSH_HOST }} bash -lc '
-            cd /home/deploy/apps/mastermind-bet &&
-            command -v pm2 >/dev/null 2>&1 || sudo npm i -g pm2 &&
-            npm ci || npm install &&
-            pm2 start index.js --name mastermind-bet || pm2 restart mastermind-bet &&
-            pm2 save
-          '
+deploy:
+runs-on: ubuntu-latest
+steps:
+- uses: actions/checkout@v4
+- name: Start ssh-agent
+uses: webfactory/ssh-agent@v0.9.0
+with:
+ssh-private-key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+- name: Refresh known_hosts
+run: |
+ssh-keygen -R ${{ secrets.DO_SSH_HOST }} || true
+mkdir -p ~/.ssh
+ssh-keyscan -H ${{ secrets.DO_SSH_HOST }} >> ~/.ssh/known_hosts
+- name: Rsync files
+run: |
+rsync -avz --delete --exclude='.git' ./ ${{ secrets.DO_SSH_USER }}@${{ secrets.DO_SSH_HOST }}:/opt/mastermind-bet/
+- name: Install deps & restart
+run: |
+ssh ${{ secrets.DO_SSH_USER }}@${{ secrets.DO_SSH_HOST }} \
+'cd /opt/mastermind-bet && npm ci || npm i && sudo systemctl restart mastermind-bet'
