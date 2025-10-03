@@ -1,0 +1,118 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Mastermind Cashier</title>
+<style>
+body{font-family:Inter,system-ui,Arial,sans-serif;background:#0b0f19;color:#e6edf3;margin:0}
+header{padding:12px 16px;background:#0f1629;font-weight:800;display:flex;justify-content:space-between;align-items:center}
+header nav a{color:#f59e0b;margin-left:12px;text-decoration:none}
+main{padding:16px}
+.card{background:#0f1629;border:1px solid #1d2640;border-radius:14px;padding:12px;margin-bottom:12px}
+label{display:block;margin:6px 0 4px;color:#9aa4b2}
+select,input,button{padding:10px;border-radius:10px;border:1px solid #1d2640;background:#0c1428;color:#e6edf3}
+button{cursor:pointer;font-weight:700}
+.row{display:flex;gap:12px;flex-wrap:wrap}
+.row>div{flex:1 1 260px}
+a{color:#f59e0b}
+.pill{display:inline-block;background:#1d2640;border-radius:999px;padding:4px 10px;font-size:12px}
+.muted{color:#9aa4b2}
+table{width:100%;border-collapse:collapse}
+td,th{border-bottom:1px solid #1d2640;padding:8px;text-align:left}
+</style>
+</head>
+<body>
+<header>
+<div>Mastermind Cashier <span class="pill">KES</span></div>
+<nav>
+<a href="/static/agent.html">Agent</a>
+<a href="/static/admin.html">Admin</a>
+</nav>
+</header>
+<main>
+<div class="card">
+<div class="row">
+<div>
+<label>Game</label>
+<select id="game">
+<option value="colors">Colors</option>
+<option value="dog">Dogs</option>
+<option value="horse">Horses</option>
+<option value="football">Football (UCL/EPL/LaLiga)</option>
+<option value="aviator">Aviator (Crash)</option>
+</select>
+</div>
+<div>
+<label>Cashier ID</label>
+<input id="cashier" placeholder="shop-1" value="shop-1"/>
+</div>
+<div>
+<label>Stake (KES)</label>
+<input id="stake" type="number" min="10" step="10" value="100"/>
+</div>
+</div>
+<div style="height:8px"></div>
+<button onclick="loadEvents()">Load Events</button>
+</div>
+
+
+<div id="events"></div>
+
+
+<div class="card">
+<h3>Recent Tickets</h3>
+<table id="tickets"><thead><tr><th>Ref</th><th>Sel</th><th>Odds</th><th>Stake</th><th>Status</th><th></th></tr></thead><tbody></tbody></table>
+</div>
+</main>
+<script>
+const api = location.origin.replace(/:\\d+$/, ':4000');
+async function loadEvents(){
+const game = document.getElementById('game').value;
+const res = await fetch(`${api}/events?game=${game}`); const events = await res.json();
+const container = document.getElementById('events'); container.innerHTML='';
+for(const ev of events){
+const mres = await fetch(`${api}/markets/${ev.id}`); if(!mres.ok) continue; const markets = await mres.json();
+const card = document.createElement('div'); card.className='card';
+let title = `${ev.game.toUpperCase()}`;
+if (ev.league) title += ` (${ev.league})`;
+card.innerHTML = `<div class="row"><div><b>${title}</b> — ${new Date(ev.runsAt).toLocaleTimeString()} <span class="muted">(${ev.status})</span></div></div>`;
+for(const m of markets){
+const wrap = document.createElement('div');
+wrap.innerHTML = `<div style="margin:8px 0"><b>Market: ${m.type}</b></div>`;
+const row = document.createElement('div'); row.className='row';
+for(const s of m.selections){
+const btn = document.createElement('button'); btn.textContent = `${s.name} @ ${m.odds[s.id]}`;
+btn.onclick = ()=> placeBet(ev.id, m.id, s.id);
+const slot = document.createElement('div'); slot.appendChild(btn); row.appendChild(slot);
+}
+wrap.appendChild(row); card.appendChild(wrap);
+}
+container.appendChild(card);
+}
+}
+
+
+async function placeBet(eventId, marketId, selectionId){
+const stake = Number(document.getElementById('stake').value||0);
+const cashierId = document.getElementById('cashier').value||'shop-1';
+const res = await fetch(`${api}/bets`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({eventId, marketId, selectionId, stake, cashierId})});
+const data = await res.json(); if(!data.ok){ alert('Failed: '+JSON.stringify(data)); return; }
+addTicketRow(data.bet);
+window.open(`${api}/receipt/${data.bet.id}`, '_blank');
+}
+
+
+function addTicketRow(b){
+const tb = document.querySelector('#tickets tbody');
+const tr = document.createElement('tr');
+tr.innerHTML = `<td>${b.ref}</td><td>${b.selectionId}</td><td>${b.odds}</td><td>${b.stake}</td><td>${b.status}</td><td><a target="_blank" href="${api}/receipt/${b.id}">receipt</a></td>`;
+tb.prepend(tr);
+}
+
+
+loadEvents();
+setInterval(loadEvents, 15000);
+</script>
+</body>
+</html>
