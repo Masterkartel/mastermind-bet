@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Agent — Mastermind</title>
+<style>
+body{font-family:Inter,system-ui,Arial,sans-serif;background:#0b0f19;color:#e6edf3;margin:0}
+header{padding:12px 16px;background:#0f1629;font-weight:800}
+main{padding:16px}
+table{width:100%;border-collapse:collapse}
+td,th{border-bottom:1px solid #1d2640;padding:8px;text-align:left}
+.pill{display:inline-block;background:#1d2640;border-radius:999px;padding:4px 10px;font-size:12px}
+.card{background:#0f1629;border:1px solid #1d2640;border-radius:14px;padding:12px;margin-bottom:12px}
+</style>
+</head>
+<body>
+<header>Agent Dashboard <span class="pill">KES</span> — <a href="/">Cashier</a></header>
+<main>
+<div class="card">
+<h3>Totals by Cashier</h3>
+<table id="t"><thead><tr><th>Cashier</th><th>Tickets</th><th>Stake</th><th>Payout</th><th>Won</th><th>Lost</th><th>Pending</th></tr></thead><tbody></tbody></table>
+</div>
+</main>
+<script>
+const api = location.origin.replace(/:\\d+$/, ':4000');
+async function load(){
+const res = await fetch(`${api}/admin/summary/by-cashier`); const data = await res.json();
+const tbody = document.querySelector('#t tbody'); tbody.innerHTML='';
+for(const [cashier, row] of Object.entries(data)){
+const tr = document.createElement('tr');
+tr.innerHTML = `<td>${cashier}</td><td>${row.tickets}</td><td>${row.stake}</td><td>${row.payout}</td><td>${row.won}</td><td>${row.lost}</td><td>${row.pending}</td>`;
+tbody.appendChild(tr);
+}
+}
+load(); setInterval(load, 10000);
+</script>
+</body>
+</html>
