@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Admin — Mastermind</title>
+<style>
+body{font-family:Inter,system-ui,Arial,sans-serif;background:#0b0f19;color:#e6edf3;margin:0}
+header{padding:12px 16px;background:#0f1629;font-weight:800}
+main{padding:16px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+table{width:100%;border-collapse:collapse}
+td,th{border-bottom:1px solid #1d2640;padding:8px;text-align:left}
+.card{background:#0f1629;border:1px solid #1d2640;border-radius:14px;padding:12px;margin-bottom:12px}
+button{padding:6px 10px;border-radius:8px;border:1px solid #1d2640;background:#0c1428;color:#e6edf3;cursor:pointer}
+</style>
+</head>
+<body>
+<header>Admin Dashboard — <a href="/">Cashier</a> | <a href="/static/agent.html">Agent</a></header>
+<main>
+<div class="grid">
+<div class="card">
+<h3>Summary</h3>
+<pre id="sum">loading…</pre>
+</div>
+<div class="card">
+<h3>Events</h3>
+<table id="ev"><thead><tr><th>Game</th><th>Runs At</th><th>Status</th><th>Action</th></tr></thead><tbody></tbody></table>
+</div>
+</div>
+</main>
+<script>
+const api = location.origin.replace(/:\\d+$/, ':4000');
+async function load(){
+const sum = await (await fetch(`${api}/admin/summary`)).json();
+document.getElementById('sum').textContent = JSON.stringify(sum,null,2);
+const evs = await (await fetch(`${api}/admin/events`)).json();
+const tb = document.querySelector('#ev tbody'); tb.innerHTML='';
+for(const ev of evs){
+const tr = document.createElement('tr');
+let g = ev.game; if (ev.league) g += ` (${ev.league})`;
+tr.innerHTML = `<td>${g}</td><td>${new Date(ev.runsAt).toLocaleTimeString()}</td><td>${ev.status}</td>`;
+const td = document.createElement('td');
+const lock = document.createElement('button'); lock.textContent='Lock'; lock.onclick=()=>fetch(`${api}/events/${ev.id}/lock`,{method:'POST'}).then(load);
+const run = document.createElement('button'); run.textContent='Run'; run.style.marginLeft='8px'; run.onclick=()=>fetch(`${api}/events/${ev.id}/run`,{method:'POST'}).then(load);
+td.appendChild(lock); td.appendChild(run); tr.appendChild(td);
+tb.appendChild(tr);
+}
+}
+load(); setInterval(load, 8000);
+</script>
+</body>
+</html>
