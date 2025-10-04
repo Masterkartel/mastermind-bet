@@ -11,85 +11,44 @@
   }
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{
-    margin:0;
-    font-family:Inter,system-ui,Arial,sans-serif;
-    background:var(--bg);
-    color:var(--text);
-  }
-  header{
-    padding:12px 18px;
-    border-bottom:1px solid var(--line);
-    display:flex;align-items:center;gap:14px;justify-content:space-between
-  }
+  body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--bg);color:var(--text)}
+  header{padding:12px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
   .brand{font-weight:900}
   .clock{min-width:220px;text-align:right;font-variant-numeric:tabular-nums}
-  .wrap{
-    max-width:1400px;
-    margin:0 auto;
-    padding:14px;
-    display:grid;
-    gap:14px;
-  }
 
-  /* Stage */
+  .wrap{max-width:1400px;margin:0 auto;padding:14px;display:grid;gap:14px}
+
   .stage{
-    position:relative;
-    height:540px; /* fits landscape nicely */
+    position:relative;height:560px; /* stable desktop height */
     background:radial-gradient(ellipse at 50% 30%, #0f2748 0 55%, #0b1426 60% 100%);
-    border:1px solid var(--line);
-    border-radius:18px;
-    overflow:hidden;
+    border:1px solid var(--line);border-radius:18px;overflow:hidden
   }
-  #cv{
-    position:absolute; inset:0;
-    width:100%; height:100%; display:block;
-  }
-  .centerText{
-    position:absolute; inset:0;
-    display:flex; align-items:center; justify-content:center;
-    font-weight:900; font-size:62px; text-shadow:0 5px 22px #0006;
-    white-space:pre-line; text-align:center; pointer-events:none;
-  }
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .centerText{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-weight:900;font-size:64px;text-shadow:0 6px 22px #0009;white-space:pre-line;text-align:center;pointer-events:none}
   .flew{color:#ff5a5a}
-  .multi{color:#ffffff}
-  .topbar{
-    position:absolute; top:8px; left:12px; right:12px;
-    display:flex; gap:12px; align-items:center; justify-content:space-between
-  }
-  .leftTB{display:flex;gap:12px;align-items:center}
-  .pill{
-    padding:6px 10px; border:1px solid var(--line);
-    border-radius:999px; background:#0e172f; color:#cfe1ff
-  }
+  .multi{color:#fff}
+  .idle{color:#9aa4b2;font-size:22px;letter-spacing:.5px}
 
-  /* History compact + “more” panel */
-  .hxbar{
-    display:flex; align-items:center; gap:8px;
-    background:#0b1324; border:1px solid var(--line);
-    border-radius:10px; padding:6px 8px;
-  }
+  .topbar{position:absolute;top:8px;left:12px;right:12px;display:flex;gap:12px;align-items:center;justify-content:space-between}
+  .leftTB{display:flex;gap:12px;align-items:center}
+  .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0e172f;color:#cfe1ff}
+
+  /* history with "…" for more */
+  .hxbar{display:flex;align-items:center;gap:8px;background:#0b1324;border:1px solid var(--line);border-radius:10px;padding:6px 8px}
   .hx{font-weight:800;padding:4px 8px;border-radius:8px;background:#071024;border:1px solid #0f2347;font-size:12px;white-space:nowrap}
   .hx.good{color:#22c55e;border-color:#1b4027;background:#0b2013}
   .hx.avg{color:#f59e0b;border-color:#4b3e12;background:#2b250f}
   .hx.bad{color:#ef4444;border-color:#4d1313;background:#3b0b0b}
-  .moreBtn{
-    width:30px;height:30px;display:grid;place-items:center;
-    border:1px solid var(--line); border-radius:8px; background:#0e172f; color:#cfe1ff; cursor:pointer;
-    font-weight:900;
-  }
-  .morePanel{
-    position:absolute; top:50px; left:12px; width:320px; max-height:300px;
-    overflow:auto; background:#0b1324; border:1px solid var(--line); border-radius:12px;
-    box-shadow:0 10px 30px #0008; padding:10px; display:none; z-index:5;
-  }
+  .moreBtn{width:30px;height:30px;display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;background:#0e172f;color:#cfe1ff;cursor:pointer;font-weight:900}
+  .morePanel{position:absolute;top:50px;left:12px;width:320px;max-height:300px;overflow:auto;background:#0b1324;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px #0008;padding:10px;display:none;z-index:5}
   .morePanel.open{display:block}
-  .hxList{display:flex; flex-wrap:wrap; gap:6px}
+  .hxList{display:flex;flex-wrap:wrap;gap:6px}
   .labelSm{font-size:12px;color:var(--muted);margin-bottom:6px;display:block}
 
-  /* Players */
+  /* players */
   .players{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-  @media (max-width:1100px){ .players{grid-template-columns:1fr} }
+  @media (max-width:1100px){.players{grid-template-columns:1fr}}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px;display:grid;gap:10px}
   .ttl{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .tabs{display:flex;gap:6px}
@@ -105,14 +64,10 @@
   .kpi{font-size:12px;color:#b9c2cf}
   .tickets{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px}
 
-  /* Toast (no browser alerts) */
-  .toast{
-    position:fixed; right:16px; bottom:16px; z-index:9999;
-    background:#0f1933; border:1px solid var(--line); color:#cfe1ff;
-    padding:10px 14px; border-radius:10px; min-width:220px; display:none;
-  }
-  .toast.show{display:block; animation:fade 3s forwards}
-  @keyframes fade{ 0%{opacity:1} 80%{opacity:1} 100%{opacity:0} }
+  /* tiny toast for inline warnings (no alerts) */
+  .toast{position:fixed;right:16px;bottom:16px;z-index:9999;background:#0f1933;border:1px solid var(--line);color:#cfe1ff;padding:10px 14px;border-radius:10px;min-width:220px;display:none}
+  .toast.show{display:block;animation:fade 3s forwards}
+  @keyframes fade{0%{opacity:1}80%{opacity:1}100%{opacity:0}}
 </style>
 </head>
 <body>
@@ -130,9 +85,8 @@
           <button id="moreBtn" class="moreBtn">⋯</button>
         </div>
         <div class="pill" id="phasePill">—</div>
-        <div class="pill">Rounds auto-continue</div>
       </div>
-      <div class="pill" id="countdownPill">—</div>
+      <!-- no seconds/countdown -->
     </div>
 
     <div id="morePanel" class="morePanel">
@@ -144,113 +98,66 @@
     <div class="centerText" id="centerText"></div>
   </div>
 
+  <!-- Players (unchanged layout) -->
   <div class="players">
-    <!-- Player A -->
     <div class="card" data-player="pA">
       <div class="ttl">
         <div><b>Player A</b> <span class="kpi">Bal: <b id="pA-bal">0</b> KES</span> <span class="kpi" id="pA-status">idle</span></div>
-        <div class="tabs">
-          <div class="tab active" data-mode="manual">Bet</div>
-          <div class="tab" data-mode="auto">Auto</div>
-        </div>
+        <div class="tabs"><div class="tab active" data-mode="manual">Bet</div><div class="tab" data-mode="auto">Auto</div></div>
       </div>
       <div class="pane manual">
         <label>Stake (KES)</label>
         <input id="pA-stake" type="number" min="20" max="1000" value="100"/>
-        <div class="row">
-          <button class="btn green" id="pA-bet">Bet</button>
-          <button class="btn red" id="pA-cash">Cash-Out</button>
-        </div>
+        <div class="row"><button class="btn green" id="pA-bet">Bet</button><button class="btn red" id="pA-cash">Cash-Out</button></div>
       </div>
       <div class="pane auto" style="display:none">
         <div class="row" style="width:100%">
-          <div style="flex:1">
-            <label>Stake (KES)</label>
-            <input id="pA-auto-stake" type="number" min="20" max="1000" value="100"/>
-          </div>
-          <div style="flex:1">
-            <label>Auto Cash-Out at (x)</label>
-            <input id="pA-auto-x" type="number" step="0.01" min="1.05" value="1.10"/>
-          </div>
+          <div style="flex:1"><label>Stake (KES)</label><input id="pA-auto-stake" type="number" min="20" max="1000" value="100"/></div>
+          <div style="flex:1"><label>Auto Cash-Out at (x)</label><input id="pA-auto-x" type="number" step="0.01" min="1.05" value="1.10"/></div>
         </div>
         <button class="btn green" id="pA-auto-on">Place Auto</button>
       </div>
-      <div class="row">
-        <div class="pill">Ticket: <b id="pA-ticket">—</b></div>
-        <div class="pill">Payout: <b id="pA-payout">—</b></div>
-      </div>
+      <div class="row"><div class="pill">Ticket: <b id="pA-ticket">—</b></div><div class="pill">Payout: <b id="pA-payout">—</b></div></div>
     </div>
 
-    <!-- Player B -->
     <div class="card" data-player="pB">
       <div class="ttl">
         <div><b>Player B</b> <span class="kpi">Bal: <b id="pB-bal">0</b> KES</span> <span class="kpi" id="pB-status">idle</span></div>
-        <div class="tabs">
-          <div class="tab active" data-mode="manual">Bet</div>
-          <div class="tab" data-mode="auto">Auto</div>
-        </div>
+        <div class="tabs"><div class="tab active" data-mode="manual">Bet</div><div class="tab" data-mode="auto">Auto</div></div>
       </div>
       <div class="pane manual">
         <label>Stake (KES)</label>
         <input id="pB-stake" type="number" min="20" max="1000" value="100"/>
-        <div class="row">
-          <button class="btn green" id="pB-bet">Bet</button>
-          <button class="btn red" id="pB-cash">Cash-Out</button>
-        </div>
+        <div class="row"><button class="btn green" id="pB-bet">Bet</button><button class="btn red" id="pB-cash">Cash-Out</button></div>
       </div>
       <div class="pane auto" style="display:none">
         <div class="row" style="width:100%">
-          <div style="flex:1">
-            <label>Stake (KES)</label>
-            <input id="pB-auto-stake" type="number" min="20" max="1000" value="100"/>
-          </div>
-          <div style="flex:1">
-            <label>Auto Cash-Out at (x)</label>
-            <input id="pB-auto-x" type="number" step="0.01" min="1.05" value="1.20"/>
-          </div>
+          <div style="flex:1"><label>Stake (KES)</label><input id="pB-auto-stake" type="number" min="20" max="1000" value="100"/></div>
+          <div style="flex:1"><label>Auto Cash-Out at (x)</label><input id="pB-auto-x" type="number" step="0.01" min="1.05" value="1.20"/></div>
         </div>
         <button class="btn green" id="pB-auto-on">Place Auto</button>
       </div>
-      <div class="row">
-        <div class="pill">Ticket: <b id="pB-ticket">—</b></div>
-        <div class="pill">Payout: <b id="pB-payout">—</b></div>
-      </div>
+      <div class="row"><div class="pill">Ticket: <b id="pB-ticket">—</b></div><div class="pill">Payout: <b id="pB-payout">—</b></div></div>
     </div>
 
-    <!-- Player C -->
     <div class="card" data-player="pC">
       <div class="ttl">
         <div><b>Player C</b> <span class="kpi">Bal: <b id="pC-bal">0</b> KES</span> <span class="kpi" id="pC-status">idle</span></div>
-        <div class="tabs">
-          <div class="tab active" data-mode="manual">Bet</div>
-          <div class="tab" data-mode="auto">Auto</div>
-        </div>
+        <div class="tabs"><div class="tab active" data-mode="manual">Bet</div><div class="tab" data-mode="auto">Auto</div></div>
       </div>
       <div class="pane manual">
         <label>Stake (KES)</label>
         <input id="pC-stake" type="number" min="20" max="1000" value="100"/>
-        <div class="row">
-          <button class="btn green" id="pC-bet">Bet</button>
-          <button class="btn red" id="pC-cash">Cash-Out</button>
-        </div>
+        <div class="row"><button class="btn green" id="pC-bet">Bet</button><button class="btn red" id="pC-cash">Cash-Out</button></div>
       </div>
       <div class="pane auto" style="display:none">
         <div class="row" style="width:100%">
-          <div style="flex:1">
-            <label>Stake (KES)</label>
-            <input id="pC-auto-stake" type="number" min="20" max="1000" value="100"/>
-          </div>
-          <div style="flex:1">
-            <label>Auto Cash-Out at (x)</label>
-            <input id="pC-auto-x" type="number" step="0.01" min="1.05" value="1.50"/>
-          </div>
+          <div style="flex:1"><label>Stake (KES)</label><input id="pC-auto-stake" type="number" min="20" max="1000" value="100"/></div>
+          <div style="flex:1"><label>Auto Cash-Out at (x)</label><input id="pC-auto-x" type="number" step="0.01" min="1.05" value="1.50"/></div>
         </div>
         <button class="btn green" id="pC-auto-on">Place Auto</button>
       </div>
-      <div class="row">
-        <div class="pill">Ticket: <b id="pC-ticket">—</b></div>
-        <div class="pill">Payout: <b id="pC-payout">—</b></div>
-      </div>
+      <div class="row"><div class="pill">Ticket: <b id="pC-ticket">—</b></div><div class="pill">Payout: <b id="pC-payout">—</b></div></div>
     </div>
   </div>
 
@@ -263,292 +170,186 @@
 <div id="toast" class="toast"></div>
 
 <script>
-/* ====== CONFIG / HELPERS ====== */
+/* ---------- helpers ---------- */
 const API = ''; // same-origin
 const KES = x => new Intl.NumberFormat('en-KE',{style:'currency',currency:'KES'}).format(Number(x||0));
 const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
 const toastBox = document.getElementById('toast');
-function toast(msg){
-  toastBox.textContent = msg;
-  toastBox.classList.remove('show');
-  void toastBox.offsetWidth; // reflow
-  toastBox.classList.add('show');
-}
+function toast(msg){ toastBox.textContent=msg; toastBox.classList.remove('show'); void toastBox.offsetWidth; toastBox.classList.add('show'); }
 
-/* ====== CLOCK ====== */
-const clk = document.getElementById('clock'); let skew=0;
-async function syncClock(){
-  try{ const r=await fetch(`${API}/health`,{cache:'no-store'}); const j=await r.json(); if(j.ts) skew=j.ts-Date.now(); }catch{}
-}
-setInterval(()=>{ const d=new Date(Date.now()+skew); clk.textContent=d.toLocaleString(); }, 500);
-syncClock();
+/* ---------- clock ---------- */
+const clk=document.getElementById('clock'); let skew=0;
+async function syncClock(){ try{ const r=await fetch(`/health`,{cache:'no-store'}); const j=await r.json(); if(j.ts) skew=j.ts-Date.now(); }catch{} }
+setInterval(()=>{ const d=new Date(Date.now()+skew); clk.textContent=d.toLocaleString(); }, 500); syncClock();
 
-/* ====== CANVAS / DRAW ====== */
+/* ---------- canvas & drawing ---------- */
 const stage=document.getElementById('stage');
 const cv=document.getElementById('cv'); const ctx=cv.getContext('2d'); const centerText=document.getElementById('centerText');
-function fit(){
-  const w = stage.clientWidth, h = stage.clientHeight;
-  cv.width = w; cv.height = h;
-}
-fit(); addEventListener('resize',fit);
 
-function draw(mult, phase){
-  if(!ctx) return;
-  ctx.clearRect(0,0,cv.width,cv.height);
+function resize(){ const w=stage.clientWidth, h=stage.clientHeight; cv.width=w; cv.height=h; }
+resize(); new ResizeObserver(resize).observe(stage);
 
-  // axes baseline
+function drawCurve(mult){
+  // draw glowing curve + plane
   const leftPad=60, bottomPad=70;
-  const maxX = cv.width - leftPad - 20;
-  const maxY = cv.height - bottomPad - 20;
-
-  const target = Math.max(1, Number(mult)||1);
-
-  // Curve area fill (growth-like)
+  const maxX=cv.width-leftPad-20, maxY=cv.height-bottomPad-20;
+  const target=Math.max(1, Number(mult)||1);
+  // curve path
+  ctx.save();
+  ctx.shadowColor='rgba(255,77,109,0.35)'; ctx.shadowBlur=18;
   ctx.beginPath(); ctx.moveTo(leftPad, cv.height-bottomPad);
-  for (let i=0;i<=240;i++){
-    const p=i/240;
-    const x = leftPad + p * maxX * 0.95;
-    const y = (cv.height-bottomPad) - Math.pow(p,2.2) * (maxY*0.9) * Math.log10(target+0.9);
+  for (let i=0;i<=260;i++){
+    const p=i/260, x=leftPad+p*maxX*0.95;
+    const y=(cv.height-bottomPad) - Math.pow(p,2.2)*(maxY*0.9)*Math.log10(target+0.9);
     ctx.lineTo(x,y);
   }
-  ctx.lineTo(cv.width-10, cv.height-10);
-  ctx.lineTo(leftPad, cv.height-10);
-  ctx.closePath();
-  ctx.fillStyle='rgba(239,68,68,0.35)';
-  ctx.fill();
+  ctx.lineWidth=6; ctx.strokeStyle='rgba(255,77,109,0.9)'; ctx.stroke();
+  ctx.restore();
 
-  // Plane marker
+  // fill under curve (subtle)
+  ctx.beginPath(); ctx.moveTo(leftPad, cv.height-bottomPad);
+  for (let i=0;i<=260;i++){
+    const p=i/260, x=leftPad+p*maxX*0.95;
+    const y=(cv.height-bottomPad) - Math.pow(p,2.2)*(maxY*0.9)*Math.log10(target+0.9);
+    ctx.lineTo(x,y);
+  }
+  ctx.lineTo(cv.width-12,cv.height-12); ctx.lineTo(leftPad,cv.height-12); ctx.closePath();
+  ctx.fillStyle='rgba(239,68,68,0.28)'; ctx.fill();
+
+  // plane
   const px = leftPad + 0.95*maxX*Math.min(1, Math.log10(target+0.9));
   const py = (cv.height-bottomPad) - (maxY*0.9)*Math.log10(target+0.9);
   ctx.fillStyle='#ff4d6d';
-  ctx.beginPath(); ctx.moveTo(px-14,py+6); ctx.lineTo(px+18,py); ctx.lineTo(px-8,py-6); ctx.closePath(); ctx.fill();
-
-  // Center text
-  centerText.className='centerText '+(phase==='busted'?'flew':'multi');
-  centerText.textContent = (phase==='busted'?'FLEW AWAY!\n':'') + (target?`${Number(target).toFixed(2)}x`:'' );
+  ctx.beginPath(); ctx.moveTo(px-16,py+7); ctx.lineTo(px+22,py); ctx.lineTo(px-10,py-7); ctx.closePath(); ctx.fill();
 }
 
-/* ====== HISTORY (compact + more) ====== */
-const histCompact = document.getElementById('history');
-const moreBtn = document.getElementById('moreBtn');
-const morePanel = document.getElementById('morePanel');
-const moreList = document.getElementById('moreList');
-moreBtn.addEventListener('click',()=>{ morePanel.classList.toggle('open'); });
+function setCenterText(phase,mult){
+  if (phase==='busted'){
+    centerText.className='centerText flew';
+    centerText.textContent='FLEW AWAY!\n'+(mult?`${Number(mult).toFixed(2)}x`:``);
+  } else if (phase==='betting'){
+    centerText.className='centerText idle';
+    centerText.textContent='Place your bets…';
+  } else if (phase==='closed'){
+    centerText.className='centerText idle';
+    centerText.textContent='Loading next round…';
+  } else if (phase==='flying'){
+    centerText.className='centerText multi';
+    centerText.textContent = `${Number(mult||1).toFixed(2)}x`;
+  } else {
+    centerText.className='centerText idle';
+    centerText.textContent='—';
+  }
+}
+
+/* ---------- state / animation loop ---------- */
+const phasePill=document.getElementById('phasePill');
+let STATE={phase:'betting', multiplier:1, history:[]};
+
+let visMult=1; // what we draw
+function animate(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  // smooth approach: lerp toward server multiplier
+  const target = Math.max(1, STATE.phase==='flying'? Number(STATE.multiplier)||1 : 1);
+  visMult += (target - visMult) * 0.15; // easing
+  drawCurve(visMult);
+  setCenterText(STATE.phase, STATE.phase==='flying'?visMult:STATE.history?.[0]);
+  requestAnimationFrame(animate);
+}
+requestAnimationFrame(animate);
+
 function hxChip(v){
   const d=document.createElement('div'); d.className='hx';
   if (v>=2) d.classList.add('good'); else if (v>=1.3) d.classList.add('avg'); else d.classList.add('bad');
   d.textContent=Number(v).toFixed(2)+'x'; return d;
 }
+const histCompact=document.getElementById('history'); const moreBtn=document.getElementById('moreBtn');
+const morePanel=document.getElementById('morePanel'); const moreList=document.getElementById('moreList');
+moreBtn.addEventListener('click',()=> morePanel.classList.toggle('open'));
 function renderHistory(list){
-  // compact bar: last 6
-  histCompact.innerHTML='';
-  (list||[]).slice(-6).reverse().forEach(v=> histCompact.appendChild(hxChip(v)));
-  // panel: up to 50
-  moreList.innerHTML='';
-  (list||[]).slice(-50).reverse().forEach(v=> moreList.appendChild(hxChip(v)));
+  histCompact.innerHTML=''; (list||[]).slice(-6).reverse().forEach(v=> histCompact.appendChild(hxChip(v)));
+  moreList.innerHTML=''; (list||[]).slice(-50).reverse().forEach(v=> moreList.appendChild(hxChip(v)));
 }
-
-/* ====== STATE POLLING + COUNTDOWN ====== */
-const phasePill=document.getElementById('phasePill');
-const countdownPill=document.getElementById('countdownPill');
-let STATE={phase:'betting', multiplier:1.00, history:[], // UI timings (for display only)
-           startedAt:0, // ms
-           bettingMs:7000, closedMs:3000 // desired UX (server timing still authoritative)
-          };
-
-function applyPhaseUI(){
-  // enable/disable buttons by phase
-  const enableBet = STATE.phase==='betting';
-  document.querySelectorAll('[id$="-bet"],[id$="-auto-on"]').forEach(btn=> btn.disabled=!enableBet);
-}
-
-function updateCountdown(){
-  // show simple phase timer: betting ~7s, closed ~3s; fallback if server gives times, use them.
-  let txt='—';
-  if (STATE.phase==='betting'){
-    const elapsed = Date.now() - (STATE.startedAt||Date.now());
-    const left = Math.max(0, STATE.bettingMs - elapsed);
-    txt = `Betting: ${(left/1000).toFixed(1)}s`;
-  } else if (STATE.phase==='closed'){
-    const elapsed = Date.now() - (STATE.closedSince||Date.now());
-    const left = Math.max(0, STATE.closedMs - elapsed);
-    txt = `Closed: ${(left/1000).toFixed(1)}s`;
-  } else if (STATE.phase==='flying'){
-    txt = `Flying…`;
-  } else if (STATE.phase==='busted'){
-    txt = `Next round soon…`;
-  }
-  countdownPill.textContent = txt;
-}
-
-setInterval(updateCountdown, 100);
 
 async function poll(){
   try{
-    const r=await fetch(`${API}/aviator/state`,{cache:'no-store'});
-    if(!r.ok) throw new Error('bad');
+    const r=await fetch(`/aviator/state`,{cache:'no-store'});
+    if(!r.ok) throw new Error();
     const j=await r.json();
-
-    // Normalize fields from your backend (supports both old & new)
+    // normalize
     const phase = j.phase ? j.phase
                  : (j.status==='RUNNING'?'flying'
                  :  j.status==='BUST'  ?'busted'
+                 :  j.status==='CLOSED'? 'closed'
                  :  'betting');
     const multiplier = j.multiplier!=null ? Number(j.multiplier)
                       : (j.liveMultiplier!=null ? Number(j.liveMultiplier) : 1);
 
-    // Use backend times if present (optional)
-    if (j.startedAt) STATE.startedAt = Number(j.startedAt);
-    if (j.bettingMs) STATE.bettingMs = Number(j.bettingMs);
-    if (j.closedMs)  STATE.closedMs  = Number(j.closedMs);
-
-    // Detect close start for UI countdown
-    if (STATE.phase!=='closed' && phase==='closed') STATE.closedSince = Date.now();
-
-    STATE.phase = phase;
-    STATE.multiplier = multiplier;
-    STATE.history = j.history || STATE.history;
-
-    phasePill.textContent = phase.toUpperCase();
+    STATE.phase=phase; STATE.multiplier=multiplier; STATE.history=j.history||STATE.history;
+    phasePill.textContent = (phase||'—').toUpperCase();
     renderHistory(STATE.history);
-    applyPhaseUI();
-    draw(multiplier, phase);
-  }catch(e){
-    phasePill.textContent='API unavailable';
-  }
+  }catch{ phasePill.textContent='API unavailable'; }
 }
-// While flying we want tight updates; otherwise slower is fine
-setInterval(poll, 150);
+// modest polling; animation is decoupled & smooth
+setInterval(poll, 220);
 
-/* ====== TICKETS (LOCAL LIST) ====== */
+/* ---------- tickets & players (same as before) ---------- */
 const tBox=document.getElementById('ticketsBox'); const tickets=[];
 function addT(t){ tickets.unshift(t); renderT(); }
-function renderT(){
-  if(!tickets.length){ tBox.textContent='No tickets yet.'; return; }
-  tBox.innerHTML='';
-  tickets.slice(0,12).forEach(t=>{
-    const d=document.createElement('div');
-    d.innerHTML = `<b>${t.playerId}</b>: ${KES(t.stake)} ${t.autoCashOut?`auto@${t.autoCashOut}x`:''} — <b>${t.state}</b>`+
-                  (t.payout?` — ${KES(t.payout)} @ ${t.hit?.toFixed?.(2)||'—'}x`:``);
+function renderT(){ if(!tickets.length){tBox.textContent='No tickets yet.';return}
+  tBox.innerHTML=''; tickets.slice(0,12).forEach(t=>{ const d=document.createElement('div');
+    d.innerHTML=`<b>${t.playerId}</b>: ${KES(t.stake)} ${t.autoCashOut?`auto@${t.autoCashOut}x`:''} — <b>${t.state}</b>`+(t.payout?` — ${KES(t.payout)} @ ${t.hit?.toFixed?.(2)||'—'}x`:``);
     tBox.appendChild(d);
   });
 }
 
-/* ====== WALLET (READ ONLY HERE) ====== */
-async function refreshBal(pid){
-  try{
-    const r=await fetch(`${API}/aviator/wallet/${pid}`,{cache:'no-store'});
-    const j=await r.json();
-    if(j && j.balance!=null){
-      const el=document.getElementById(`${pid}-bal`);
-      if(el) el.textContent=j.balance;
-    }
-  }catch{}
-}
+async function refreshBal(pid){ try{ const r=await fetch(`/aviator/wallet/${pid}`,{cache:'no-store'}); const j=await r.json();
+  if(j&&j.balance!=null){ const el=document.getElementById(`${pid}-bal`); if(el) el.textContent=j.balance; } }catch{} }
 
-/* ====== WIRE PLAYER CARDS ====== */
 const autos={pA:null,pB:null,pC:null};
-
 function wireCard(pid){
   const card=document.querySelector(`.card[data-player="${pid}"]`);
   const tabs=card.querySelectorAll('.tab'); const manual=card.querySelector('.pane.manual'); const auto=card.querySelector('.pane.auto');
+  tabs.forEach(tb=>tb.addEventListener('click',()=>{tabs.forEach(x=>x.classList.remove('active'));tb.classList.add('active'); const m=tb.dataset.mode; manual.style.display=m==='manual'?'block':'none'; auto.style.display=m==='auto'?'block':'none';}));
+  const status=card.querySelector(`#${pid}-status`), tEl=card.querySelector(`#${pid}-ticket`), pEl=card.querySelector(`#${pid}-payout`);
+  const stakeEl=card.querySelector(`#${pid}-stake`), betBtn=card.querySelector(`#${pid}-bet`), cashBtn=card.querySelector(`#${pid}-cash`);
+  const aStake=card.querySelector(`#${pid}-auto-stake`), aX=card.querySelector(`#${pid}-auto-x`), aBtn=card.querySelector(`#${pid}-auto-on`);
 
-  tabs.forEach(tb=>{
-    tb.addEventListener('click', ()=>{
-      tabs.forEach(x=>x.classList.remove('active'));
-      tb.classList.add('active');
-      const mode=tb.dataset.mode;
-      manual.style.display = mode==='manual' ? 'block' : 'none';
-      auto.style.display   = mode==='auto'   ? 'block' : 'none';
-    });
-  });
-
-  const status=card.querySelector(`#${pid}-status`);
-  const tEl=card.querySelector(`#${pid}-ticket`);
-  const pEl=card.querySelector(`#${pid}-payout`);
-
-  const stakeEl=card.querySelector(`#${pid}-stake`);
-  const betBtn =card.querySelector(`#${pid}-bet`);
-  const cashBtn=card.querySelector(`#${pid}-cash`);
-
-  const aStake=card.querySelector(`#${pid}-auto-stake`);
-  const aX    =card.querySelector(`#${pid}-auto-x`);
-  const aBtn  =card.querySelector(`#${pid}-auto-on`);
-
-  betBtn.onclick = async ()=>{
-    try{
+  betBtn.onclick=async()=>{ try{
       const stake=clamp(Number(stakeEl.value||0),20,1000);
-      const r=await fetch(`${API}/aviator/bet`,{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({playerId:pid, stake})
-      });
-      const j=await r.json();
-      if(!j.ok){ toast(j.error||'Bet failed'); return; }
-      status.textContent='LIVE'; tEl.textContent=j.ticketId; pEl.textContent='—';
-      addT({playerId:pid,ticketId:j.ticketId,stake,state:'LIVE'});
-      refreshBal(pid);
-    }catch{ toast('Bet error'); }
-  };
-
-  cashBtn.onclick = async ()=>{
-    try{
-      const r=await fetch(`${API}/aviator/cashout`,{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({playerId:pid})
-      });
-      const j=await r.json();
-      if(!j.ok){ toast(j.error||'Cashout failed'); return; }
-      status.textContent='CASHED'; pEl.textContent=KES(j.payout);
-      const t=tickets.find(x=>x.playerId===pid && x.state==='LIVE');
-      if(t){ t.state='CASHED'; t.payout=j.payout; t.hit=j.multiplier; } renderT();
-      refreshBal(pid);
-    }catch{ toast('Cashout error'); }
-  };
-
-  aBtn.onclick = async ()=>{
-    try{
-      const stake=clamp(Number(aStake.value||0),20,1000);
-      const x=clamp(Number(aX.value||0),1.05,1000);
-      const r=await fetch(`${API}/aviator/bet`,{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({playerId:pid, stake, autoCashOut:x})
-      });
-      const j=await r.json();
-      if(!j.ok){ toast(j.error||'Auto bet failed'); return; }
-      autos[pid]={stake, target:x, ticketId:j.ticketId, live:true};
-      status.textContent='LIVE'; tEl.textContent=j.ticketId; pEl.textContent='—';
-      addT({playerId:pid,ticketId:j.ticketId,stake,autoCashOut:x,state:'LIVE'});
-      refreshBal(pid);
-    }catch{ toast('Auto bet error'); }
-  };
-
+      const r=await fetch(`/aviator/bet`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, stake})});
+      const j=await r.json(); if(!j.ok){toast(j.error||'Bet failed');return}
+      status.textContent='LIVE'; tEl.textContent=j.ticketId; pEl.textContent='—'; addT({playerId:pid,ticketId:j.ticketId,stake,state:'LIVE'}); refreshBal(pid);
+    }catch{toast('Bet error')}}
+  cashBtn.onclick=async()=>{ try{
+      const r=await fetch(`/aviator/cashout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid})});
+      const j=await r.json(); if(!j.ok){toast(j.error||'Cashout failed');return}
+      status.textContent='CASHED'; pEl.textContent=KES(j.payout); const t=tickets.find(x=>x.playerId===pid&&x.state==='LIVE'); if(t){t.state='CASHED';t.payout=j.payout;t.hit=j.multiplier;} renderT(); refreshBal(pid);
+    }catch{toast('Cashout error')}}
+  aBtn.onclick=async()=>{ try{
+      const stake=clamp(Number(aStake.value||0),20,1000), x=clamp(Number(aX.value||0),1.05,1000);
+      const r=await fetch(`/aviator/bet`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, stake, autoCashOut:x})});
+      const j=await r.json(); if(!j.ok){toast(j.error||'Auto bet failed');return}
+      autos[pid]={stake,target:x,ticketId:j.ticketId,live:true}; status.textContent='LIVE'; tEl.textContent=j.ticketId; pEl.textContent='—';
+      addT({playerId:pid,ticketId:j.ticketId,stake,autoCashOut:x,state:'LIVE'}); refreshBal(pid);
+    }catch{toast('Auto bet error')}}
   refreshBal(pid);
 }
 ['pA','pB','pC'].forEach(wireCard);
 
-/* ====== AUTO LOOP (AUTO CASHOUT WHEN TARGET REACHED) ====== */
-async function autoLoop(){
+// auto-cash when multiplier meets target (checks often while flying)
+setInterval(async()=>{
   if(STATE.phase!=='flying') return;
   for(const pid of Object.keys(autos)){
     const a=autos[pid]; if(!a||!a.live) continue;
     if(Number(STATE.multiplier||1)>=a.target){
       try{
-        const r=await fetch(`${API}/aviator/cashout`,{
-          method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({playerId:pid})
-        });
-        const j=await r.json();
-        if(j&&j.ok){
-          a.live=false;
-          const t=tickets.find(x=>x.ticketId===a.ticketId);
-          if(t){ t.state='CASHED'; t.payout=j.payout; t.hit=j.multiplier; } renderT();
-          refreshBal(pid);
-        }
+        const r=await fetch(`/aviator/cashout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid})});
+        const j=await r.json(); if(j&&j.ok){ a.live=false; const t=tickets.find(x=>x.ticketId===a.ticketId); if(t){t.state='CASHED';t.payout=j.payout;t.hit=j.multiplier;} renderT(); refreshBal(pid); }
       }catch{}
     }
   }
-}
-setInterval(()=>{ if(STATE.phase==='flying') autoLoop(); }, 120);
+}, 120);
 </script>
 </body>
 </html>
