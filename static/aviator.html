@@ -71,7 +71,6 @@
       <div class="centerText" id="centerText">Place your bets…</div>
     </div>
 
-    <!-- Players (unchanged) -->
     <div class="players">
       <div class="card" data-player="pA">
         <div class="ttl">
@@ -193,14 +192,12 @@ const HOVER_T   = 0.40;    // cap visual path at ~40% (like Spribe feel)
 const HOVER_BOB_A = 0.006; // bob amplitude (path units)
 const HOVER_BOB_F = 0.7;   // bob frequency Hz
 
-// progress based on backend vs bust
 function progressFromBackend(mult, bust){
   const m=Math.max(1.000001, Number(mult||1));
   const b=Math.max(1.000001, Number(bust||1.000001));
   const t = (m<=1 || b<=1) ? 0 : Math.log(m)/Math.log(b);
   return Math.max(0, Math.min(1, t));
 }
-// damper
 function damp(current, target, rate, dt){ const k=Math.exp(-rate*Math.max(0,dt)); return current*k + target*(1-k); }
 
 let progressVis = STANDBY_T;  // start with plane visible
@@ -216,23 +213,20 @@ function draw(mult, visualPhase, now){
   ctx.clearRect(0,0,cv.width,cv.height);
   const left=0, right=cv.width-1, baseY=Math.floor(cv.height-1), trackW=Math.max(0,right-left);
 
-  // base t
   let t = (visualPhase==='betting') ? STANDBY_T : progressVis;
   t = Math.max(STANDBY_T, Math.min(1, t));
   const steps = Math.max(2, Math.floor(300*t));
 
-  // trail stroke
   ctx.beginPath(); ctx.moveTo(left, baseY);
   for(let i=0;i<=steps;i++){ const p=(i/300)*t; const x=left+p*trackW; ctx.lineTo(x, curveY(p, baseY)); }
   ctx.strokeStyle='#ff4d6d'; ctx.lineWidth=2; ctx.stroke();
-  // close tiny gap at tail
+
   ctx.beginPath(); ctx.arc(left, baseY, 1.1, 0, Math.PI*2); ctx.fillStyle='#ff4d6d'; ctx.fill();
-  // soft fill under curve
+
   ctx.beginPath(); ctx.moveTo(left, baseY);
   for(let i=0;i<=steps;i++){ const p=(i/300)*t; const x=left+p*trackW; ctx.lineTo(x, curveY(p, baseY)); }
   ctx.lineTo(left + t*trackW, baseY); ctx.closePath(); ctx.fillStyle='rgba(255,77,109,0.22)'; ctx.fill();
 
-  // plane position (add bob when hovering)
   let tDraw = t;
   if (visualPhase==='flying' && t>=HOVER_T-1e-6){
     tDraw = Math.max(STANDBY_T, Math.min(1, HOVER_T + HOVER_BOB_A*Math.sin(now/1000*2*Math.PI*HOVER_BOB_F)));
@@ -264,12 +258,11 @@ function animate(now){
   let visualPhase=STATE.phase;
   if (STATE.phase==='busted' && performance.now() < bustHoldUntil) visualPhase='busted';
 
-  // target path progress = backend up to HOVER_T, then clamp
   const backendT = progressFromBackend(backendMult, bust);
   const target = (visualPhase==='flying') ? Math.min(HOVER_T, backendT)
                : (visualPhase==='busted') ? Math.min(1, HOVER_T)
                : STANDBY_T;
-  // snappy takeoff then smooth
+
   const rate = (visualPhase==='flying' && progressVis < 0.15) ? 22 : 12;
   progressVis = damp(progressVis, target, rate, dt);
 
@@ -311,7 +304,7 @@ async function poll(){
 }
 setInterval(poll, 180); poll();
 
-/* Wallet + controls (unchanged) */
+/* Wallet + controls */
 async function refreshBal(pid){ try{ const r=await fetch(`${api}/aviator/wallet/${pid}`); const j=await r.json(); if(j && j.ok!==false){ const el=document.getElementById(`${pid}-bal`); if(el) el.textContent=j.balance||0; } }catch(e){} }
 function wireCard(pid){
   const card=document.querySelector(`.card[data-player="${pid}"]`);
