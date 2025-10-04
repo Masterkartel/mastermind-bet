@@ -371,140 +371,221 @@ app.get('/receipt/:betId', async (req,res)=>{
   res.render('receipt',{ bet, market:m, event: ev, fmtMoney, barcodeBase64, CURRENCY, DOMAIN });
 });
 
-// ====== AVIATOR ENGINE (drop-in) ============================================
-const AVI = {
-  phase: 'betting',          // 'betting' | 'flying' | 'busted'
-  multiplier: 1.00,          // current live multiplier
-  history: [],               // last N round results (multiplier floats)
-  roundSeed: Math.floor(Math.random()*2**31),
-  t0: Date.now(),
-  nextChangeAt: Date.now()+5000, // betting window ends
-  // bets: playerId -> {stake, autoCashOut?, live:true, cashed:false, ticketId}
-  bets: new Map(),
+// server.js — Mastermind Bet (Aviator-only server, 24/7 loop)
+// Node 18+, ESM. package.json MUST have:  { "type": "module" }
+// Requires: express, cors
+//
+// Endpoints
+// GET    /health                 -> {ok, ts}
+// GET    /aviator/state          -> {phase, multiplier, history, ts}  (+legacy fields for compatibility)
+// POST   /aviator/bet            -> {playerId, stake, autoCashOut?}  (debits wallet)
+// POST   /aviator/cashout        -> {playerId} (credits wallet)
+// POST   /wallet/load            -> {playerId, amount} (cashier top-up)
+// GET    /wallet/:playerId       -> {balance}
+// GET    /aviator                -> serves aviator.html
+// GET    /static/*               -> static assets
+
+import express from 'express';
+import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// -------- Boilerplate --------
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// Static files
+app.use('/static', express.static(path.join(__dirname, 'static'), {
+  etag: true, lastModified: true, maxAge: 0
+}));
+
+// Health
+app.get('/health', (req,res)=> res.json({ ok:true, ts: Date.now() }));
+
+// -------- Wallets (shop balances) --------
+const WALLET = new Map(); // playerId -> balance (KES)
+const getBal = (pid)=> Number(WALLET.get(pid) || 0);
+const credit = (pid, amt)=> WALLET.set(pid, getBal(pid) + Number(amt||0));
+const debit  = (pid, amt)=> {
+  const need = Number(amt||0);
+  if (getBal(pid) < need) return false;
+  WALLET.set(pid, getBal(pid) - need);
+  return true;
 };
 
-function roundRef() {
-  // small readable id per round
+app.post('/wallet/load', (req,res)=>{
+  const { playerId, amount } = req.body || {};
+  if (!playerId || !amount) return res.status(400).json({ ok:false, error:'playerId & amount required' });
+  credit(playerId, amount);
+  res.json({ ok:true, playerId, balance: getBal(playerId) });
+});
+
+app.get('/wallet/:playerId', (req,res)=>{
+  res.json({ ok:true, playerId: req.params.playerId, balance: getBal(req.params.playerId) });
+});
+
+// -------- Aviator Engine --------
+// Phases: 'betting' | 'flying' | 'busted'
+const AVI = {
+  phase: 'betting',
+  multiplier: 1.00,
+  history: [],
+  roundSeed: Math.floor(Math.random()*2**31),
+  t0: Date.now(),
+  nextChangeAt: Date.now() + 5000,  // 5s betting window
+  bustAt: 5.0,
+  // Bets: playerId -> {ticketId, stake, autoCashOut?, live, cashed, hit, payout}
+  bets: new Map()
+};
+
+const MS = 100;
+function mulberry32(a){
+  return function(){
+    let t = (a += 0x6D2B79F5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Heavy-tail bust generator (Aviator-like)
+function drawBust(seed){
+  const r = mulberry32(seed)();
+  const alpha = 3.2; // shape
+  const min = 1.02;
+  const bust = min / Math.pow(1-r, 1/alpha);
+  return Math.max(1.01, Math.min(bust, 50));
+}
+
+function roundRef(){
   return 'R-' + (AVI.history.length + 1).toString().padStart(5,'0');
 }
 
-// simple deterministic PRNG per round
-function mulberry32(a){return function(){let t=(a+=0x6D2B79F5);t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296;};}
-
-// draw bust point (typical Aviator-like heavy-tail ~ 1–∞)
-function drawBust(seed){
-  const rand = mulberry32(seed);
-  // Pareto-like: 80% < 2x, but with long tail
-  const u = Math.max(1e-6, rand());
-  const alpha = 3.2;              // shape (tune for volatility)
-  const m = 1.02;                 // minimum (>1)
-  const bust = m / Math.pow(1-u, 1/alpha);
-  return Math.max(1.01, Math.min(bust, 50)); // cap for safety
-}
-
-// schedule loop (100ms ticks)
-let lastTick = Date.now();
-setInterval(()=>{
-  const now = Date.now();
-
-  if (AVI.phase === 'betting'){
-    if (now >= AVI.nextChangeAt){
-      // start flight
-      AVI.phase = 'flying';
-      AVI.t0 = now;
-      AVI.roundSeed = (AVI.roundSeed + 1) >>> 0;
-      AVI.bustAt = drawBust(AVI.roundSeed); // multiplier where it busts
-      AVI.multiplier = 1.00;
-    }
-  } else if (AVI.phase === 'flying'){
-    // exponential growth of multiplier over time
-    const dt = (now - AVI.t0)/1000;        // seconds since takeoff
-    const growth = 0.62;                   // speed factor
-    AVI.multiplier = Math.max(1.00, Math.exp(growth*dt));
-    // auto cash-out any players that set targets
-    for (const [pid, bet] of AVI.bets){
-      if (!bet.live || bet.cashed || !bet.autoCashOut) continue;
-      if (AVI.multiplier >= bet.autoCashOut){
-        bet.cashed = true; bet.live = false;
-        bet.hit = AVI.multiplier;
-        bet.payout = Math.min(bet.stake * bet.hit, 20000); // cap payout
-      }
-    }
-    // bust?
-    if (AVI.multiplier >= AVI.bustAt){
-      AVI.phase = 'busted';
-      AVI.history.push(Number(AVI.multiplier.toFixed(2)));
-      if (AVI.history.length > 60) AVI.history.shift();
-      // mark losers (still live)
-      for (const [pid, bet] of AVI.bets){
-        if (bet.live && !bet.cashed){ bet.live=false; bet.payout=0; bet.hit=AVI.multiplier; }
-      }
-      AVI.nextChangeAt = now + 3000; // 3s show "FLEW AWAY!"
-    }
-  } else if (AVI.phase === 'busted'){
-    if (now >= AVI.nextChangeAt){
-      // new round
-      AVI.phase = 'betting';
-      AVI.multiplier = 1.00;
-      AVI.bets.clear();
-      AVI.t0 = now;
-      AVI.nextChangeAt = now + 5000; // 5s betting window
-    }
-  }
-
-  lastTick = now;
-}, 100);
-
-// helper: ensure valid stake/rules
 function normStake(v){
   const n = Math.max(20, Math.min(1000, Number(v||0)));
   return Math.round(n);
 }
 
-// ---- Routes ---------------------------------------------------------------
+// 24/7 loop
+setInterval(()=>{
+  const now = Date.now();
 
-// public state (polled by front-end ~150ms)
+  if (AVI.phase === 'betting'){
+    if (now >= AVI.nextChangeAt){
+      AVI.phase = 'flying';
+      AVI.t0 = now;
+      AVI.roundSeed = (AVI.roundSeed + 1) >>> 0;
+      AVI.bustAt = drawBust(AVI.roundSeed);
+      AVI.multiplier = 1.00;
+    }
+  } else if (AVI.phase === 'flying'){
+    const dt = (now - AVI.t0)/1000;
+    const growth = 0.62;                // speed factor
+    AVI.multiplier = Math.max(1.00, Math.exp(growth*dt));
+    // Auto cash-outs
+    for (const [pid, bet] of AVI.bets){
+      if (!bet.live || bet.cashed || !bet.autoCashOut) continue;
+      if (AVI.multiplier >= bet.autoCashOut){
+        bet.cashed = true; bet.live = false;
+        bet.hit = Number(AVI.multiplier.toFixed(2));
+        bet.payout = Math.min(bet.stake * bet.hit, 20000);
+        credit(pid, bet.payout);
+      }
+    }
+    // Bust?
+    if (AVI.multiplier >= AVI.bustAt){
+      AVI.phase = 'busted';
+      const m = Number(AVI.multiplier.toFixed(2));
+      AVI.history.push(m);
+      if (AVI.history.length > 120) AVI.history.shift();
+      // losers
+      for (const [pid, bet] of AVI.bets){
+        if (bet.live && !bet.cashed){ bet.live=false; bet.payout=0; bet.hit=m; }
+      }
+      AVI.nextChangeAt = now + 3000; // show "FLEW AWAY!" 3s
+    }
+  } else if (AVI.phase === 'busted'){
+    if (now >= AVI.nextChangeAt){
+      AVI.phase = 'betting';
+      AVI.multiplier = 1.00;
+      AVI.bets.clear();
+      AVI.t0 = now;
+      AVI.nextChangeAt = now + 5000; // new 5s betting
+    }
+  }
+}, MS);
+
+// State (new + legacy fields for compatibility)
 app.get('/aviator/state', (req,res)=>{
+  const phaseMap = { betting:'BETTING', flying:'RUNNING', busted:'BUST' };
   res.json({
+    // New
     phase: AVI.phase,
     multiplier: Number(AVI.multiplier.toFixed(2)),
-    history: AVI.history.slice(-24),
-    ts: Date.now()
+    history: AVI.history.slice(-60),
+    ts: Date.now(),
+    // Legacy
+    roundId: roundRef(),
+    status: phaseMap[AVI.phase],
+    liveMultiplier: Number(AVI.multiplier.toFixed(2)),
+    bust: Number(AVI.bustAt.toFixed(2))
   });
 });
 
-// place bet (manual or auto)
+// Place bet (manual or auto)
 app.post('/aviator/bet', (req,res)=>{
-  const { playerId, stake, autoCashOut } = req.body||{};
-  if (!playerId) return res.status(400).json({ok:false, error:'playerId required'});
-  if (AVI.phase !== 'betting') return res.status(400).json({ok:false, error:'Round closed'});
-  if (AVI.bets.has(playerId)) return res.status(400).json({ok:false, error:'Already placed'});
+  const { playerId, stake, autoCashOut } = req.body || {};
+  if (!playerId) return res.status(400).json({ ok:false, error:'playerId required' });
+  if (AVI.phase !== 'betting') return res.status(400).json({ ok:false, error:'Round closed' });
+  if (AVI.bets.has(playerId)) return res.status(400).json({ ok:false, error:'Already placed' });
+
+  const st = normStake(stake);
+  if (!debit(playerId, st)){
+    return res.status(400).json({ ok:false, error:`Insufficient balance. Available ${getBal(playerId)} KES` });
+  }
 
   const bet = {
     ticketId: `${roundRef()}-${playerId}`,
-    stake: normStake(stake),
+    stake: st,
     autoCashOut: autoCashOut ? Math.max(1.05, Number(autoCashOut)) : null,
-    live: true, cashed:false
+    live:true, cashed:false
   };
   AVI.bets.set(playerId, bet);
-  return res.json({ok:true, ticketId: bet.ticketId, stake: bet.stake, autoCashOut: bet.autoCashOut});
+  res.json({ ok:true, ticketId: bet.ticketId, stake: bet.stake, autoCashOut: bet.autoCashOut, balance: getBal(playerId) });
 });
 
-// manual cash-out (only while flying, and only if still live)
+// Manual cash-out
 app.post('/aviator/cashout', (req,res)=>{
-  const { playerId } = req.body||{};
-  if (!playerId) return res.status(400).json({ok:false, error:'playerId required'});
+  const { playerId } = req.body || {};
+  if (!playerId) return res.status(400).json({ ok:false, error:'playerId required' });
+
   const bet = AVI.bets.get(playerId);
-  if (!bet) return res.status(400).json({ok:false, error:'No live bet'});
-  if (AVI.phase !== 'flying') return res.status(400).json({ok:false, error:'Not flying'});
-  if (!bet.live || bet.cashed) return res.status(400).json({ok:false, error:'Already cashed/settled'});
+  if (!bet) return res.status(400).json({ ok:false, error:'No live bet' });
+  if (AVI.phase !== 'flying') return res.status(400).json({ ok:false, error:'Not flying' });
+  if (!bet.live || bet.cashed) return res.status(400).json({ ok:false, error:'Already settled' });
 
   bet.cashed = true; bet.live = false;
-  bet.hit = AVI.multiplier;
+  bet.hit = Number(AVI.multiplier.toFixed(2));
   bet.payout = Math.min(bet.stake * bet.hit, 20000);
-  return res.json({ok:true, multiplier: Number(bet.hit.toFixed(2)), payout: Number(bet.payout.toFixed(2))});
+  credit(playerId, bet.payout);
+
+  res.json({ ok:true, multiplier: bet.hit, payout: Number(bet.payout.toFixed(2)), balance: getBal(playerId) });
 });
-// =========================================================================== END
+
+// Route to the page
+app.get('/aviator', (_req,res)=>{
+  res.sendFile(path.join(__dirname, 'static', 'aviator.html'));
+});
+
+// Boot
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, ()=>{
+  console.log(`Aviator server running on :${PORT}`);
+});
 
 // ---- Bootstrap
 (function bootstrap(){
