@@ -49,10 +49,8 @@
   .kpi{font-size:12px;color:#b9c2cf}
   .tickets{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px}
 
-  /* make stage responsive */
-  @media (max-width:1100px){
-    .players{grid-template-columns:1fr}
-  }
+  /* responsive */
+  @media (max-width:1100px){ .players{grid-template-columns:1fr} }
 </style>
 </head>
 <body>
@@ -65,35 +63,34 @@
   <div class="stage">
     <div class="topbar">
       <div class="leftTB">
-        <!-- compact history + inline expander -->
-        <div class="history" id="history">
-          <!-- pills injected -->
-        </div>
+        <div class="history" id="history"></div>
         <span class="dots" id="hxMore" title="More results">⋯</span>
         <div class="pill" id="phasePill">BETTING</div>
-        <!-- removed any extra messaging inside -->
       </div>
-      <!-- right side empty to keep clean -->
       <div></div>
     </div>
 
-    <!-- canvas (curve + trail) -->
+    <!-- curve + trail -->
     <canvas id="cv"></canvas>
 
-    <!-- SVG plane (3x previous size), positioned via JS -->
-    <svg id="plane" viewBox="0 0 180 100" width="180" height="100" style="position:absolute; left:0; bottom:0; transform-origin:50% 50%; pointer-events:none">
-      <!-- Simple “real” airplane silhouette -->
-      <g fill="#ff4757" stroke="#ff98a3" stroke-width="2">
+    <!-- Jet plane (3×). This is a compact jet silhouette, scaled up. -->
+    <svg id="plane" viewBox="0 0 60 35" width="180" height="105"
+         style="position:absolute; left:0; bottom:0; transform-origin:50% 50%; pointer-events:none">
+      <g fill="#ff4757" stroke="#ff98a3" stroke-width="0.8">
+        <!-- nose cone -->
+        <path d="M58 17.5 L50 14 L50 21 Z"/>
         <!-- fuselage -->
-        <path d="M10,55 L120,55 C142,55 158,48 168,42 L175,38 L168,60 C158,66 142,73 120,73 L10,73 Z"/>
-        <!-- nose -->
-        <path d="M175,38 L175,60 L178,52 Z"/>
-        <!-- tail -->
-        <path d="M10,55 L6,45 L18,55 Z"/>
+        <rect x="18" y="14" width="34" height="7" rx="2" />
+        <!-- canopy hump -->
+        <path d="M26 14 Q28 11 32 11 L36 14 Z"/>
         <!-- top wing -->
-        <path d="M60,50 L120,40 L120,48 L60,58 Z"/>
+        <path d="M22 13 L36 9 L36 15 L22 17 Z"/>
         <!-- bottom wing -->
-        <path d="M60,78 L120,70 L120,78 L60,86 Z"/>
+        <path d="M22 22 L36 24 L36 19 L22 18 Z"/>
+        <!-- tail fin -->
+        <path d="M12 13 L18 17.5 L12 22 Z"/>
+        <!-- tailplane -->
+        <rect x="6" y="16" width="10" height="3" />
       </g>
     </svg>
 
@@ -218,7 +215,7 @@
 
 <script>
 /* ===== Config & helpers ===== */
-const api  = location.origin.replace(/:\\d+$/, ':4000'); // keeps working behind nginx
+const api  = location.origin; // nginx proxies to Node; same-origin works
 const KES  = x => new Intl.NumberFormat('en-KE',{style:'currency',currency:'KES'}).format(Number(x||0));
 const clamp= (n,min,max)=> Math.max(min, Math.min(max,n));
 
@@ -230,65 +227,46 @@ setInterval(()=>{ const d=new Date(Date.now()+skew); clk.textContent=d.toLocaleS
 /* ===== Stage + Plane drawing ===== */
 const cv = document.getElementById('cv'); const ctx=cv.getContext('2d');
 const plane = document.getElementById('plane');
-function fit(){
-  cv.width=cv.clientWidth||cv.parentElement.clientWidth;
-  cv.height=cv.clientHeight||520;
-}
+function fit(){ cv.width=cv.clientWidth||cv.parentElement.clientWidth; cv.height=cv.clientHeight||520; }
 fit(); addEventListener('resize',fit);
 
 const centerText = document.getElementById('centerText');
-function mapMultiplierToProgress(mult){
-  // progress grows slowly so clients can see; log curve for gentle takeoff
-  const t = Math.log10(Math.max(1, mult)) / Math.log10(6); // 6x maps ~near end
-  return Math.max(0, Math.min(1, t));
-}
+function mapMultiplierToProgress(mult){ return Math.min(1, Math.max(0, Math.log1p(Math.max(0, mult-1))/Math.log(6))); } // slow & smooth
 
 function draw(mult, phase){
   const w=cv.width, h=cv.height;
   ctx.clearRect(0,0,w,h);
 
-  // define bottom-left origin with margins
   const left=50, bottom=h-40, right=w-40, top=40;
   const trackW = right-left, trackH = bottom-top;
 
   const progress = mapMultiplierToProgress(mult||1);
-  const curveY = (p)=> bottom - (Math.pow(p, 2.2) * (trackH*0.85)); // soaring curve
+  const curveY = (p)=> bottom - (Math.pow(p, 2.2) * (trackH*0.85));
   const x = left + progress * trackW;
   const y = curveY(progress);
 
-  // red smoke/tail (area under curve) – only show while flying or just busted
   if (phase !== 'betting'){
-    ctx.beginPath();
-    ctx.moveTo(left, bottom);
-    for (let i=0;i<=240;i++){
-      const p=i/240;
-      const xi = left + p*trackW;
-      const yi = curveY(p);
-      ctx.lineTo(xi, yi);
-    }
-    ctx.lineTo(right, bottom);
-    ctx.closePath();
-    ctx.fillStyle='rgba(239,68,68,0.28)';
-    ctx.fill();
+    ctx.beginPath(); ctx.moveTo(left, bottom);
+    for (let i=0;i<=240;i++){ const p=i/240; ctx.lineTo(left+p*trackW, curveY(p)); }
+    ctx.lineTo(right, bottom); ctx.closePath();
+    ctx.fillStyle='rgba(239,68,68,0.28)'; ctx.fill();
   }
 
-  // Plane position (3x SVG already): anchor the plane so nose points along slope
   const dx = 1e-3 + trackW/240, dy = curveY(Math.min(1,progress+0.004)) - y;
-  const angle = Math.atan2(-dy, dx) * 180/Math.PI; // negative dy because canvas Y grows downward
-  plane.style.left = (x - 90) + 'px';   // center the 180px wide plane
-  plane.style.top  = (y - 50) + 'px';   // center the 100px tall plane
+  const angle = Math.atan2(-dy, dx) * 180/Math.PI;
+  plane.style.left = (x - 90) + 'px';
+  plane.style.top  = (y - 52) + 'px';
   plane.style.transform = \`rotate(\${angle}deg)\`;
 
-  // Center display text
   centerText.className='centerText '+(phase==='busted'?'flew':'multi');
-  centerText.textContent=(phase==='busted'?'FLEW AWAY!\n':'')+(mult? \`\${Number(mult).toFixed(2)}x\` : '');
+  centerText.textContent=(phase==='betting'?'Place your bets…\n':'' ) + (phase==='busted'?'FLEW AWAY!\n':'') + (mult? \`\${Number(mult).toFixed(2)}x\` : '');
 }
 
-/* ===== History pills with inline expander ===== */
+/* ===== History pills (inline expand) ===== */
 const phasePill = document.getElementById('phasePill');
 const histBox = document.getElementById('history');
 const dotsBtn = document.getElementById('hxMore');
-let showCount = 10; // default visible
+let showCount = 10;
 function renderHistory(arr){
   histBox.innerHTML='';
   const used = (arr||[]).slice(0, showCount);
@@ -301,7 +279,7 @@ function renderHistory(arr){
 }
 dotsBtn.addEventListener('click', ()=>{ showCount = (showCount===10? 24 : 10); renderHistory(STATE.history); });
 
-/* ===== Players / tickets ===== */
+/* ===== Tickets ===== */
 const tBox=document.getElementById('ticketsBox'); const tickets=[];
 function addTicket(t){ tickets.unshift(t); renderTickets(); }
 function renderTickets(){
@@ -315,13 +293,7 @@ function renderTickets(){
     tBox.appendChild(d);
   });
 }
-function markTicketsOnBust(mult){
-  // any LIVE tickets become LOST (unless already CASHED)
-  tickets.forEach(t=>{
-    if (t.state==='LIVE'){ t.state='LOST'; t.hit=mult; t.payout=0; }
-  });
-  renderTickets();
-}
+function markTicketsOnBust(mult){ tickets.forEach(t=>{ if (t.state==='LIVE'){ t.state='LOST'; t.hit=mult; t.payout=0; } }); renderTickets(); }
 
 /* ===== Wallet helpers ===== */
 async function refreshBal(pid){
@@ -387,25 +359,15 @@ async function poll(){
     const multiplier = j.multiplier!=null ? Number(j.multiplier) : (j.liveMultiplier!=null? Number(j.liveMultiplier):1);
     STATE = { phase, multiplier, history: j.history||[] };
 
-    // update UI
     phasePill.textContent = phase.toUpperCase();
     renderHistory(STATE.history);
     draw(multiplier, phase);
 
-    // transitions -> ticket status updates
-    if (lastPhase!=='busted' && phase==='busted'){
-      markTicketsOnBust(multiplier);
-    }
-    if (lastPhase==='busted' && phase==='betting'){
-      // round reset: set statuses of finished tickets to WON/LOST already, LIVE remains until cashed or lost at bust; nothing extra here
-    }
+    if (lastPhase!=='busted' && phase==='busted'){ markTicketsOnBust(multiplier); }
     lastPhase = phase;
-  }catch(e){
-    phasePill.textContent='API unavailable';
-  }
+  }catch(e){ phasePill.textContent='API unavailable'; }
 }
-setInterval(poll, 150);
-poll();
+setInterval(poll, 150); poll();
 </script>
 </body>
 </html>
