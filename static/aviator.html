@@ -1,0 +1,117 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Aviator — MASTERMIND</title>
+  <style>
+    :root{ --bg:#0a0e1a; --line:#24304f; --text:#e6edf3; --muted:#9aa4b2; --accent:#22c55e; }
+    *{box-sizing:border-box} body{font-family:Inter,system-ui,Arial,sans-serif;background:var(--bg);color:var(--text);margin:0}
+    header{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+    .wrap{max-width:1200px;margin:0 auto;padding:16px}
+    .sky{position:relative;height:360px;background:linear-gradient(180deg,#0e1530,#0b0f1e);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+    .plane{position:absolute;left:24px;bottom:24px;width:48px;height:26px;background:#e5e7eb;border-radius:6px 16px 16px 6px;transform-origin:left center;box-shadow:0 0 14px #fff2}
+    .nose{position:absolute;right:-6px;top:4px;border-left:6px solid #e5e7eb;border-top:4px solid transparent;border-bottom:4px solid transparent}
+    .trail{position:absolute;left:24px;bottom:38px;height:3px;background:#8ab4f8;opacity:.8}
+    .hud{position:absolute;left:16px;top:16px;background:#0c1428cc;border:1px solid var(--line);padding:8px 12px;border-radius:10px;font-weight:900}
+    .grid{display:grid;gap:12px;grid-template-columns:2fr 1fr}
+    .panel{border:1px solid var(--line);border-radius:16px;padding:12px}
+    .title{font-weight:900;margin-bottom:8px}
+    .row{display:flex;gap:8px;align-items:center;margin:6px 0}
+    input{padding:10px;border-radius:10px;border:1px solid var(--line);background:#0d1428;color:#fff;width:100%}
+    .btn{padding:10px 14px;border-radius:10px;border:1px solid var(--line);background:#0d1428;color:#fff;cursor:pointer;font-weight:800}
+    .ticket{padding:10px;border:1px solid var(--line);border-radius:12px;margin-bottom:6px}
+    .chip{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0d1428;cursor:pointer}
+    .chips{display:flex;flex-wrap:wrap;gap:6px}
+    .list{max-height:210px;overflow:auto}
+  </style>
+</head>
+<body>
+<header>
+  <div>MASTERMIND — Aviator</div>
+  <div style="font-size:12px;color:#9aa4b2">Round: <span id="rid">—</span> • Status: <span id="rstatus">—</span> • Live x<span id="mult">1.00</span></div>
+</header>
+
+<div class="wrap">
+  <div class="grid">
+    <div class="panel">
+      <div class="sky">
+        <div class="hud">x<span id="live">1.00</span></div>
+        <div id="plane" class="plane"><div class="nose"></div></div>
+        <div id="trail" class="trail"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="title">Players (3)</div>
+      <div class="row"><input id="p1" value="player-1"><input id="s1" type="number" min="20" max="1000" value="100"><button class="btn" onclick="placeAuto('p1','s1',1.5)">Auto 1.5x</button><button class="btn" onclick="cash('p1')">CASH OUT</button></div>
+      <div class="row"><input id="p2" value="player-2"><input id="s2" type="number" min="20" max="1000" value="100"><button class="btn" onclick="placeAuto('p2','s2',2)">Auto 2x</button><button class="btn" onclick="cash('p2')">CASH OUT</button></div>
+      <div class="row"><input id="p3" value="player-3"><input id="s3" type="number" min="20" max="1000" value="100"><button class="btn" onclick="placeAuto('p3','s3',3)">Auto 3x</button><button class="btn" onclick="cash('p3')">CASH OUT</button></div>
+      <div class="row"><input id="cashier" value="shop-1"><button class="btn" onclick="loadPlayers()">Load each 1000</button></div>
+      <div class="title" style="margin-top:10px">Recent Busts</div>
+      <div id="hist" class="list"></div>
+      <div class="title" style="margin-top:10px">Live Tickets</div>
+      <div id="tickets" class="list"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const api = location.origin.replace(/:\\d+$/, ':4000');
+const plane = document.getElementById('plane');
+const trail = document.getElementById('trail');
+const mult = document.getElementById('mult');
+const liveSpan = document.getElementById('live');
+const rid = document.getElementById('rid');
+const rstatus = document.getElementById('rstatus');
+
+async function loadPlayers(){
+  const cashierId=document.getElementById('cashier').value;
+  for (const id of ['p1','p2','p3']){
+    const playerId=document.getElementById(id).value;
+    await fetch(`${api}/players/topup`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId,amount:1000})});
+  }
+  await fetch(`${api}/cashier/topup`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cashierId,amount:0})});
+}
+
+async function placeAuto(pId, stakeId, x){
+  const playerId=document.getElementById(pId).value;
+  const stake=Number(document.getElementById(stakeId).value||0);
+  const cashierId=document.getElementById('cashier').value;
+  const res = await fetch(`${api}/aviator/place`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId,cashierId,stake,mode:'auto',autoCashout:x})});
+  const j = await res.json(); if(!j.ok) return alert(j.error||JSON.stringify(j));
+  refreshTickets();
+}
+async function cash(pId){
+  const playerId=document.getElementById(pId).value;
+  const cashierId=document.getElementById('cashier').value;
+  const res = await fetch(`${api}/aviator/cashout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId,cashierId})});
+  const j = await res.json(); if(!j.ok) return alert(j.error||JSON.stringify(j));
+  refreshTickets();
+}
+
+async function refreshTickets(){
+  const r = await fetch(`${api}/aviator/tickets`); const list=await r.json();
+  const box=document.getElementById('tickets'); box.innerHTML='';
+  list.forEach(t=>{ const d=document.createElement('div'); d.className='ticket'; d.textContent=`${t.playerId} — ${t.mode==='auto'?('Auto '+t.autoCashout+'x'):'Manual'} — stake ${t.stake} — ${t.status}${t.payout?(' — '+t.payout):''}`; box.prepend(d); });
+}
+
+async function loadHistory(){
+  const r = await fetch(`${api}/aviator/history`); const list=await r.json();
+  const box=document.getElementById('hist'); box.innerHTML='';
+  list.forEach(h=>{ const d=document.createElement('div'); d.className='ticket'; d.textContent=`Bust: ${h.bust}x`; box.appendChild(d); });
+}
+
+async function loop(){
+  const s = await (await fetch(`${api}/aviator/state`)).json();
+  rid.textContent = s.roundId || '—'; rstatus.textContent=s.status || '—';
+  const t = s.liveMultiplier || 1.00; mult.textContent = t.toFixed(2); liveSpan.textContent = t.toFixed(2);
+  const x = Math.min(900,(t-1)*200), y=Math.min(260,(t-1)*30);
+  plane.style.transform=`translate(${x}px, ${-y}px) rotate(-8deg)`; trail.style.width=`${x}px`;
+  refreshTickets();
+  if (s.status==='BUSTED'){ await loadHistory(); }
+  requestAnimationFrame(loop);
+}
+loadHistory(); loop();
+</script>
+</body>
+</html>
