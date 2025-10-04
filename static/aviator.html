@@ -5,14 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Aviator (Shop Mode)</title>
 <style>
-  :root{
-    --bg:#0a0e1a; --panel:#0e162b; --line:#24304f; --text:#e6edf3;
-    --muted:#9aa4b2; --ok:#16a34a; --danger:#ef4444;
-  }
+  :root{ --bg:#0a0e1a; --panel:#0e162b; --line:#24304f; --text:#e6edf3; --muted:#9aa4b2; }
   *{box-sizing:border-box}
   body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--bg);color:var(--text)}
   .wrap{max-width:1280px;margin:0 auto;padding:14px;display:grid;gap:14px}
 
+  /* Stage */
   .stage{position:relative;height:520px;border:1px solid var(--line);border-radius:18px;overflow:hidden;
          background:radial-gradient(ellipse at 50% 30%, #0f2748 0 55%, #0b1426 60% 100%)}
   canvas#area{position:absolute;inset:0;z-index:1}
@@ -22,18 +20,24 @@
   .flew{color:#ff5a5a}
   .multi{color:#fff}
 
+  /* Topbar */
   .topbar{position:absolute;top:8px;left:12px;right:12px;display:flex;gap:10px;align-items:center;justify-content:space-between;z-index:4}
   .leftTB{display:flex;gap:10px;align-items:center}
-  .chips{display:flex;gap:6px;align-items:center}
+  .chipsRow{display:flex;gap:6px;align-items:center}
   .chip{font-weight:800;padding:4px 8px;border-radius:8px;background:#071024;border:1px solid #0f2347;font-size:12px;white-space:nowrap}
   .chip.good{color:#22c55e;border-color:#1b4027;background:#0b2013}
   .chip.avg{color:#f59e0b;border-color:#4b3e12;background:#2b250f}
   .chip.bad{color:#ef4444;border-color:#4d1313;background:#3b0b0b}
   .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0e172f;color:#cfe1ff}
-  .clock{min-width:180px;text-align:right}
+  .clock{min-width:200px;text-align:right}
   .dotbtn{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:#0b1324;color:#cfe1ff;cursor:pointer;font-weight:900}
+  /* inline expander */
+  .expander{position:absolute;left:12px;right:12px;top:46px;display:none;z-index:3}
+  .expander .box{background:#0b1324;border:1px solid #223055;border-radius:12px;padding:8px}
+  .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:6px}
 
-  .players{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  /* Players */
+  .players{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:8px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px;display:grid;gap:10px}
   .ttl{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .tabs{display:flex;gap:6px}
@@ -46,13 +50,8 @@
   .btn.green{background:#0f2b1b;border-color:#1b4d28}
   .btn.red{background:#3b0b0b;border-color:#4d1313}
   .kpi{font-size:12px;color:#b9c2cf}
-  .tickets{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px}
 
-  /* history drawer */
-  .drawer{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:9}
-  .drawer .box{width:min(720px,92vw);max-height:70vh;overflow:auto;background:#0b1324;border:1px solid var(--line);border-radius:16px;padding:14px}
-  .grid{display:grid;grid-template-columns:repeat(8,1fr);gap:8px}
-  .grid .chip{justify-self:center}
+  .tickets{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px}
 </style>
 </head>
 <body>
@@ -61,11 +60,18 @@
     <div class="topbar">
       <div class="leftTB">
         <button class="dotbtn" id="moreBtn" title="More history">⋯</button>
-        <div class="chips" id="chips"></div>
+        <div class="chipsRow" id="chips"></div>
         <div class="pill" id="phasePill">BETTING</div>
         <div class="pill">Rounds auto-continue</div>
       </div>
       <div class="pill clock" id="clock">—</div>
+    </div>
+
+    <!-- inline expander -->
+    <div class="expander" id="expander">
+      <div class="box">
+        <div class="grid" id="drawerGrid"></div>
+      </div>
     </div>
 
     <canvas id="area"></canvas>
@@ -77,12 +83,9 @@
     <div class="card" data-player="pA">
       <div class="ttl">
         <div><b>Player A</b> <span class="kpi">Bal: <b id="pA-bal">0</b> KES</span> <span class="kpi" id="pA-status">idle</span></div>
-        <div class="row">
-          <button class="btn" id="pA-load">+1000</button>
-          <div class="tabs">
-            <div class="tab active" data-mode="manual">Bet</div>
-            <div class="tab" data-mode="auto">Auto</div>
-          </div>
+        <div class="tabs">
+          <div class="tab active" data-mode="manual">Bet</div>
+          <div class="tab" data-mode="auto">Auto</div>
         </div>
       </div>
       <div class="pane manual">
@@ -107,12 +110,9 @@
     <div class="card" data-player="pB">
       <div class="ttl">
         <div><b>Player B</b> <span class="kpi">Bal: <b id="pB-bal">0</b> KES</span> <span class="kpi" id="pB-status">idle</span></div>
-        <div class="row">
-          <button class="btn" id="pB-load">+1000</button>
-          <div class="tabs">
-            <div class="tab active" data-mode="manual">Bet</div>
-            <div class="tab" data-mode="auto">Auto</div>
-          </div>
+        <div class="tabs">
+          <div class="tab active" data-mode="manual">Bet</div>
+          <div class="tab" data-mode="auto">Auto</div>
         </div>
       </div>
       <div class="pane manual">
@@ -137,12 +137,9 @@
     <div class="card" data-player="pC">
       <div class="ttl">
         <div><b>Player C</b> <span class="kpi">Bal: <b id="pC-bal">0</b> KES</span> <span class="kpi" id="pC-status">idle</span></div>
-        <div class="row">
-          <button class="btn" id="pC-load">+1000</button>
-          <div class="tabs">
-            <div class="tab active" data-mode="manual">Bet</div>
-            <div class="tab" data-mode="auto">Auto</div>
-          </div>
+        <div class="tabs">
+          <div class="tab active" data-mode="manual">Bet</div>
+          <div class="tab" data-mode="auto">Auto</div>
         </div>
       </div>
       <div class="pane manual">
@@ -170,37 +167,24 @@
   </div>
 </div>
 
-<!-- history drawer -->
-<div class="drawer" id="drawer">
-  <div class="box">
-    <div class="row" style="justify-content:space-between;margin-bottom:10px">
-      <b>Crash History</b>
-      <button class="btn" id="closeDrawer">Close</button>
-    </div>
-    <div class="grid" id="drawerGrid"></div>
-  </div>
-</div>
-
 <script>
 const api  = location.origin.replace(/:\\d+$/, ':4000');
 const KES  = x => new Intl.NumberFormat('en-KE',{style:'currency',currency:'KES'}).format(Number(x||0));
 const clamp= (n,min,max)=> Math.max(min, Math.min(max,n));
 
-// ===== Clock (top-right) =====
+/* ===== Clock ===== */
 const clk = document.getElementById('clock'); let skew=0;
 async function syncClock(){ try{ const r=await fetch(`${api}/health`); const j=await r.json(); skew=j.ts-Date.now(); }catch(e){} }
 setInterval(()=>{ const d=new Date(Date.now()+skew); clk.textContent=d.toLocaleString(); }, 500); syncClock();
 
-// ===== Canvas + plane sprite =====
+/* ===== Canvas + plane ===== */
 const cv = document.getElementById('area'); const ctx=cv.getContext('2d');
 function fit(){ cv.width=cv.clientWidth||cv.parentElement.clientWidth; cv.height=cv.clientHeight||520; }
 fit(); addEventListener('resize',fit);
 
-// small red plane SVG (data URI)
+// plane SVG
 const planeImg = new Image();
-planeImg.src =
-'data:image/svg+xml;utf8,'+
-encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="80" height="36" viewBox="0 0 80 36">
+planeImg.src = 'data:image/svg+xml;utf8,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="80" height="36" viewBox="0 0 80 36">
   <g fill="#ff4d6d">
     <path d="M4,22 L38,18 L77,18 L60,23 L38,22 L4,22 z" opacity="0.75"/>
     <path d="M14,16 L36,12 L55,8 L65,11 L36,15 L14,16 z" />
@@ -208,67 +192,21 @@ encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="80" height="3
   </g>
 </svg>`);
 
-// helpers for drawing
-const marginL=20, marginB=52;
+// layout constants
+const marginL=16, marginB=54;
 function chipClass(v){ return v>=2?'good':(v>=1.3?'avg':'bad'); }
+
+/* ===== Top chips + inline expander ===== */
 const chipsBox = document.getElementById('chips');
-const drawer = document.getElementById('drawer');
+const expander = document.getElementById('expander');
 const drawerGrid = document.getElementById('drawerGrid');
-document.getElementById('moreBtn').onclick = ()=> drawer.style.display='flex';
-document.getElementById('closeDrawer').onclick = ()=> drawer.style.display='none';
-drawer.addEventListener('click',(e)=>{ if(e.target===drawer) drawer.style.display='none'; });
+const moreBtn = document.getElementById('moreBtn');
+let expanded=false;
+moreBtn.onclick = ()=>{
+  expanded=!expanded;
+  expander.style.display = expanded ? 'block' : 'none';
+};
 
-// curve function and plane position
-function easeProgressFromMultiplier(m){
-  // 1.00 -> 0.0, grows fast at first then slows: t = 1 - m^-0.7
-  if (!m || m<1) return 0;
-  return Math.max(0, Math.min(1, 1 - Math.pow(m, -0.7)));
-}
-
-function drawCurveAndPlane(mult, phase){
-  ctx.clearRect(0,0,cv.width,cv.height);
-
-  const maxX=cv.width-marginL-16;
-  const baseY=cv.height-marginB;
-  const t=easeProgressFromMultiplier(mult||1);
-  const target=Math.max(1, mult||1);
-
-  // red area curve from bottom-left
-  ctx.beginPath(); ctx.moveTo(marginL, baseY);
-  for (let i=0;i<=260;i++){
-    const p=i/260;
-    const x=marginL + p*maxX;
-    const y=baseY - Math.pow(p,2.1) * (baseY*0.90) * Math.log10(target+0.9);
-    ctx.lineTo(x,y);
-  }
-  ctx.lineTo(cv.width,cv.height); ctx.lineTo(marginL,cv.height); ctx.closePath();
-  ctx.fillStyle='rgba(239,68,68,0.35)'; ctx.fill();
-
-  // plane only while flying
-  if (phase==='flying'){
-    const px = marginL + t*maxX;
-    const py = baseY - (baseY*0.90)*t;
-    const scale = 0.6 + 0.4*t; // slightly grow as it flies
-    const w = 80*scale, h = 36*scale;
-    ctx.drawImage(planeImg, px-28, py-18, w, h);
-  }
-
-  // center label
-  const centerText = document.getElementById('centerText');
-  centerText.className = 'centerText '+(phase==='busted'?'flew':'multi');
-  if (phase==='betting') centerText.textContent='Place your bets…';
-  else if (phase==='closed') centerText.textContent='Get ready…';
-  else if (phase==='busted') centerText.textContent='FLEW AWAY!\n'+(mult?`${Number(mult).toFixed(2)}x`:``);
-  else centerText.textContent = mult?`${Number(mult).toFixed(2)}x`:``;
-}
-
-// ===== State, chips & animation =====
-const phasePill = document.getElementById('phasePill');
-let STATE = { phase:'betting', multiplier:1, history:[] };
-let visualMult = 1;
-let lastPhase = 'betting';
-
-// chips top + drawer
 function paintChips(list){
   chipsBox.innerHTML='';
   (list||[]).slice(0,6).forEach(v=>{
@@ -276,36 +214,86 @@ function paintChips(list){
     chipsBox.appendChild(c);
   });
   drawerGrid.innerHTML='';
-  (list||[]).slice(0,80).forEach(v=>{
+  (list||[]).slice(0,96).forEach(v=>{
     const d=document.createElement('div'); d.className='chip '+chipClass(v); d.textContent=Number(v).toFixed(2)+'x';
     drawerGrid.appendChild(d);
   });
 }
 
-// gentle smoothing
-function animate(){
-  const target = Number(STATE.multiplier||1);
-  const alpha = 0.18;
+/* ===== State + animation smoothing ===== */
+const phasePill = document.getElementById('phasePill');
+const centerText = document.getElementById('centerText');
+let STATE = { phase:'betting', multiplier:1, history:[] };
+let visualMult = 1;
+let lastPhase = 'betting';
+let lastPollTs = performance.now();
+
+// curve progress mapping (ensures start bottom-left)
+function easeFromMultiplier(m){ if(!m||m<1) return 0; return Math.max(0, Math.min(1, 1 - Math.pow(m, -0.7))); }
+
+function draw(mult, phase){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  const maxX=cv.width - marginL - 16;
+  const baseY=cv.height - marginB;
+  const target=Math.max(1, mult||1);
+  const t = easeFromMultiplier(target);
+
+  // red fill from bottom-left
+  ctx.beginPath(); ctx.moveTo(marginL, baseY);
+  for(let i=0;i<=260;i++){
+    const p=i/260;
+    const x=marginL + p*maxX;
+    const y=baseY - Math.pow(p,2.1) * (baseY*0.92) * Math.log10(target+0.9);
+    ctx.lineTo(x,y);
+  }
+  ctx.lineTo(cv.width,cv.height); ctx.lineTo(marginL,cv.height); ctx.closePath();
+  ctx.fillStyle='rgba(239,68,68,0.35)'; ctx.fill();
+
+  // plane strictly when flying; spawn bottom-left, move along curve
+  if (phase==='flying'){
+    const px = marginL + t*maxX;
+    const py = baseY - (baseY*0.92)*t;
+    const scale = 0.58 + 0.42*t;
+    const w = 80*scale, h = 36*scale;
+    ctx.drawImage(planeImg, px-28, py-18, w, h);
+  }
+
+  // center label
+  centerText.className = 'centerText '+(phase==='busted'?'flew':'multi');
+  if (phase==='betting') centerText.textContent='Place your bets…';
+  else if (phase==='closed') centerText.textContent='Get ready…';
+  else if (phase==='busted') centerText.textContent='FLEW AWAY!\n'+(mult?`${Number(mult).toFixed(2)}x`:``);
+  else centerText.textContent = mult?`${Number(mult).toFixed(2)}x`:``;
+}
+
+// animation loop with predictive tween while flying (prevents “jump to bust”)
+function animate(now){
+  const dt = Math.max(0, Math.min(50, now - lastPollTs)); // clamp
+  const backend = Number(STATE.multiplier||1);
+
+  // prediction: gently increase if flying and backend hasn’t caught up
+  let target = backend;
+  if (STATE.phase==='flying'){
+    // multiplicative growth ~ smooth curve
+    target = Math.max(backend, visualMult * (1 + 0.11 * (dt/1000))); 
+  }else{
+    target = backend;
+  }
+  // exponential smoothing
+  const alpha = 0.20;
   visualMult += alpha*(target - visualMult);
 
-  drawCurveAndPlane(visualMult, STATE.phase);
+  draw(visualMult, STATE.phase);
   requestAnimationFrame(animate);
 }
 requestAnimationFrame(animate);
 
-// play SFX if present
-const sfx = {
-  whoosh: new Audio('/static/sfx/whoosh.wav'),
-  bust:   new Audio('/static/sfx/bust.wav')
-};
-Object.values(sfx).forEach(a=>{ a.volume=0.25; a.preload='auto'; });
-
+/* ===== Poll backend ===== */
 async function poll(){
   try{
     const r=await fetch(`${api}/aviator/state`,{cache:'no-store'}); if(!r.ok) throw 0;
     const j=await r.json();
 
-    // normalize into shop UI phases
     const phase = j.phase ? j.phase :
                   (j.status==='RUNNING'?'flying': j.status==='BUST'?'busted':
                    (j.status==='CLOSED'?'closed':'betting'));
@@ -313,24 +301,23 @@ async function poll(){
                        (j.liveMultiplier!=null? Number(j.liveMultiplier):1);
     const history = Array.isArray(j.history)? j.history : [];
 
-    // phase transitions (hide plane on non-flying)
     if (phase!==lastPhase){
-      if (phase==='flying'){ sfx.whoosh?.play().catch(()=>{}); }
-      if (phase==='busted'){ sfx.bust?.play().catch(()=>{}); }
-      if (phase==='betting'){ visualMult = 1; }
+      // reset start when flight begins
+      if (phase==='flying') visualMult = 1;
       lastPhase = phase;
     }
 
     STATE = { phase, multiplier, history };
     phasePill.textContent = phase.toUpperCase();
     paintChips(history);
+    lastPollTs = performance.now();
   }catch(e){
     phasePill.textContent='OFFLINE';
   }
 }
-setInterval(poll,150); poll();
+setInterval(poll,120); poll();
 
-// ===== Tickets & Wallets (shop demo) =====
+/* ===== Tickets & Wallets (demo only; no add-balance here) ===== */
 const tBox=document.getElementById('ticketsBox'); const tickets=[];
 function addT(t){ tickets.unshift(t); renderT(); }
 function renderT(){
@@ -344,19 +331,14 @@ function renderT(){
   });
 }
 
+// If you expose wallet endpoints, these will populate balances.
+// (Kept silent if endpoints are absent.)
 async function refreshBal(pid){
   try{ const r=await fetch(`${api}/aviator/wallet/${pid}`); const j=await r.json();
        if(j && j.ok!==false){ const el=document.getElementById(`${pid}-bal`); if(el) el.textContent=j.balance||0; }
   }catch(e){}
 }
-async function loadBal(pid, amt){
-  try{
-    const r=await fetch(`${api}/aviator/wallet/load`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, amount:amt})});
-    const j=await r.json(); if(j && j.ok){ const el=document.getElementById(`${pid}-bal`); if(el) el.textContent=j.balance||0; }
-  }catch(e){}
-}
 
-// wire one player card
 function wireCard(pid){
   const card=document.querySelector(`.card[data-player="${pid}"]`);
   const tabs=card.querySelectorAll('.tab'); const manual=card.querySelector('.pane.manual'); const auto=card.querySelector('.pane.auto');
@@ -365,18 +347,15 @@ function wireCard(pid){
   const status=card.querySelector(`#${pid}-status`), tEl=card.querySelector(`#${pid}-ticket`), pEl=card.querySelector(`#${pid}-payout`);
   const stakeEl=card.querySelector(`#${pid}-stake`), betBtn=card.querySelector(`#${pid}-bet`), cashBtn=card.querySelector(`#${pid}-cash`);
   const aStake=card.querySelector(`#${pid}-auto-stake`), aX=card.querySelector(`#${pid}-auto-x`), aBtn=card.querySelector(`#${pid}-auto-on`);
-  const loadBtn=card.querySelector(`#${pid}-load`);
-
-  loadBtn.onclick = ()=> loadBal(pid, 1000);
 
   betBtn.onclick = async ()=>{
     const stake=clamp(Number(stakeEl.value||0),20,1000);
     try{
       const r=await fetch(`${api}/aviator/bet`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, stake})});
-      const j=await r.json(); if(!j.ok) return; // silent on closed
+      const j=await r.json(); if(!j.ok) return;
       status.textContent='LIVE'; tEl.textContent=j.ticketId; pEl.textContent='—';
-      if(j.balance!=null){ const bal=document.getElementById(`${pid}-bal`); if(bal) bal.textContent=j.balance; }
       addT({playerId:pid,ticketId:j.ticketId,stake,state:'LIVE'});
+      refreshBal(pid);
     }catch(e){}
   };
   cashBtn.onclick = async ()=>{
@@ -384,8 +363,8 @@ function wireCard(pid){
       const r=await fetch(`${api}/aviator/cashout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid})});
       const j=await r.json(); if(!j.ok) return;
       status.textContent='CASHED'; pEl.textContent=KES(j.payout);
-      if(j.balance!=null){ const bal=document.getElementById(`${pid}-bal`); if(bal) bal.textContent=j.balance; }
       const t=tickets.find(x=>x.playerId===pid && x.state==='LIVE'); if(t){ t.state='CASHED'; t.payout=j.payout; t.hit=j.multiplier; } renderT();
+      refreshBal(pid);
     }catch(e){}
   };
   aBtn.onclick = async ()=>{
@@ -393,9 +372,9 @@ function wireCard(pid){
     try{
       const r=await fetch(`${api}/aviator/bet`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, stake, autoCashOut:x})});
       const j=await r.json(); if(!j.ok) return;
-      if(j.balance!=null){ const bal=document.getElementById(`${pid}-bal`); if(bal) bal.textContent=j.balance; }
       status.textContent='LIVE'; tEl.textContent=j.ticketId; pEl.textContent='—';
       addT({playerId:pid,ticketId:j.ticketId,stake,autoCashOut:x,state:'LIVE'});
+      refreshBal(pid);
     }catch(e){}
   };
 
