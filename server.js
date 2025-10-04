@@ -92,8 +92,11 @@ const STATE = {
   results: { football:[], dog:[], horse:[], colors:[], lotto49:[], aviator:[] },
   cashiers: new Map(),       // cashierId -> {balance}
   players: new Map(),        // playerId  -> {balance}
-  // NOTE: initial betting window set to ~7s to match desired cadence
-  aviator: { phase:'betting', multiplier:1.00, history:[], t0:Date.now(), nextChangeAt:Date.now()+7000, seed:Math.floor(Math.random()*2**31), bustAt:5.0, bets:new Map() }
+  aviator: {
+    phase:'betting', multiplier:1.00, history:[], t0:Date.now(),
+    nextChangeAt:Date.now()+5200, seed:Math.floor(Math.random()*2**31),
+    bustAt:5.0, bets:new Map()
+  }
 };
 
 function ensureCashier(id){ if(!STATE.cashiers.has(id)) STATE.cashiers.set(id,{balance:0}); return STATE.cashiers.get(id); }
@@ -136,11 +139,9 @@ function generateRoundFixtures(leagueKey, roundIdx){
   if (list.length % 2 === 1) list.push({name:'BYE', abbr:'BYE'});
   const n = list.length, half = n/2;
 
-  // create arrays we can rotate
   let left = list.slice(0, half);
   let right = list.slice(half).reverse();
 
-  // rotate roundIdx times
   for (let r=0; r<roundIdx; r++){
     const keep = left[0];
     const l = left.slice(1);
@@ -154,7 +155,7 @@ function generateRoundFixtures(leagueKey, roundIdx){
     const A = left[i], B = right[i];
     if (A.abbr!=='BYE' && B.abbr!=='BYE') fixtures.push([A,B]);
   }
-  return fixtures; // ~10 fixtures if 20 teams
+  return fixtures;
 }
 
 function buildMarketsForEvent(ev){
@@ -244,6 +245,16 @@ function buildMarketsForEvent(ev){
     putMarket({ id:uuidv4(), eventId:ev.id, type:'QUINELLA', status:'OPEN',
       selections:Object.keys(quinellaOdds).map(k=>({id:k, name:k.replace('&',' + ')})),
       odds:quinellaOdds });
+
+    const tricastOdds = {}; let count=0; const limit = ev.game==='dog'?60:80;
+    for(let a=1;a<=runners;a++){ for(let b=1;b<=runners;b++){ for(let c=1;c<=runners;c++){
+      if (a===b||b===c||a===c) continue;
+      const p = probs[a-1] * (probs[b-1]/(1-probs[a-1]+1e-9)) * (probs[c-1]/(1-probs[a-1]-probs[b-1]+1e-9));
+      tricastOdds[`R${a}>R${b}>R${c}`] = Number((1/(p*0.82)).toFixed(2)); count++; if(count>=limit) break;
+    }} if(count>=limit) break; }
+    putMarket({ id:uuidv4(), eventId:ev.id, type:'TRICAST', status:'OPEN',
+      selections:Object.keys(tricastOdds).map(k=>({id:k, name:k.replace(/>/g,' → ')})),
+      odds:tricastOdds });
   }
 
   if (ev.game==='colors'){
@@ -355,7 +366,6 @@ function runEvent(eventId){
     pushResult('lotto49', { ball });
   }
 
-  // close markets & settle
   for (const mid of (STATE.marketsByEvent.get(ev.id)||[])){ const m=STATE.markets.get(mid); if (m) m.status='SETTLED'; }
   settleBetsForEvent(ev);
   ev.status = 'SETTLED';
@@ -366,7 +376,7 @@ function runEvent(eventId){
 function seedFootballBatch(leagueKey){
   const round = STATE.footballRounds[leagueKey] || 0;
   const fixtures = generateRoundFixtures(leagueKey, round);
-  for (const [home, away] of fixtures.slice(0,10)){ // 10 fixtures
+  for (const [home, away] of fixtures.slice(0,10)){
     scheduleEvent('football', { league: leagueKey, home, away });
   }
   STATE.footballRounds[leagueKey] = (round + 1) % 19;
@@ -379,7 +389,6 @@ setInterval(()=>{
     if (ev.status==='OPEN' && t >= ev.locksAt) ev.status='LOCKED';
     if ((ev.status==='LOCKED'||ev.status==='OPEN') && t >= ev.runsAt) runEvent(ev.id);
   }
-  // fill queues
   ['dog','horse','colors','lotto49'].forEach(g=>{
     const future = [...STATE.events.values()].filter(e=>e.game===g && (e.status==='OPEN'||e.status==='LOCKED'));
     if (future.length < 1) scheduleEvent(g);
@@ -433,7 +442,6 @@ app.get('/receipt/:id', async (req,res)=>{
   const bet = STATE.bets.get(req.params.id);
   if (!bet) return res.status(404).send('Not found');
 
-  // Generate barcode PNG as base64
   const code = bet.id.slice(0,8).toUpperCase();
   let barcodePng = '';
   try{
@@ -454,7 +462,7 @@ app.get('/receipt/:id', async (req,res)=>{
   });
 });
 
-// ----------------- Aviator Engine -----------------
+// ----------------- Aviator Engine (Spribe-like pacing) -----------------
 function drawBust(seed){
   const r = mulberry32(seed)();
   const alpha = 3.2, min=1.02;
@@ -463,9 +471,19 @@ function drawBust(seed){
 }
 function roundRef(){ return 'R-' + String(STATE.results.aviator.length+1).padStart(5,'0'); }
 
+// Timing + growth params (mirror frontend)
+const AV = {
+  K: 0.11,                 // growth: m = exp(K * t_sec)  (~6.3s to 2x)
+  MIN_FLIGHT_MS: 5200,     // minimum live flight time before bust allowed
+  BUST_HOLD_MS: 2200,      // show BUST before returning to betting
+  BETTING_MS: 5200,        // betting window
+  LOOP_MS: 100
+};
+
 setInterval(()=>{
   const A = STATE.aviator;
   const now = Date.now();
+
   if (A.phase === 'betting'){
     if (now >= A.nextChangeAt){
       A.phase = 'flying';
@@ -475,37 +493,48 @@ setInterval(()=>{
       A.multiplier = 1.00;
     }
   } else if (A.phase === 'flying'){
-    const dt = (now - A.t0)/1000;
-    // pacing tuned to ~6.9s to 2x (exp(0.10 * t))
-    const speed = 0.10;
-    A.multiplier = Math.max(1.00, Math.exp(speed*dt));
-    // auto cashouts
-    for (const [pid, bet] of A.bets){
-      if (!bet.live || bet.cashed || !bet.autoCashOut) continue;
-      if (A.multiplier >= bet.autoCashOut){
-        bet.cashed = true; bet.live=false;
-        bet.hit = Number(A.multiplier.toFixed(2));
-        bet.payout = Math.min(bet.stake * bet.hit, MAX_PAYOUT);
-        creditPlayer(pid, bet.payout);
-      }
-    }
-    if (A.multiplier >= A.bustAt){
+    const dtSec = (now - A.t0)/1000;
+    const target = Math.max(1.00, Math.exp(AV.K * dtSec));
+
+    // If random bust would occur too early, defer bust until MIN_FLIGHT_MS
+    const mustHold = (now - A.t0) < AV.MIN_FLIGHT_MS;
+    const wouldBust = target >= A.bustAt;
+
+    if (wouldBust && !mustHold){
+      // Commit bust at this tick
       A.phase = 'busted';
+      A.multiplier = Number(target.toFixed(2));
       const m = Number(A.multiplier.toFixed(2));
-      STATE.results.aviator.unshift(m); if (STATE.results.aviator.length>120) STATE.results.aviator.length=120;
+      STATE.results.aviator.unshift(m);
+      if (STATE.results.aviator.length>120) STATE.results.aviator.length=120;
+
       for (const [pid, bet] of A.bets){
         if (bet.live && !bet.cashed){ bet.live=false; bet.payout=0; bet.hit=m; }
       }
-      // short post-bust pause (~4s) before switching back to betting
-      A.nextChangeAt = now + 4000;
+      A.nextChangeAt = now + AV.BUST_HOLD_MS;
+    } else {
+      // keep flying; never exceed the bust line visually
+      A.multiplier = Math.min(target, A.bustAt - 0.001);
+
+      // auto cashouts
+      for (const [pid, bet] of A.bets){
+        if (!bet.live || bet.cashed || !bet.autoCashOut) continue;
+        if (A.multiplier >= bet.autoCashOut){
+          bet.cashed = true; bet.live=false;
+          bet.hit = Number(A.multiplier.toFixed(2));
+          bet.payout = Math.min(bet.stake * bet.hit, MAX_PAYOUT);
+          creditPlayer(pid, bet.payout);
+        }
+      }
     }
+
   } else if (A.phase === 'busted'){
     if (now >= A.nextChangeAt){
       A.phase='betting'; A.multiplier=1.00; A.bets.clear();
-      A.t0=now; A.nextChangeAt = now + 7000; // ~7s betting window before next flight
+      A.t0=now; A.nextChangeAt = now + AV.BETTING_MS;
     }
   }
-}, 100);
+}, AV.LOOP_MS);
 
 app.get('/aviator', (_req,res)=> res.sendFile(path.join(__dirname, 'static', 'aviator.html')));
 app.get('/aviator/state', (req,res)=>{
@@ -562,7 +591,6 @@ app.get('/', (_req,res)=> res.redirect('/static/cashier.html'));
 // ----------------- Boot -----------------
 app.listen(PORT, ()=>{
   console.log(`Mastermind server on :${PORT} (${DOMAIN})`);
-  // seed queues
   ['dog','horse','colors','lotto49'].forEach(g=>{ scheduleEvent(g); });
   ['EPL','LALIGA','UCL'].forEach(L=> seedFootballBatch(L));
 });
