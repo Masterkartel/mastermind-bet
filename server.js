@@ -243,25 +243,6 @@ function buildMarketsForEvent(ev){
     putMarket({ id:uuidv4(), eventId:ev.id, type:'QUINELLA', status:'OPEN',
       selections:Object.keys(quinellaOdds).map(k=>({id:k, name:k.replace('&',' + ')})),
       odds:quinellaOdds });
-
-    const tricastOdds = {}; let count=0; const limit = ev.game==='dog'?60:80;
-    for(let a=1;a<=runners;a++){ for(let b=1;b<=runners;b++){ for(let c=1;c<=runners;c++){
-      if (a===b||b===c||a===c) continue;
-      const p = probs[a-1] * (probs[b-1]/(1-probs[a-1]+1e-9)) * (probs[c-1]/(1-probs[a-1]-probs[b-1]+1e-9));
-      tricastOdds[`R${a}>R${b}>R${c}`] = Number((1/(p*0.82)).toFixed(2)); count++; if(count>=limit) break;
-    }} if(count>=limit) break; }
-    putMarket({ id:uuidv4(), eventId:ev.id, type:'TRICAST', status:'OPEN',
-      selections:Object.keys(tricastOdds).map(k=>({id:k, name:k.replace(/>/g,' → ')})),
-      odds:tricastOdds });
-  }
-
-  if (ev.game==='colors'){
-    const colors = ['RED','BLUE','GREEN','YELLOW','PURPLE','BLACK'];
-    const probs  = [0.18,0.18,0.18,0.16,0.15,0.15];
-    const odds   = addMargin(probs, 0.05).map(x=>Number(x.toFixed(2)));
-    putMarket({ id:uuidv4(), eventId:ev.id, type:'MAIN_COLOR', status:'OPEN',
-      selections:colors.map(c=>({id:c, name:c})),
-      odds:Object.fromEntries(colors.map((c,i)=>[c,odds[i]])) });
   }
 
   if (ev.game==='lotto49'){
@@ -307,7 +288,6 @@ function settleBetsForEvent(ev){
       if (m.type==='MAIN_WIN') won = (bet.selectionId===ev.result.positions[0].id);
       if (m.type==='FORECAST'){ const [a,b] = bet.selectionId.split('>').map(s=>s.trim()); won = (ev.result.positions[0].id===a && ev.result.positions[1].id===b); }
       if (m.type==='QUINELLA'){ const [a,b] = bet.selectionId.split('&').map(s=>s.trim()); const top2 = ev.result.positions.slice(0,2).map(p=>p.id); won = top2.includes(a) && top2.includes(b); }
-      if (m.type==='TRICAST'){ const [a,b,c] = bet.selectionId.split('>').map(s=>s.trim()); const p=ev.result.positions; won = (p[0].id===a && p[1].id===b && p[2].id===c); }
     }
     if (ev.game==='colors' && m.type==='MAIN_COLOR'){ won = (bet.selectionId===ev.result.color); }
     if (ev.game==='lotto49' && m.type==='PICK1'){ won = (String(ev.result.ball)===String(bet.selectionId)); }
@@ -465,7 +445,6 @@ app.get('/receipt/:id', async (req,res)=>{
 
 // ----------------- Aviator Engine -----------------
 function drawBust(seed){
-  // unchanged bust distribution (keeps your house profile)
   const r = mulberry32(seed)();
   const alpha = 3.2, min=1.02;
   const bust = min / Math.pow(1-r, 1/alpha);
@@ -473,15 +452,17 @@ function drawBust(seed){
 }
 function roundRef(){ return 'R-' + String(STATE.results.aviator.length+1).padStart(5,'0'); }
 
-/* Spribe-like pacing:
-   - Fast takeoff, then relax mid-air.
-   - Enforce a short minimum airtime so we don’t “bust before lift-off”.
+/*
+  Spribe-like feel:
+  - Rapid lift-off, then relax mid-air.
+  - Enforce a short minimum airtime so flight is always visible.
+  - Never allow server-side bust before MIN_FLY_MS.
 */
-const AV_SPEED = {
-  FAST: 1.45,       // initial slope (rapid lift-off)
-  SLOW: 0.22,       // mid-air relaxed slope
-  SWITCH_AT_S: 2.1, // seconds after takeoff to change from FAST -> SLOW
-  MIN_FLY_MS: 2600  // don't bust visually before this (prevents instant bust feel)
+const AV_PROFILE = {
+  FAST: 1.10,          // initial slope (very quick takeoff)
+  CRUISE: 0.28,        // relaxed mid-air slope
+  SWITCH_AT_S: 1.1,    // seconds to switch FAST -> CRUISE
+  MIN_FLY_MS: 2600     // minimum time before we allow bust
 };
 
 setInterval(()=>{
@@ -499,12 +480,14 @@ setInterval(()=>{
 
   } else if (A.phase === 'flying'){
     const dt = (now - A.t0)/1000;
+    const speed = dt < AV_PROFILE.SWITCH_AT_S ? AV_PROFILE.FAST : AV_PROFILE.CRUISE;
+    let nextMult = Math.max(1.00, Math.exp(speed * dt));
 
-    // Two-stage speed: fast launch, then relaxed
-    const speed = dt < AV_SPEED.SWITCH_AT_S ? AV_SPEED.FAST : AV_SPEED.SLOW;
-
-    // Exponential growth with time-varying slope (keeps your math model intact)
-    A.multiplier = Math.max(1.00, Math.exp(speed * dt));
+    // Hold slightly below bust until minimum airtime is achieved
+    if (nextMult >= A.bustAt && (now - A.t0) < AV_PROFILE.MIN_FLY_MS){
+      nextMult = Math.min(A.bustAt * 0.985, A.bustAt - 0.01);
+    }
+    A.multiplier = nextMult;
 
     // Auto cashouts (unchanged)
     for (const [pid, bet] of A.bets){
@@ -517,21 +500,21 @@ setInterval(()=>{
       }
     }
 
-    // Bust when both: 1) we’ve flown at least MIN_FLY_MS, and 2) we crossed bustAt
-    if ((now - A.t0) >= AV_SPEED.MIN_FLY_MS && A.multiplier >= A.bustAt){
+    // Bust only after minimum airtime AND mult has reached bustAt
+    if ((now - A.t0) >= AV_PROFILE.MIN_FLY_MS && A.multiplier >= A.bustAt){
       A.phase = 'busted';
       const m = Number(A.multiplier.toFixed(2));
       STATE.results.aviator.unshift(m); if (STATE.results.aviator.length>120) STATE.results.aviator.length=120;
       for (const [pid, bet] of A.bets){
         if (bet.live && !bet.cashed){ bet.live=false; bet.payout=0; bet.hit=m; }
       }
-      A.nextChangeAt = now + 3000; // hold BUST on screen a bit
+      A.nextChangeAt = now + 3000; // show BUST a bit
     }
 
   } else if (A.phase === 'busted'){
     if (now >= A.nextChangeAt){
       A.phase='betting'; A.multiplier=1.00; A.bets.clear();
-      A.t0=now; A.nextChangeAt = now + 5000; // betting window (standby)
+      A.t0=now; A.nextChangeAt = now + 5000; // betting window
     }
   }
 }, 100);
@@ -584,6 +567,7 @@ app.post('/aviator/cashout', (req,res)=>{
   creditPlayer(playerId, bet.payout);
   res.json({ ok:true, multiplier: bet.hit, payout: Number(bet.payout.toFixed(2)), balance: ensurePlayer(playerId).balance });
 });
+
 // ----------------- Root -----------------
 app.get('/', (_req,res)=> res.redirect('/static/cashier.html'));
 
