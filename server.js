@@ -465,6 +465,7 @@ app.get('/receipt/:id', async (req,res)=>{
 
 // ----------------- Aviator Engine -----------------
 function drawBust(seed){
+  // unchanged bust distribution (keeps your house profile)
   const r = mulberry32(seed)();
   const alpha = 3.2, min=1.02;
   const bust = min / Math.pow(1-r, 1/alpha);
@@ -472,9 +473,21 @@ function drawBust(seed){
 }
 function roundRef(){ return 'R-' + String(STATE.results.aviator.length+1).padStart(5,'0'); }
 
+/* Spribe-like pacing:
+   - Fast takeoff, then relax mid-air.
+   - Enforce a short minimum airtime so we don’t “bust before lift-off”.
+*/
+const AV_SPEED = {
+  FAST: 1.45,       // initial slope (rapid lift-off)
+  SLOW: 0.22,       // mid-air relaxed slope
+  SWITCH_AT_S: 2.1, // seconds after takeoff to change from FAST -> SLOW
+  MIN_FLY_MS: 2600  // don't bust visually before this (prevents instant bust feel)
+};
+
 setInterval(()=>{
   const A = STATE.aviator;
   const now = Date.now();
+
   if (A.phase === 'betting'){
     if (now >= A.nextChangeAt){
       A.phase = 'flying';
@@ -483,11 +496,17 @@ setInterval(()=>{
       A.bustAt = drawBust(A.seed);
       A.multiplier = 1.00;
     }
+
   } else if (A.phase === 'flying'){
     const dt = (now - A.t0)/1000;
-    const speed = 0.12; // ~6s to 2x (slower, Spribe-like pacing)
-    A.multiplier = Math.max(1.00, Math.exp(speed*dt));
-    // auto cashouts
+
+    // Two-stage speed: fast launch, then relaxed
+    const speed = dt < AV_SPEED.SWITCH_AT_S ? AV_SPEED.FAST : AV_SPEED.SLOW;
+
+    // Exponential growth with time-varying slope (keeps your math model intact)
+    A.multiplier = Math.max(1.00, Math.exp(speed * dt));
+
+    // Auto cashouts (unchanged)
     for (const [pid, bet] of A.bets){
       if (!bet.live || bet.cashed || !bet.autoCashOut) continue;
       if (A.multiplier >= bet.autoCashOut){
@@ -497,19 +516,22 @@ setInterval(()=>{
         creditPlayer(pid, bet.payout);
       }
     }
-    if (A.multiplier >= A.bustAt){
+
+    // Bust when both: 1) we’ve flown at least MIN_FLY_MS, and 2) we crossed bustAt
+    if ((now - A.t0) >= AV_SPEED.MIN_FLY_MS && A.multiplier >= A.bustAt){
       A.phase = 'busted';
       const m = Number(A.multiplier.toFixed(2));
       STATE.results.aviator.unshift(m); if (STATE.results.aviator.length>120) STATE.results.aviator.length=120;
       for (const [pid, bet] of A.bets){
         if (bet.live && !bet.cashed){ bet.live=false; bet.payout=0; bet.hit=m; }
       }
-      A.nextChangeAt = now + 3000;
+      A.nextChangeAt = now + 3000; // hold BUST on screen a bit
     }
+
   } else if (A.phase === 'busted'){
     if (now >= A.nextChangeAt){
       A.phase='betting'; A.multiplier=1.00; A.bets.clear();
-      A.t0=now; A.nextChangeAt = now + 5000;
+      A.t0=now; A.nextChangeAt = now + 5000; // betting window (standby)
     }
   }
 }, 100);
@@ -562,7 +584,6 @@ app.post('/aviator/cashout', (req,res)=>{
   creditPlayer(playerId, bet.payout);
   res.json({ ok:true, multiplier: bet.hit, payout: Number(bet.payout.toFixed(2)), balance: ensurePlayer(playerId).balance });
 });
-
 // ----------------- Root -----------------
 app.get('/', (_req,res)=> res.redirect('/static/cashier.html'));
 
