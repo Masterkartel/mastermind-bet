@@ -92,7 +92,29 @@ const STATE = {
   results: { football:[], dog:[], horse:[], colors:[], lotto49:[], aviator:[] },
   cashiers: new Map(),       // cashierId -> {balance}
   players: new Map(),        // playerId  -> {balance}
-  aviator: { phase:'betting', multiplier:1.00, history:[], t0:Date.now(), nextChangeAt:Date.now()+5000, seed:Math.floor(Math.random()*2**31), bustAt:5.0, bets:new Map() }
+
+  // ---- Aviator timing tuned to Spribe-like pacing ----
+  // Multiplier: m(t) = exp(SPEED * t)
+  // Windows: betting wait, minimum time airborne before bust can appear, short bust hold.
+  aviator: {
+    phase: 'betting',
+    multiplier: 1.00,
+    history: [],
+    t0: Date.now(),
+    nextChangeAt: Date.now() + 5000,
+    seed: Math.floor(Math.random()*2**31),
+    bustAt: 5.0,
+    bets: new Map()
+  }
+};
+
+// Tunable pacing (frontend references SPEED to sync visuals)
+const AVIATOR_CFG = {
+  SPEED: 0.46,          // exponential growth rate (Spribe-like feel)
+  MIN_BET_MS: 4500,     // waiting window ("Place your bets…")
+  MIN_FLY_MS: 5500,     // minimum time airborne before we can show bust
+  BUST_HOLD_MS: 2000,   // keep "FLEW AWAY" on screen before next betting
+  MAX_BUST: 50
 };
 
 function ensureCashier(id){ if(!STATE.cashiers.has(id)) STATE.cashiers.set(id,{balance:0}); return STATE.cashiers.get(id); }
@@ -243,6 +265,25 @@ function buildMarketsForEvent(ev){
     putMarket({ id:uuidv4(), eventId:ev.id, type:'QUINELLA', status:'OPEN',
       selections:Object.keys(quinellaOdds).map(k=>({id:k, name:k.replace('&',' + ')})),
       odds:quinellaOdds });
+
+    const tricastOdds = {}; let count=0; const limit = ev.game==='dog'?60:80;
+    for(let a=1;a<=runners;a++){ for(let b=1;b<=runners;b++){ for(let c=1;c<=runners;c++){
+      if (a===b||b===c||a===c) continue;
+      const p = probs[a-1] * (probs[b-1]/(1-probs[a-1]+1e-9)) * (probs[c-1]/(1-probs[a-1]-probs[b-1]+1e-9));
+      tricastOdds[`R${a}>R${b}>R${c}`] = Number((1/(p*0.82)).toFixed(2)); count++; if(count>=limit) break;
+    }} if(count>=limit) break; }
+    putMarket({ id:uuidv4(), eventId:ev.id, type:'TRICAST', status:'OPEN',
+      selections:Object.keys(tricastOdds).map(k=>({id:k, name:k.replace(/>/g,' → ')})),
+      odds:tricastOdds });
+  }
+
+  if (ev.game==='colors'){
+    const colors = ['RED','BLUE','GREEN','YELLOW','PURPLE','BLACK'];
+    const probs  = [0.18,0.18,0.18,0.16,0.15,0.15];
+    const odds   = addMargin(probs, 0.05).map(x=>Number(x.toFixed(2)));
+    putMarket({ id:uuidv4(), eventId:ev.id, type:'MAIN_COLOR', status:'OPEN',
+      selections:colors.map(c=>({id:c, name:c})),
+      odds:Object.fromEntries(colors.map((c,i)=>[c,odds[i]])) });
   }
 
   if (ev.game==='lotto49'){
@@ -288,6 +329,7 @@ function settleBetsForEvent(ev){
       if (m.type==='MAIN_WIN') won = (bet.selectionId===ev.result.positions[0].id);
       if (m.type==='FORECAST'){ const [a,b] = bet.selectionId.split('>').map(s=>s.trim()); won = (ev.result.positions[0].id===a && ev.result.positions[1].id===b); }
       if (m.type==='QUINELLA'){ const [a,b] = bet.selectionId.split('&').map(s=>s.trim()); const top2 = ev.result.positions.slice(0,2).map(p=>p.id); won = top2.includes(a) && top2.includes(b); }
+      if (m.type==='TRICAST'){ const [a,b,c] = bet.selectionId.split('>').map(s=>s.trim()); const p=ev.result.positions; won = (p[0].id===a && p[1].id===b && p[2].id===c); }
     }
     if (ev.game==='colors' && m.type==='MAIN_COLOR'){ won = (bet.selectionId===ev.result.color); }
     if (ev.game==='lotto49' && m.type==='PICK1'){ won = (String(ev.result.ball)===String(bet.selectionId)); }
@@ -361,14 +403,26 @@ function seedFootballBatch(leagueKey){
   STATE.footballRounds[leagueKey] = (round + 1) % 19;
 }
 
+// ----------------- Aviator Helpers -----------------
+function drawBust(seed){
+  const r = mulberry32(seed)();
+  const alpha = 3.2, min=1.02;
+  const bust = min / Math.pow(1-r, 1/alpha);
+  return Math.max(1.01, Math.min(bust, AVIATOR_CFG.MAX_BUST));
+}
+function roundRef(){ return 'R-' + String(STATE.results.aviator.length+1).padStart(5,'0'); }
+
 // ----------------- Ticker -----------------
 setInterval(()=>{
   const t = NOW();
+
+  // Timer for pre-scheduled games
   for (const ev of STATE.events.values()){
     if (ev.status==='OPEN' && t >= ev.locksAt) ev.status='LOCKED';
     if ((ev.status==='LOCKED'||ev.status==='OPEN') && t >= ev.runsAt) runEvent(ev.id);
   }
-  // fill queues
+
+  // Keep queues filled
   ['dog','horse','colors','lotto49'].forEach(g=>{
     const future = [...STATE.events.values()].filter(e=>e.game===g && (e.status==='OPEN'||e.status==='LOCKED'));
     if (future.length < 1) scheduleEvent(g);
@@ -377,7 +431,56 @@ setInterval(()=>{
     const future = [...STATE.events.values()].filter(e=>e.game==='football' && e.league===L && (e.status==='OPEN'||e.status==='LOCKED'));
     if (future.length < 10) seedFootballBatch(L);
   });
-}, 1000);
+
+  // ---- Aviator engine (Spribe-like pacing) ----
+  const A = STATE.aviator;
+
+  if (A.phase === 'betting'){
+    if (t >= A.nextChangeAt){
+      A.phase = 'flying';
+      A.t0 = t;
+      A.seed = (A.seed + 1) >>> 0;
+      A.bustAt = drawBust(A.seed);
+      A.multiplier = 1.00;
+    }
+  } else if (A.phase === 'flying'){
+    const dtMs = t - A.t0;
+    const mCand = Math.max(1.00, Math.exp(AVIATOR_CFG.SPEED * (dtMs/1000)));
+    // Freeze at bust value if we reach it early, but keep flying until MIN_FLY_MS passes
+    A.multiplier = Math.min(mCand, A.bustAt);
+
+    // Auto-cashouts
+    for (const [pid, bet] of A.bets){
+      if (!bet.live || bet.cashed || !bet.autoCashOut) continue;
+      if (A.multiplier >= bet.autoCashOut){
+        bet.cashed = true; bet.live=false;
+        bet.hit = Number(A.multiplier.toFixed(2));
+        bet.payout = Math.min(bet.stake * bet.hit, MAX_PAYOUT);
+        creditPlayer(pid, bet.payout);
+      }
+    }
+
+    // Switch to BUST only after minimum flight time
+    if (mCand >= A.bustAt && dtMs >= AVIATOR_CFG.MIN_FLY_MS){
+      A.phase = 'busted';
+      const m = Number(A.bustAt.toFixed(2));
+      STATE.results.aviator.unshift(m); if (STATE.results.aviator.length>120) STATE.results.aviator.length=120;
+      for (const [pid, bet] of A.bets){
+        if (bet.live && !bet.cashed){ bet.live=false; bet.payout=0; bet.hit=m; }
+      }
+      A.nextChangeAt = t + AVIATOR_CFG.BUST_HOLD_MS;
+      A.multiplier = A.bustAt; // show exact bust value during hold
+    }
+  } else if (A.phase === 'busted'){
+    if (t >= A.nextChangeAt){
+      A.phase='betting';
+      A.multiplier=1.00;
+      A.bets.clear();
+      A.t0=t;
+      A.nextChangeAt = t + AVIATOR_CFG.MIN_BET_MS;
+    }
+  }
+}, 100);
 
 // ----------------- API: Common -----------------
 app.get('/health', (req,res)=> res.json({ ok:true, ts:Date.now(), sha:BUILD_SHA }));
@@ -443,82 +546,7 @@ app.get('/receipt/:id', async (req,res)=>{
   });
 });
 
-// ----------------- Aviator Engine -----------------
-function drawBust(seed){
-  const r = mulberry32(seed)();
-  const alpha = 3.2, min=1.02;
-  const bust = min / Math.pow(1-r, 1/alpha);
-  return Math.max(1.01, Math.min(bust, 50));
-}
-function roundRef(){ return 'R-' + String(STATE.results.aviator.length+1).padStart(5,'0'); }
-
-/*
-  Spribe-like feel:
-  - Rapid lift-off, then relax mid-air.
-  - Enforce a short minimum airtime so flight is always visible.
-  - Never allow server-side bust before MIN_FLY_MS.
-*/
-const AV_PROFILE = {
-  FAST: 1.10,          // initial slope (very quick takeoff)
-  CRUISE: 0.28,        // relaxed mid-air slope
-  SWITCH_AT_S: 1.1,    // seconds to switch FAST -> CRUISE
-  MIN_FLY_MS: 2600     // minimum time before we allow bust
-};
-
-setInterval(()=>{
-  const A = STATE.aviator;
-  const now = Date.now();
-
-  if (A.phase === 'betting'){
-    if (now >= A.nextChangeAt){
-      A.phase = 'flying';
-      A.t0 = now;
-      A.seed = (A.seed + 1) >>> 0;
-      A.bustAt = drawBust(A.seed);
-      A.multiplier = 1.00;
-    }
-
-  } else if (A.phase === 'flying'){
-    const dt = (now - A.t0)/1000;
-    const speed = dt < AV_PROFILE.SWITCH_AT_S ? AV_PROFILE.FAST : AV_PROFILE.CRUISE;
-    let nextMult = Math.max(1.00, Math.exp(speed * dt));
-
-    // Hold slightly below bust until minimum airtime is achieved
-    if (nextMult >= A.bustAt && (now - A.t0) < AV_PROFILE.MIN_FLY_MS){
-      nextMult = Math.min(A.bustAt * 0.985, A.bustAt - 0.01);
-    }
-    A.multiplier = nextMult;
-
-    // Auto cashouts (unchanged)
-    for (const [pid, bet] of A.bets){
-      if (!bet.live || bet.cashed || !bet.autoCashOut) continue;
-      if (A.multiplier >= bet.autoCashOut){
-        bet.cashed = true; bet.live=false;
-        bet.hit = Number(A.multiplier.toFixed(2));
-        bet.payout = Math.min(bet.stake * bet.hit, MAX_PAYOUT);
-        creditPlayer(pid, bet.payout);
-      }
-    }
-
-    // Bust only after minimum airtime AND mult has reached bustAt
-    if ((now - A.t0) >= AV_PROFILE.MIN_FLY_MS && A.multiplier >= A.bustAt){
-      A.phase = 'busted';
-      const m = Number(A.multiplier.toFixed(2));
-      STATE.results.aviator.unshift(m); if (STATE.results.aviator.length>120) STATE.results.aviator.length=120;
-      for (const [pid, bet] of A.bets){
-        if (bet.live && !bet.cashed){ bet.live=false; bet.payout=0; bet.hit=m; }
-      }
-      A.nextChangeAt = now + 3000; // show BUST a bit
-    }
-
-  } else if (A.phase === 'busted'){
-    if (now >= A.nextChangeAt){
-      A.phase='betting'; A.multiplier=1.00; A.bets.clear();
-      A.t0=now; A.nextChangeAt = now + 5000; // betting window
-    }
-  }
-}, 100);
-
+// ----------------- Aviator API -----------------
 app.get('/aviator', (_req,res)=> res.sendFile(path.join(__dirname, 'static', 'aviator.html')));
 app.get('/aviator/state', (req,res)=>{
   const A = STATE.aviator;
@@ -530,7 +558,8 @@ app.get('/aviator/state', (req,res)=>{
     roundId: roundRef(),
     status: phaseMap[A.phase],
     liveMultiplier: Number(A.multiplier.toFixed(2)),
-    bust: Number(A.bustAt.toFixed(2))
+    bust: Number(A.bustAt.toFixed(2)),
+    speed: AVIATOR_CFG.SPEED     // expose for frontend sync
   });
 });
 app.post('/aviator/wallet/load', (req,res)=>{
