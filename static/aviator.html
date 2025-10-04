@@ -220,11 +220,11 @@ function multFromProgress(t){
   return Math.exp(9 * Math.max(0, Math.min(1, t)));  
 }  
   
-// separate progress so plane = 3x faster, odds = 3x slower  
+// separate progress so plane & odds can move at different speeds  
 let progressPlane = 0;  
 let progressOdds  = 0;  
   
-// base pacing (same shape as before)  
+// base pacing (shape kept the same)  
 const BASE_FAST = 0.060; // initial snappy climb
 const BASE_SLOW = 0.012; // relaxed mid-air
 function lerp(a,b,t){ return a + (b-a)*t; }  
@@ -291,7 +291,10 @@ function draw(multPlane, multOdds, phase){
   else centerText.textContent = multOdds?`${Number(multOdds).toFixed(2)}x`:``;  
 }  
   
-/* animation loop — plane faster, odds slower */  
+/* animation loop — UPDATED SPEEDS:
+   - plane speed is now 50× the previous plane speed
+   - odds speed is now 5× slower than the previous odds speed
+*/
 let lastAnimTs = performance.now();  
 function animate(now){  
   const dt = (now - lastAnimTs) / 1000;  
@@ -304,9 +307,9 @@ function animate(now){
   const ease = Math.min(1, Math.pow(targetProgress, 0.7));  
   const effBase = lerp(BASE_FAST, BASE_SLOW, ease);  
 
-  // plane 3x faster, odds 3x slower
-  const maxPlane = effBase * 3;  
-  const maxOdds  = effBase / 3;  
+  // *** Only these two lines changed as requested ***
+  const maxPlane = effBase * 150;   // (old was effBase*3) => 50x faster than before
+  const maxOdds  = effBase / 15;    // (old was effBase/3) => 5x slower than before
 
   const stepPlane = Math.max(-maxPlane*dt, Math.min(maxPlane*dt, targetProgress - progressPlane));  
   const stepOdds  = Math.max(-maxOdds*dt,  Math.min(maxOdds*dt,  targetProgress - progressOdds));  
