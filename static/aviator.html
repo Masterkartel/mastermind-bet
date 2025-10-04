@@ -154,7 +154,7 @@ input[type="number"]{width:100%;padding:10px;border-radius:10px;border:1px solid
 </div>
 
   </div>  <script>  
-const api  = location.origin.replace(/:\\d+$/, ':4000');  
+const api  = location.origin.replace(/:\d+$/, ':4000');  
 const KES  = x => new Intl.NumberFormat('en-KE',{style:'currency',currency:'KES'}).format(Number(x||0));  
 const clamp= (n,min,max)=> Math.max(min, Math.min(max,n));  
   
