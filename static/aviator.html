@@ -292,8 +292,7 @@ function animate(now){
   const delta = Math.max(-maxStep, Math.min(maxStep, targetProgress - progressVis));
   progressVis += delta;
 
-  // during betting reset to 0 so plane starts from true bottom-left
-  if (STATE.phase!=='flying') progressVis = 0;
+  // NOTE: removed the per-frame reset here
 
   const fakeMultForDraw = multFromProgress(progressVis);
   draw(fakeMultForDraw, STATE.phase);
@@ -329,7 +328,9 @@ async function poll(){
                        (j.liveMultiplier!=null? Number(j.liveMultiplier):1);
     const history = Array.isArray(j.history)? j.history : [];
 
-    // when flight starts, let progressVis start from 0 (handled in animate)
+    // reset progress only when a NEW flight starts
+    if (lastPhase!=='flying' && phase==='flying') { progressVis = 0; }
+
     if (lastPhase!=='busted' && phase==='busted'){ markAllLiveAsLost(multiplier); }
 
     STATE = { phase, multiplier, history };
