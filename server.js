@@ -1,149 +1,191 @@
-// server.js — Mastermind Bet (Virtuals ++ 2025-10-04)
-// Node 18+, ESM. Requires: express, cors, uuid, ejs, bwip-js, node-thermal-printer
-// New: multi-fixture Football scheduler (10 fixtures/league cycle), dedicated Aviator engine,
-//      improved endpoints for Aviator (no odds), receipts, KES shop rules.
+// server.js — Mastermind Bet (Virtuals ++, clean build)
+// Node 18+, ESM. package.json MUST contain:  { "type": "module" }
+// Requires: express, cors, uuid, ejs, bwip-js
+// Optional: node-thermal-printer (guarded)
 
 import express from 'express';
 import cors from 'cors';
 import { v4 as uuidv4 } from 'uuid';
 import bwipjs from 'bwip-js';
-import path from 'path';
 import fs from 'fs';
+import path from 'path';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
-import path from 'path';
-import { fileURLToPath } from 'url';
-const __filename = typeof __filename !== 'undefined' ? __filename : fileURLToPath(import.meta.url);
-const __dirname  = typeof __dirname  !== 'undefined'  ? __dirname  : path.dirname(__filename);
+
 const require = createRequire(import.meta.url);
-const ThermalPrinter = require('node-thermal-printer').printer;
-const PrinterTypes = require('node-thermal-printer').types;
+let ThermalPrinter = null, PrinterTypes = null;
+try {
+  const tp = require('node-thermal-printer');
+  ThermalPrinter = tp.printer;
+  PrinterTypes  = tp.types;
+} catch { /* printer is optional, ignore if not installed */ }
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname  = path.dirname(__filename);
 
+// ----------------- App & Config -----------------
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use('/static', express.static(path.join(__dirname, 'static')));
-app.get('/', (req,res)=> res.redirect('/static/cashier.html'));
-app.get('/aviator', (req,res)=> res.sendFile(path.join(__dirname, 'static', 'aviator.html')));
-if (!app._router?.stack?.some(s => s?.route?.path === '/static' || s?.name === 'serveStatic')) {
-  app.use('/static', (await import('express')).default.static(path.join(__dirname, 'static')));
+
+const PORT       = process.env.PORT || 4000;
+const DOMAIN     = process.env.DOMAIN || 'mastermind-bet.com';
+const CURRENCY   = 'KES';
+const BUILD_SHA  = process.env.BUILD_SHA || 'local';
+const PRINTER_ON = String(process.env.PRINTER_ENABLED||'false') === 'true';
+
+const MIN_STAKE = 20;
+const MAX_STAKE = 1000;
+const MAX_PAYOUT = 20000;
+
+// ----------------- Utils -----------------
+const NOW = () => Date.now();
+const MS = { s: 1000, m: 60000 };
+function mulberry32(a) {
+  return function () {
+    let t = (a += 0x6D2B79F5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
-// ---- Config ----
-const PORT = process.env.PORT || 4000;
-const DOMAIN = process.env.DOMAIN || 'mastermind-bet.com';
-const CURRENCY = process.env.CURRENCY || 'KES';
-const BUILD_SHA = process.env.BUILD_SHA || 'local';
+const softmax = (arr) => {
+  const m = Math.max(...arr);
+  const exps = arr.map((v) => Math.exp(v - m));
+  const s = exps.reduce((a, b) => a + b, 0);
+  return exps.map((e) => e / s);
+};
+const addMargin = (probs, margin = 0.08) =>
+  probs.map((p) => p * (1 - margin)).map((p) => (p <= 0 ? 1000 : 1 / p));
+function sampleIndex(probabilities, rand) {
+  const r = rand();
+  let acc = 0;
+  for (let i = 0; i < probabilities.length; i++) {
+    acc += probabilities[i];
+    if (r <= acc) return i;
+  }
+  return probabilities.length - 1;
+}
+function poisson(lambda, rand) {
+  const L = Math.exp(-lambda);
+  let k = 0, p = 1;
+  do { k++; p *= rand(); } while (p > L);
+  return k - 1;
+}
 
-const PRINTER_ENABLED = String(process.env.PRINTER_ENABLED||'false')==='true';
-const PRINTER_HOST = process.env.PRINTER_HOST || '127.0.0.1';
-const PRINTER_PORT = Number(process.env.PRINTER_PORT || 9100);
+// ----------------- Data -----------------
+const LEAGUES = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'data', 'leagues.json'), 'utf-8')
+);
 
-const MIN_STAKE = 20, MAX_STAKE = 1000, MAX_PAYOUT = 20000;
-
-// ---- Helpers ----
-const NOW = ()=>Date.now();
-const MS = { s:1000, m:60000 };
-const fmtMoney = (x)=> new Intl.NumberFormat('en-KE',{style:'currency',currency:'KES'}).format(Number(x||0));
-function mulberry32(a){ return function(){ let t=(a+=0x6D2B79F5); t=Math.imul(t^(t>>>15),t|1); t^=t+Math.imul(t^(t>>>7),t|61); return ((t^(t>>>14))>>>0)/4294967296; }; }
-const softmax = arr => { const m=Math.max(...arr); const exps=arr.map(v=>Math.exp(v-m)); const s=exps.reduce((a,b)=>a+b,0); return exps.map(e=>e/s); };
-const addMargin = (probs, margin=0.08)=> probs.map(p=>p*(1-margin)).map(p=> p<=0?1000:1/p);
-const sampleIndex = (probs, rand)=>{ const r=rand(); let a=0; for(let i=0;i<probs.length;i++){ a+=probs[i]; if(r<=a) return i; } return probs.length-1; };
-function poisson(lambda, rand){ const L=Math.exp(-lambda); let k=0,p=1; do{ k++; p*=rand(); } while(p>L); return k-1; }
-
-// ---- Data (leagues) ----
-const LEAGUES = JSON.parse(fs.readFileSync(path.join(__dirname,'data','leagues.json'),'utf-8'));
-
-// ---- State ----
+// ----------------- In-memory State -----------------
 const STATE = {
   games: ['football','dog','horse','colors','lotto49','aviator'],
-  events: new Map(),          // id -> event
-  markets: new Map(),         // id -> market
-  marketsByEvent: new Map(),  // eventId -> [marketId]
+  events: new Map(),         // id -> event
+  markets: new Map(),        // id -> market
+  marketsByEvent: new Map(), // eventId -> [marketId]
   footballRounds: { EPL:0, LALIGA:0, UCL:0 },
-  bets: new Map(),
+  bets: new Map(),           // id -> bet
   results: { football:[], dog:[], horse:[], colors:[], lotto49:[], aviator:[] },
-  cashiers: new Map(),
-  players: new Map(),
-  aviator: { roundId:null, status:'IDLE', startedAt:0, bustAt:0, liveMultiplier:1.0, tickets:[] } // tickets: array of {playerId,...}
+  cashiers: new Map(),       // cashierId -> {balance}
+  players: new Map(),        // playerId  -> {balance}
+  aviator: { phase:'betting', multiplier:1.00, history:[], t0:Date.now(), nextChangeAt:Date.now()+5000, seed:Math.floor(Math.random()*2**31), bustAt:5.0, bets:new Map() }
 };
 
+function ensureCashier(id){ if(!STATE.cashiers.has(id)) STATE.cashiers.set(id,{balance:0}); return STATE.cashiers.get(id); }
+function creditCashier(id,amt){ ensureCashier(id).balance += Number(amt)||0; }
+function ensurePlayer(id){ if(!STATE.players.has(id)) STATE.players.set(id,{balance:0}); return STATE.players.get(id); }
+function creditPlayer(id,amt){ ensurePlayer(id).balance += Number(amt)||0; }
+function debitPlayer(id,amt){ const u=ensurePlayer(id); if (u.balance < amt) return false; u.balance -= amt; return true; }
+
+// cycles
 const CYCLE = { football:180*MS.s, dog:120*MS.s, horse:120*MS.s, colors:60*MS.s, lotto49:60*MS.s };
 const LOCK_OFFSET = 10*MS.s;
 
-// ---- Cashiers & Players ----
-function ensureCashier(id){ if(!STATE.cashiers.has(id)) STATE.cashiers.set(id,{balance:0}); return STATE.cashiers.get(id); }
-function creditCashier(id,amt){ ensureCashier(id).balance += Number(amt)||0; }
-function debitCashier(id,amt){ ensureCashier(id).balance -= Number(amt)||0; if(ensureCashier(id).balance<0) ensureCashier(id).balance=0; }
-function ensurePlayer(id){ if(!STATE.players.has(id)) STATE.players.set(id,{balance:0}); return STATE.players.get(id); }
-function creditPlayer(id,amt){ ensurePlayer(id).balance += Number(amt)||0; }
-function debitPlayer(id,amt){ ensurePlayer(id).balance -= Number(amt)||0; if(ensurePlayer(id).balance<0) ensurePlayer(id).balance=0; }
-
-// ---- Core builders ----
-function putMarket(m){ STATE.markets.set(m.id,m); if(!STATE.marketsByEvent.has(m.eventId)) STATE.marketsByEvent.set(m.eventId,[]); STATE.marketsByEvent.get(m.eventId).push(m.id); }
-function scheduleEvent(game, extra={}){
-  const id=uuidv4(); const seed=Math.floor(Math.random()*2**32); const startsAt=NOW();
-  const runsAt=startsAt+CYCLE[game]; const locksAt=runsAt-LOCK_OFFSET;
-  const ev = { id, game, status:'OPEN', seed, startsAt, locksAt, runsAt, result:null, audit:[], ...extra };
-  STATE.events.set(id, ev); buildMarketsForEvent(ev); return ev;
+// ----------------- Builders -----------------
+function putMarket(m){
+  STATE.markets.set(m.id, m);
+  if(!STATE.marketsByEvent.has(m.eventId)) STATE.marketsByEvent.set(m.eventId, []);
+  STATE.marketsByEvent.get(m.eventId).push(m.id);
 }
-function pushResult(game, data){ const arr=STATE.results[game]; arr.unshift({ts:Date.now(), ...data}); if(arr.length>20) arr.length=20; }
+function scheduleEvent(game, extra = {}){
+  const id = uuidv4();
+  const seed = Math.floor(Math.random()*2**32);
+  const startsAt = NOW();
+  const runsAt   = startsAt + CYCLE[game];
+  const locksAt  = runsAt - LOCK_OFFSET;
+  const ev = { id, game, status:'OPEN', seed, startsAt, locksAt, runsAt, result:null, audit:[], ...extra };
+  STATE.events.set(id, ev);
+  buildMarketsForEvent(ev);
+  return ev;
+}
+function pushResult(game, data){
+  const arr = STATE.results[game];
+  arr.unshift({ ts: Date.now(), ...data });
+  if (arr.length > 30) arr.length = 30;
+}
 
-// ---- Football fixtures (round-robin) ----
+// Football fixtures (round-robin pairings)
 function generateRoundFixtures(leagueKey, roundIdx){
   const teams = LEAGUES[leagueKey].map(([name,abbr])=>({name,abbr}));
-  // standard Berger algorithm
-  const n = teams.length; const list = teams.slice();
-  if (n%2===1) list.push({name:'BYE',abbr:'BYE'});
-  const half = list.length/2;
-  // produce pairings for a specific round
-  const left = list.slice(0,half);
-  const right = list.slice(half).reverse();
-  // rotate by roundIdx
+  const list = teams.slice();
+  if (list.length % 2 === 1) list.push({name:'BYE', abbr:'BYE'});
+  const n = list.length, half = n/2;
+
+  // create arrays we can rotate
+  let left = list.slice(0, half);
+  let right = list.slice(half).reverse();
+
+  // rotate roundIdx times
   for (let r=0; r<roundIdx; r++){
-    // rotation step
     const keep = left[0];
-    const l = left.slice(1); l.push(right[0]); right.shift(); right.push(left[left.length-1]); left.length=1; left.push(...l);
-    left[0] = keep;
+    const l = left.slice(1);
+    const firstRight = right[0];
+    right = right.slice(1).concat(l[l.length-1]);
+    left  = [keep, ...l.slice(0, l.length-1), firstRight];
   }
-  const fixtures=[];
+
+  const fixtures = [];
   for (let i=0;i<half;i++){
     const A = left[i], B = right[i];
     if (A.abbr!=='BYE' && B.abbr!=='BYE') fixtures.push([A,B]);
   }
-  return fixtures; // ~10 games for 20 teams
+  return fixtures; // ~10 fixtures if 20 teams
 }
 
-// ---- Market builders ----
 function buildMarketsForEvent(ev){
   const rand = mulberry32(ev.seed);
 
-  if (ev.game==='football'){
-    // Expect ev.home/away/league already set by scheduler
+  if (ev.game === 'football'){
     const { home, away, league } = ev;
-    // team strengths
     const homeAtk = 1.1 + rand()*0.6, homeDef = 1.0 + rand()*0.5;
     const awayAtk = 1.0 + rand()*0.6, awayDef = 1.1 + rand()*0.5;
     const lamH = 1.35 * homeAtk / awayDef;
     const lamA = 1.10 * awayAtk / homeDef;
-    // simulate probs
+
     let H=0,D=0,A=0,BTTSy=0,H15=0,A15=0; const trials=3000; const r2=mulberry32(ev.seed^0x55aa);
-    function poiss(l){ return poisson(l,r2); }
-    for(let t=0;t<trials;t++){ const gh=poiss(lamH), ga=poiss(lamA); if(gh>ga) H++; else if(gh<ga) A++; else D++; if(gh>0&&ga>0) BTTSy++; if(gh>=2) H15++; if(ga>=2) A15++; }
-    const pH=H/trials, pD=D/trials, pA=A/trials, pBTTSy=BTTSy/trials;
+    for(let t=0;t<trials;t++){
+      const gh=poisson(lamH,r2), ga=poisson(lamA,r2);
+      if (gh>ga) H++; else if (gh<ga) A++; else D++;
+      if (gh>0 && ga>0) BTTSy++;
+      if (gh>=2) H15++; if (ga>=2) A15++;
+    }
+    const pH=H/trials, pD=D/trials, pA=A/trials;
     function poissCdf(k,lam){ let p=Math.exp(-lam); if(k===0) return p; let acc=p; for(let i=1;i<=k;i++){ p=p*lam/i; acc+=p; } return acc; }
-    const lamT=lamH+lamA; const pOver15 = 1 - poissCdf(1,lamT), pOver25 = 1 - poissCdf(2,lamT);
+    const lamT = lamH + lamA;
+    const pOver15 = 1 - poissCdf(1, lamT);
+    const pOver25 = 1 - poissCdf(2, lamT);
     const odds1x2 = addMargin([pH,pD,pA], 0.07).map(x=>Number(x.toFixed(2)));
     const oddsOU15= addMargin([pOver15,1-pOver15],0.05).map(x=>Number(x.toFixed(2)));
     const oddsOU25= addMargin([pOver25,1-pOver25],0.05).map(x=>Number(x.toFixed(2)));
-    const oddsBTTS= addMargin([pBTTSy,1-pBTTSy],0.05).map(x=>Number(x.toFixed(2)));
+    const oddsBTTS= addMargin([BTTSy/trials,1-BTTSy/trials],0.05).map(x=>Number(x.toFixed(2)));
     const oddsHomeOU15 = addMargin([H15/trials, 1-H15/trials],0.06).map(x=>Number(x.toFixed(2)));
     const oddsAwayOU15 = addMargin([A15/trials, 1-A15/trials],0.06).map(x=>Number(x.toFixed(2)));
-    function comboOdds(sel, overProb){ const p = (sel==='H'?pH: sel==='D'?pD:pA) * overProb; return Number((1/(p*0.90)).toFixed(2)); }
+
+    function comboOdds(sel, overProb){ const base = (sel==='H'?pH: sel==='D'?pD:pA) * overProb; return Number((1/(base*0.90)).toFixed(2)); }
     const oddsCombo15 = { 'H&OV15': comboOdds('H',pOver15), 'D&OV15': comboOdds('D',pOver15), 'A&OV15': comboOdds('A',pOver15),
                           'H&UN15': comboOdds('H',1-pOver15), 'D&UN15': comboOdds('D',1-pOver15), 'A&UN15': comboOdds('A',1-pOver15) };
     const oddsCombo25 = { 'H&OV25': comboOdds('H',pOver25), 'D&OV25': comboOdds('D',pOver25), 'A&OV25': comboOdds('A',pOver25),
@@ -174,69 +216,80 @@ function buildMarketsForEvent(ev){
   }
 
   if (ev.game==='dog' || ev.game==='horse'){
-    const runners = ev.game==='dog'?6:8;
-    const ratings = Array.from({length:runners}, ()=>0.5+(rand()-0.5)*0.6);
+    const runners = ev.game==='dog' ? 6 : 8;
+    const ratings = Array.from({length:runners}, ()=> 0.5 + (rand()-0.5)*0.6);
     const names = Array.from({length:runners}, (_,i)=> `${ev.game.toUpperCase()} #${i+1}`);
     const probs = softmax(ratings);
     const winOdds = addMargin(probs, 0.08).map(x=>Number(x.toFixed(2)));
-    putMarket({ id:uuidv4(), eventId:ev.id, type:`MAIN_WIN`, status:'OPEN',
-      selections: names.map((n,i)=>({id:`R${i+1}`,name:n})), odds: Object.fromEntries(names.map((_,i)=>[`R${i+1}`,winOdds[i]])) });
 
-    // FORECAST / QUINELLA / TRICAST
+    putMarket({ id:uuidv4(), eventId:ev.id, type:'MAIN_WIN', status:'OPEN',
+      selections:names.map((n,i)=>({id:`R${i+1}`, name:n})),
+      odds:Object.fromEntries(names.map((_,i)=>[`R${i+1}`, winOdds[i]])) });
+
     const forecastOdds = {};
     for(let a=1;a<=runners;a++) for(let b=1;b<=runners;b++) if(a!==b){
       const p = probs[a-1] * (probs[b-1] / (1 - probs[a-1] + 1e-9));
       forecastOdds[`R${a}>R${b}`] = Number((1/(p*0.88)).toFixed(2));
     }
-    putMarket({ id:uuidv4(), eventId:ev.id, type:`FORECAST`, status:'OPEN',
-      selections:Object.keys(forecastOdds).map(k=>({id:k,name:k.replace('>',' → ')})), odds:forecastOdds });
+    putMarket({ id:uuidv4(), eventId:ev.id, type:'FORECAST', status:'OPEN',
+      selections:Object.keys(forecastOdds).map(k=>({id:k, name:k.replace('>',' → ')})),
+      odds:forecastOdds });
 
     const quinellaOdds = {};
     for(let a=1;a<=runners;a++) for(let b=a+1;b<=runners;b++){
       const p = probs[a-1]*probs[b-1]*2;
       quinellaOdds[`R${a}&R${b}`] = Number((1/(p*0.90)).toFixed(2));
     }
-    putMarket({ id:uuidv4(), eventId:ev.id, type:`QUINELLA`, status:'OPEN',
-      selections:Object.keys(quinellaOdds).map(k=>({id:k,name:k.replace('&',' + ')})), odds:quinellaOdds });
+    putMarket({ id:uuidv4(), eventId:ev.id, type:'QUINELLA', status:'OPEN',
+      selections:Object.keys(quinellaOdds).map(k=>({id:k, name:k.replace('&',' + ')})),
+      odds:quinellaOdds });
 
-    const tricastOdds = {}; let count=0; const limit=ev.game==='dog'?60:80;
+    const tricastOdds = {}; let count=0; const limit = ev.game==='dog'?60:80;
     for(let a=1;a<=runners;a++){ for(let b=1;b<=runners;b++){ for(let c=1;c<=runners;c++){
-      if(a===b||b===c||a===c) continue;
+      if (a===b||b===c||a===c) continue;
       const p = probs[a-1] * (probs[b-1]/(1-probs[a-1]+1e-9)) * (probs[c-1]/(1-probs[a-1]-probs[b-1]+1e-9));
       tricastOdds[`R${a}>R${b}>R${c}`] = Number((1/(p*0.82)).toFixed(2)); count++; if(count>=limit) break;
-    }} if(count>=limit) break;}
-    putMarket({ id:uuidv4(), eventId:ev.id, type:`TRICAST`, status:'OPEN',
-      selections:Object.keys(tricastOdds).map(k=>({id:k,name:k.replace(/>/g,' → ')})), odds:tricastOdds });
+    }} if(count>=limit) break; }
+    putMarket({ id:uuidv4(), eventId:ev.id, type:'TRICAST', status:'OPEN',
+      selections:Object.keys(tricastOdds).map(k=>({id:k, name:k.replace(/>/g,' → ')})),
+      odds:tricastOdds });
   }
 
   if (ev.game==='colors'){
     const colors = ['RED','BLUE','GREEN','YELLOW','PURPLE','BLACK'];
-    const colorProbs = [0.18,0.18,0.18,0.16,0.15,0.15];
-    const colorOdds = addMargin(colorProbs,0.05).map(x=>Number(x.toFixed(2)));
+    const probs  = [0.18,0.18,0.18,0.16,0.15,0.15];
+    const odds   = addMargin(probs, 0.05).map(x=>Number(x.toFixed(2)));
     putMarket({ id:uuidv4(), eventId:ev.id, type:'MAIN_COLOR', status:'OPEN',
-      selections: colors.map((c)=>({id:c,name:c})), odds: Object.fromEntries(colors.map((c,i)=>[c,colorOdds[i]])) });
+      selections:colors.map(c=>({id:c, name:c})),
+      odds:Object.fromEntries(colors.map((c,i)=>[c,odds[i]])) });
   }
+
   if (ev.game==='lotto49'){
     const picks = Array.from({length:49},(_,i)=>String(i+1));
     const p=1/49; const price = Number((1/(p*0.92)).toFixed(2));
     putMarket({ id:uuidv4(), eventId:ev.id, type:'PICK1', status:'OPEN',
-      selections: picks.map(id=>({id,name:id})), odds: Object.fromEntries(picks.map(id=>[id,price])) });
+      selections:picks.map(id=>({id, name:id})),
+      odds:Object.fromEntries(picks.map(id=>[id,price])) });
   }
 }
 
-// ---- Settlement & Running ----
+// ----------------- Run & Settle -----------------
 function settleBetsForEvent(ev){
-  for(const bet of STATE.bets.values()){
-    if (bet.eventId!==ev.id || bet.status!=='PENDING') continue;
+  for (const bet of STATE.bets.values()){
+    if (bet.eventId !== ev.id || bet.status !== 'PENDING') continue;
     const m = STATE.markets.get(bet.marketId); if (!m){ bet.status='LOST'; bet.payout=0; continue; }
-    let won=false, payout=0;
+
+    let won = false;
     if (ev.game==='football'){
       const total = ev.result.homeGoals + ev.result.awayGoals;
       const outcome = ev.result.homeGoals>ev.result.awayGoals?'H': ev.result.homeGoals<ev.result.awayGoals?'A':'D';
       if (m.type.startsWith('MAIN_1X2')) won = (bet.selectionId===outcome);
       if (m.type.startsWith('OU_1_5')) won = (bet.selectionId==='OVER'? total>1 : total<=1);
       if (m.type.startsWith('OU_2_5')) won = (bet.selectionId==='OVER'? total>2 : total<=2);
-      if (m.type.startsWith('BTTS')){ const y = (ev.result.homeGoals>0 && ev.result.awayGoals>0)?'YES':'NO'; won=(bet.selectionId===y); }
+      if (m.type.startsWith('BTTS')){
+        const y = (ev.result.homeGoals>0 && ev.result.awayGoals>0)?'YES':'NO';
+        won = (bet.selectionId===y);
+      }
       if (m.type.startsWith('HOME_OU_1_5')){ const over = ev.result.homeGoals>=2; won = (bet.selectionId==='H_OVER'? over : !over); }
       if (m.type.startsWith('AWAY_OU_1_5')){ const over = ev.result.awayGoals>=2; won = (bet.selectionId==='A_OVER'? over : !over); }
       if (m.type.startsWith('COMBO_1X2_OU_1_5')){
@@ -259,33 +312,44 @@ function settleBetsForEvent(ev){
     if (ev.game==='colors' && m.type==='MAIN_COLOR'){ won = (bet.selectionId===ev.result.color); }
     if (ev.game==='lotto49' && m.type==='PICK1'){ won = (String(ev.result.ball)===String(bet.selectionId)); }
 
-    payout = won? Number((bet.stake*bet.odds).toFixed(2)) : 0;
-    payout = Math.min(payout, MAX_PAYOUT);
-    bet.payout = payout; bet.status = won?'WON':'LOST';
+    const payout = won ? Math.min(Number((bet.stake * bet.odds).toFixed(2)), MAX_PAYOUT) : 0;
+    bet.payout = payout; bet.status = won ? 'WON' : 'LOST';
     if (won) creditCashier(bet.cashierId, payout);
   }
 }
+
 function runEvent(eventId){
-  const ev = STATE.events.get(eventId); if(!ev || ev.status==='SETTLED' || ev.status==='RUNNING') return ev;
-  ev.status='RUNNING';
-  const rand = mulberry32(ev.seed^0x123456);
+  const ev = STATE.events.get(eventId);
+  if (!ev || ev.status==='SETTLED' || ev.status==='RUNNING') return ev;
+  ev.status = 'RUNNING';
+  const rand = mulberry32(ev.seed ^ 0x123456);
+
   if (ev.game==='football'){
-    const r2=mulberry32(ev.seed^0x99aa);
-    const gh=poisson(1.3+0.7*r2(), r2); const ga=poisson(1.1+0.6*r2(), r2);
-    ev.result = { league: ev.league, home: ev.home, away: ev.away, homeGoals: gh, awayGoals: ga };
+    const r2 = mulberry32(ev.seed ^ 0x99aa);
+    const gh = poisson(1.3+0.7*r2(), r2);
+    const ga = poisson(1.1+0.6*r2(), r2);
+    ev.result = { league:ev.league, home:ev.home, away:ev.away, homeGoals:gh, awayGoals:ga };
     pushResult('football', { league: ev.league, score: `${ev.home.abbr} ${gh}-${ga} ${ev.away.abbr}` });
   }
+
   if (ev.game==='dog' || ev.game==='horse'){
     const mIds = STATE.marketsByEvent.get(ev.id) || [];
     const winM = mIds.map(id=>STATE.markets.get(id)).find(x=>x.type==='MAIN_WIN');
     const ids = winM.selections.map(s=>s.id);
-    const fair = ids.map(id=>1/winM.odds[id]); const s=fair.reduce((a,b)=>a+b,0); for(let i=0;i<fair.length;i++) fair[i]/=s;
-    const pool = ids.map((id,i)=>({id,w:fair[i]})); const positions=[]; let tmp=pool.slice();
-    while(tmp.length){ const sum=tmp.map(x=>x.w).reduce((a,b)=>a+b,0); const probs=tmp.map(x=>x.w/sum); const ix=sampleIndex(probs,rand); positions.push({id:tmp[ix].id}); tmp.splice(ix,1);}
-    const result = positions.map((p,i)=>({id:p.id, rank:i+1}));
-    ev.result = { positions: result };
-    pushResult(ev.game, { podium: result });
+    const fair = ids.map(id => 1/winM.odds[id]);
+    const s = fair.reduce((a,b)=>a+b,0); for(let i=0;i<fair.length;i++) fair[i]/=s;
+    const pool = ids.map((id,i)=>({id,w:fair[i]}));
+    const positions=[]; let tmp=pool.slice();
+    while(tmp.length){
+      const sum=tmp.map(x=>x.w).reduce((a,b)=>a+b,0);
+      const probs=tmp.map(x=>x.w/sum);
+      const ix=sampleIndex(probs,rand);
+      positions.push({id:tmp[ix].id}); tmp.splice(ix,1);
+    }
+    ev.result = { positions: positions.map((p,i)=>({id:p.id, rank:i+1})) };
+    pushResult(ev.game, { podium: ev.result.positions });
   }
+
   if (ev.game==='colors'){
     const ball = 1 + Math.floor(rand()*49);
     const colorMap = ['RED','BLUE','GREEN','YELLOW','PURPLE','BLACK'];
@@ -293,238 +357,219 @@ function runEvent(eventId){
     ev.result = { ball, color };
     pushResult('colors', { ball, color });
   }
+
   if (ev.game==='lotto49'){
     const ball = 1 + Math.floor(rand()*49);
     ev.result = { ball };
     pushResult('lotto49', { ball });
   }
+
+  // close markets & settle
   for (const mid of (STATE.marketsByEvent.get(ev.id)||[])){ const m=STATE.markets.get(mid); if (m) m.status='SETTLED'; }
   settleBetsForEvent(ev);
-  ev.status='SETTLED';
+  ev.status = 'SETTLED';
   return ev;
 }
 
-// ---- Football scheduler: create 10 fixtures per league each cycle ----
+// ----------------- Football Scheduler -----------------
 function seedFootballBatch(leagueKey){
   const round = STATE.footballRounds[leagueKey] || 0;
   const fixtures = generateRoundFixtures(leagueKey, round);
-  const ten = fixtures.slice(0, 10); // 10 matches per round for 20 teams
-  for (const [home, away] of ten){
+  for (const [home, away] of fixtures.slice(0,10)){ // 10 fixtures
     scheduleEvent('football', { league: leagueKey, home, away });
   }
-  STATE.footballRounds[leagueKey] = (round + 1) % 19; // 19 rounds unique pairings in one half-season
+  STATE.footballRounds[leagueKey] = (round + 1) % 19;
 }
 
-// ---- Tick: lock/run; keep queues filled ----
+// ----------------- Ticker -----------------
 setInterval(()=>{
-  const t=NOW();
+  const t = NOW();
   for (const ev of STATE.events.values()){
-    if (ev.status==='OPEN' && t>=ev.locksAt) ev.status='LOCKED';
-    if ((ev.status==='LOCKED'||ev.status==='OPEN') && t>=ev.runsAt) runEvent(ev.id);
+    if (ev.status==='OPEN' && t >= ev.locksAt) ev.status='LOCKED';
+    if ((ev.status==='LOCKED'||ev.status==='OPEN') && t >= ev.runsAt) runEvent(ev.id);
   }
-  // ensure queues
-  const racing = ['dog','horse','colors','lotto49'];
-  for (const g of racing){
+  // fill queues
+  ['dog','horse','colors','lotto49'].forEach(g=>{
     const future = [...STATE.events.values()].filter(e=>e.game===g && (e.status==='OPEN'||e.status==='LOCKED'));
-    if (future.length<1) scheduleEvent(g);
-  }
-  // football — if we have <10 future events per league, seed next round
+    if (future.length < 1) scheduleEvent(g);
+  });
   ['EPL','LALIGA','UCL'].forEach(L=>{
     const future = [...STATE.events.values()].filter(e=>e.game==='football' && e.league===L && (e.status==='OPEN'||e.status==='LOCKED'));
-    if (future.length<10) seedFootballBatch(L);
+    if (future.length < 10) seedFootballBatch(L);
   });
 }, 1000);
 
-// ---- API (common) ----
-app.get('/health',(req,res)=>res.json({ok:true, ts:Date.now(), sha:BUILD_SHA}));
-app.get('/games',(req,res)=>res.json(STATE.games));
-app.get('/events',(req,res)=>{ const {game}=req.query; let arr=[...STATE.events.values()]; if(game) arr=arr.filter(e=>e.game===game); arr.sort((a,b)=>a.runsAt-b.runsAt); res.json(arr.slice(0,50)); });
-app.get('/events/:id',(req,res)=>{ const ev=STATE.events.get(req.params.id); if(!ev) return res.status(404).json({error:'Not found'}); res.json(ev); });
-app.get('/markets/:eventId',(req,res)=>{ const mids=STATE.marketsByEvent.get(req.params.eventId)||[]; const markets=mids.map(id=>STATE.markets.get(id)); if(!markets.length) return res.status(404).json({error:'No markets'}); res.json(markets); });
-app.get('/results',(req,res)=>{ const game=(req.query.game||'').toLowerCase(); const limit=Math.min(Number(req.query.limit||10),20); if(!STATE.results[game]) return res.status(400).json({error:'Bad game'}); res.json(STATE.results[game].slice(0,limit)); });
+// ----------------- API: Common -----------------
+app.get('/health', (req,res)=> res.json({ ok:true, ts:Date.now(), sha:BUILD_SHA }));
+app.get('/games',  (req,res)=> res.json(STATE.games));
+app.get('/events', (req,res)=> {
+  const { game } = req.query;
+  let arr = [...STATE.events.values()];
+  if (game) arr = arr.filter(e=>e.game===game);
+  arr.sort((a,b)=>a.runsAt-b.runsAt);
+  res.json(arr.slice(0,60));
+});
+app.get('/events/:id', (req,res)=> {
+  const ev = STATE.events.get(req.params.id);
+  if (!ev) return res.status(404).json({error:'Not found'});
+  res.json(ev);
+});
+app.get('/markets/:eventId', (req,res)=>{
+  const mids = STATE.marketsByEvent.get(req.params.eventId)||[];
+  const markets = mids.map(id=>STATE.markets.get(id));
+  if (!markets.length) return res.status(404).json({error:'No markets'});
+  res.json(markets);
+});
 
-// Cashier & Player
-app.get('/cashier/:id/balance',(req,res)=> res.json({cashierId:req.params.id, balance: ensureCashier(req.params.id).balance}));
-app.post('/cashier/topup',(req,res)=>{ const {cashierId,amount}=req.body||{}; if(!cashierId||!amount) return res.status(400).json({error:'cashierId & amount required'}); creditCashier(cashierId,Number(amount)); res.json({ok:true, balance: ensureCashier(cashierId).balance}); });
-app.get('/players/:id',(req,res)=> res.json({playerId:req.params.id, balance: ensurePlayer(req.params.id).balance}));
-app.post('/players/topup',(req,res)=>{ const {playerId,amount}=req.body||{}; if(!playerId||!amount) return res.status(400).json({error:'playerId & amount required'}); creditPlayer(playerId,Number(amount)); res.json({ok:true, balance: ensurePlayer(playerId).balance}); });
-app.post('/players/clear/:id',(req,res)=>{ ensurePlayer(req.params.id).balance=0; res.json({ok:true, balance:0}); });
+// ----------------- Bets & Receipts -----------------
+app.post('/bets', (req,res)=>{
+  const { eventId, marketId, selectionId, stake, cashierId } = req.body || {};
+  if (!eventId || !marketId || !selectionId || !stake || !cashierId) return res.status(400).json({error:'Missing fields'});
+  const st = Math.max(MIN_STAKE, Math.min(MAX_STAKE, Number(stake)));
+  const ev = STATE.events.get(eventId); if (!ev) return res.status(404).json({error:'Event not found'});
+  if (ev.status!=='OPEN') return res.status(400).json({error:`Event not open. Status=${ev.status}`});
+  const m = STATE.markets.get(marketId); if (!m) return res.status(404).json({error:'Market not found'});
+  if (m.status!=='OPEN') return res.status(400).json({error:'Market closed'});
+  const odds = Number(m.odds[selectionId]); if (!odds) return res.status(400).json({error:'Selection not found'});
 
-// Place bet (classic markets)
-app.post('/bets',(req,res)=>{
-  const {eventId,marketId,selectionId,stake,cashierId} = req.body||{};
-  if (!eventId||!marketId||!selectionId||!stake||!cashierId) return res.status(400).json({error:'Missing fields'});
-  const ev=STATE.events.get(eventId); if(!ev) return res.status(404).json({error:'Event not found'});
-  if (ev.status!=='OPEN') return res.status(400).json({error:'Event not open'});
-  const m=STATE.markets.get(marketId); if(!m||m.status!=='OPEN') return res.status(400).json({error:'Market closed'});
-  const odds=m.odds[selectionId]; if(!odds) return res.status(400).json({error:'Bad selection'});
-  const s=Number(stake); if(s<MIN_STAKE) return res.status(400).json({error:`Min stake is ${MIN_STAKE}`}); if (s>MAX_STAKE) return res.status(400).json({error:`Max stake is ${MAX_STAKE}`});
-  const c=ensureCashier(cashierId); if (c.balance < s) return res.status(400).json({error:`Insufficient balance. Available ${fmtMoney(c.balance)}`});
-  debitCashier(cashierId, s);
-  const id=uuidv4(); const ref=`T-${String(Date.now()).slice(-7)}-${id.slice(0,4).toUpperCase()}`;
-  const bet={ id, ref, eventId, marketId, selectionId, stake:s, cashierId, placedAt:Date.now(), odds:Number(odds), status:'PENDING', payout:0 };
+  const id = uuidv4();
+  const bet = { id, eventId, marketId, selectionId, stake: st, cashierId, placedAt: Date.now(), odds, status:'PENDING', payout:0, game: ev.game };
   STATE.bets.set(id, bet);
-  res.json({ ok:true, bet, rules:{MIN_STAKE,MAX_STAKE,MAX_PAYOUT}, balance: ensureCashier(cashierId).balance });
-});
-app.get('/bets',(req,res)=>{ const {cashierId}=req.query; let arr=[...STATE.bets.values()]; if(cashierId) arr=arr.filter(b=>b.cashierId===cashierId); arr.sort((a,b)=>b.placedAt-a.placedAt); res.json(arr.slice(0,200)); });
-
-// Receipts
-app.get('/receipt/:betId', async (req,res)=>{
-  const bet = STATE.bets.get(req.params.betId); if(!bet) return res.status(404).send('Ticket not found');
-  const m = STATE.markets.get(bet.marketId); const ev = STATE.events.get(bet.eventId);
-  const png = await bwipjs.toBuffer({ bcid:'code128', text: bet.ref, scale:3, height:8, includetext:false, background:'FFFFFF' });
-  const barcodeBase64 = `data:image/png;base64,${png.toString('base64')}`;
-  res.render('receipt',{ bet, market:m, event: ev, fmtMoney, barcodeBase64, CURRENCY, DOMAIN });
+  res.json({ ok:true, betId:id, bet });
 });
 
-// ===== [Aviator engine — self-contained / prefixed] =========================
-const AVI_WALLET = new Map();                         // playerId -> balance (KES)
-const aviGetBal  = (pid)=> Number(AVI_WALLET.get(pid) || 0);
-const aviCredit  = (pid, amt)=> AVI_WALLET.set(pid, aviGetBal(pid) + Number(amt||0));
-const aviDebit   = (pid, amt)=> { const need=Number(amt||0); if (aviGetBal(pid) < need) return false; AVI_WALLET.set(pid, aviGetBal(pid) - need); return true; };
+app.get('/receipt/:id', async (req,res)=>{
+  const bet = STATE.bets.get(req.params.id);
+  if (!bet) return res.status(404).send('Not found');
 
-const AVI_STATE = {
-  phase: 'betting',            // 'betting' | 'flying' | 'busted'
-  multiplier: 1.00,
-  history: [],
-  roundSeed: Math.floor(Math.random()*2**31),
-  t0: Date.now(),
-  nextChangeAt: Date.now() + 5000,   // 5s betting window
-  bustAt: 5.0,
-  bets: new Map()              // playerId -> {ticketId, stake, autoCashOut?, live, cashed, hit, payout}
-};
-const AVI_TICK_MS = 100;
+  // Generate barcode PNG as base64
+  const code = bet.id.slice(0,8).toUpperCase();
+  let barcodePng = '';
+  try{
+    const png = await bwipjs.toBuffer({ bcid: 'code128', text: code, scale: 2, height: 10, includetext:false });
+    barcodePng = `data:image/png;base64,${png.toString('base64')}`;
+  }catch{}
 
-function aviRng(seed){         // no conflict with your other RNGs
-  return function(){
-    let t = (seed += 0x6D2B79F5);
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-function aviDrawBust(seed){
-  const r = aviRng(seed)();
-  const alpha = 3.2, min = 1.02;
-  const bust = min / Math.pow(1 - r, 1/alpha);
-  return Math.max(1.01, Math.min(bust, 50));
-}
-function aviRoundRef(){ return 'R-' + (AVI_STATE.history.length + 1).toString().padStart(5,'0'); }
-function aviNormStake(v){ const n = Math.max(20, Math.min(1000, Number(v||0))); return Math.round(n); }
-
-setInterval(()=>{
-  const now = Date.now();
-
-  if (AVI_STATE.phase === 'betting'){
-    if (now >= AVI_STATE.nextChangeAt){
-      AVI_STATE.phase = 'flying';
-      AVI_STATE.t0 = now;
-      AVI_STATE.roundSeed = (AVI_STATE.roundSeed + 1) >>> 0;
-      AVI_STATE.bustAt = aviDrawBust(AVI_STATE.roundSeed);
-      AVI_STATE.multiplier = 1.00;
-    }
-  } else if (AVI_STATE.phase === 'flying'){
-    const dt = (now - AVI_STATE.t0)/1000;
-    const growth = 0.62;
-    AVI_STATE.multiplier = Math.max(1.00, Math.exp(growth*dt));
-
-    // auto cash-outs
-    for (const [pid, bet] of AVI_STATE.bets){
-      if (!bet.live || bet.cashed || !bet.autoCashOut) continue;
-      if (AVI_STATE.multiplier >= bet.autoCashOut){
-        bet.cashed = true; bet.live = false;
-        bet.hit = Number(AVI_STATE.multiplier.toFixed(2));
-        bet.payout = Math.min(bet.stake * bet.hit, 20000);
-        aviCredit(pid, bet.payout);
-      }
-    }
-
-    // bust?
-    if (AVI_STATE.multiplier >= AVI_STATE.bustAt){
-      AVI_STATE.phase = 'busted';
-      const m = Number(AVI_STATE.multiplier.toFixed(2));
-      AVI_STATE.history.push(m);
-      if (AVI_STATE.history.length > 120) AVI_STATE.history.shift();
-      for (const [, bet] of AVI_STATE.bets){
-        if (bet.live && !bet.cashed){ bet.live=false; bet.payout=0; bet.hit=m; }
-      }
-      AVI_STATE.nextChangeAt = now + 3000; // show "FLEW AWAY!" 3s
-    }
-  } else if (AVI_STATE.phase === 'busted'){
-    if (now >= AVI_STATE.nextChangeAt){
-      AVI_STATE.phase = 'betting';
-      AVI_STATE.multiplier = 1.00;
-      AVI_STATE.bets.clear();
-      AVI_STATE.t0 = now;
-      AVI_STATE.nextChangeAt = now + 5000;
-    }
-  }
-}, AVI_TICK_MS);
-
-// ---- API (paths do not overlap others) -------------------------------------
-app.get('/aviator/state', (req,res)=>{
-  const phaseMap = { betting:'BETTING', flying:'RUNNING', busted:'BUST' };
-  res.json({
-    phase: AVI_STATE.phase,
-    multiplier: Number(AVI_STATE.multiplier.toFixed(2)),
-    history: AVI_STATE.history.slice(-60),
-    ts: Date.now(),
-    // legacy for older frontends:
-    roundId: aviRoundRef(),
-    status: phaseMap[AVI_STATE.phase],
-    liveMultiplier: Number(AVI_STATE.multiplier.toFixed(2)),
-    bust: Number(AVI_STATE.bustAt.toFixed(2))
+  res.render('receipt', {
+    domain: DOMAIN,
+    ref: `T-${code}`,
+    game: bet.game.toUpperCase(),
+    market: STATE.markets.get(bet.marketId)?.type || '',
+    pick: bet.selectionId,
+    odds: bet.odds,
+    stake: bet.stake,
+    placedAt: new Date(bet.placedAt),
+    barcodePng
   });
 });
+
+// ----------------- Aviator Engine -----------------
+function drawBust(seed){
+  const r = mulberry32(seed)();
+  const alpha = 3.2, min=1.02;
+  const bust = min / Math.pow(1-r, 1/alpha);
+  return Math.max(1.01, Math.min(bust, 50));
+}
+function roundRef(){ return 'R-' + String(STATE.results.aviator.length+1).padStart(5,'0'); }
+
+setInterval(()=>{
+  const A = STATE.aviator;
+  const now = Date.now();
+  if (A.phase === 'betting'){
+    if (now >= A.nextChangeAt){
+      A.phase = 'flying';
+      A.t0 = now;
+      A.seed = (A.seed + 1) >>> 0;
+      A.bustAt = drawBust(A.seed);
+      A.multiplier = 1.00;
+    }
+  } else if (A.phase === 'flying'){
+    const dt = (now - A.t0)/1000;
+    const speed = 0.62;
+    A.multiplier = Math.max(1.00, Math.exp(speed*dt));
+    // auto cashouts
+    for (const [pid, bet] of A.bets){
+      if (!bet.live || bet.cashed || !bet.autoCashOut) continue;
+      if (A.multiplier >= bet.autoCashOut){
+        bet.cashed = true; bet.live=false;
+        bet.hit = Number(A.multiplier.toFixed(2));
+        bet.payout = Math.min(bet.stake * bet.hit, MAX_PAYOUT);
+        creditPlayer(pid, bet.payout);
+      }
+    }
+    if (A.multiplier >= A.bustAt){
+      A.phase = 'busted';
+      const m = Number(A.multiplier.toFixed(2));
+      STATE.results.aviator.unshift(m); if (STATE.results.aviator.length>120) STATE.results.aviator.length=120;
+      for (const [pid, bet] of A.bets){
+        if (bet.live && !bet.cashed){ bet.live=false; bet.payout=0; bet.hit=m; }
+      }
+      A.nextChangeAt = now + 3000;
+    }
+  } else if (A.phase === 'busted'){
+    if (now >= A.nextChangeAt){
+      A.phase='betting'; A.multiplier=1.00; A.bets.clear();
+      A.t0=now; A.nextChangeAt = now + 5000;
+    }
+  }
+}, 100);
+
+app.get('/aviator', (_req,res)=> res.sendFile(path.join(__dirname, 'static', 'aviator.html')));
+app.get('/aviator/state', (req,res)=>{
+  const A = STATE.aviator;
+  const phaseMap = { betting:'BETTING', flying:'RUNNING', busted:'BUST' };
+  res.json({
+    phase: A.phase,
+    multiplier: Number(A.multiplier.toFixed(2)),
+    history: STATE.results.aviator.slice(0,60),
+    roundId: roundRef(),
+    status: phaseMap[A.phase],
+    liveMultiplier: Number(A.multiplier.toFixed(2)),
+    bust: Number(A.bustAt.toFixed(2))
+  });
+});
+app.post('/aviator/wallet/load', (req,res)=>{
+  const { playerId, amount } = req.body || {};
+  if (!playerId || !amount) return res.status(400).json({ ok:false, error:'playerId & amount required' });
+  creditPlayer(playerId, Number(amount));
+  res.json({ ok:true, balance: ensurePlayer(playerId).balance });
+});
+app.get('/aviator/wallet/:playerId', (req,res)=> res.json({ ok:true, balance: ensurePlayer(req.params.playerId).balance }));
 
 app.post('/aviator/bet', (req,res)=>{
   const { playerId, stake, autoCashOut } = req.body || {};
   if (!playerId) return res.status(400).json({ ok:false, error:'playerId required' });
-  if (AVI_STATE.phase !== 'betting') return res.status(400).json({ ok:false, error:'Round closed' });
-  if (AVI_STATE.bets.has(playerId)) return res.status(400).json({ ok:false, error:'Already placed' });
+  const A = STATE.aviator;
+  if (A.phase !== 'betting') return res.status(400).json({ ok:false, error:'Round closed' });
+  if (A.bets.has(playerId)) return res.status(400).json({ ok:false, error:'Already placed' });
 
-  const st = aviNormStake(stake);
-  if (!aviDebit(playerId, st)) return res.status(400).json({ ok:false, error:`Insufficient balance. Available ${aviGetBal(playerId)} KES` });
+  const st = Math.max(MIN_STAKE, Math.min(MAX_STAKE, Number(stake||0)));
+  if (!debitPlayer(playerId, st)) return res.status(400).json({ ok:false, error:`Insufficient balance` });
 
-  const bet = { ticketId:`${aviRoundRef()}-${playerId}`, stake:st, autoCashOut: autoCashOut? Math.max(1.05, Number(autoCashOut)): null, live:true, cashed:false };
-  AVI_STATE.bets.set(playerId, bet);
-  res.json({ ok:true, ticketId:bet.ticketId, stake:bet.stake, autoCashOut:bet.autoCashOut, balance: aviGetBal(playerId) });
+  const bet = { ticketId:`${roundRef()}-${playerId}`, stake:st, autoCashOut:autoCashOut?Math.max(1.05,Number(autoCashOut)):null, live:true, cashed:false };
+  A.bets.set(playerId, bet);
+  res.json({ ok:true, ticketId: bet.ticketId, stake: bet.stake, autoCashOut: bet.autoCashOut, balance: ensurePlayer(playerId).balance });
 });
-
 app.post('/aviator/cashout', (req,res)=>{
   const { playerId } = req.body || {};
-  if (!playerId) return res.status(400).json({ ok:false, error:'playerId required' });
-
-  const bet = AVI_STATE.bets.get(playerId);
+  const A = STATE.aviator;
+  const bet = A.bets.get(playerId);
   if (!bet) return res.status(400).json({ ok:false, error:'No live bet' });
-  if (AVI_STATE.phase !== 'flying') return res.status(400).json({ ok:false, error:'Not flying' });
+  if (A.phase !== 'flying') return res.status(400).json({ ok:false, error:'Not flying' });
   if (!bet.live || bet.cashed) return res.status(400).json({ ok:false, error:'Already settled' });
-
-  bet.cashed = true; bet.live = false;
-  bet.hit = Number(AVI_STATE.multiplier.toFixed(2));
-  bet.payout = Math.min(bet.stake * bet.hit, 20000);
-  aviCredit(playerId, bet.payout);
-
-  res.json({ ok:true, multiplier: bet.hit, payout: Number(bet.payout.toFixed(2)), balance: aviGetBal(playerId) });
+  bet.cashed=true; bet.live=false; bet.hit=Number(A.multiplier.toFixed(2));
+  bet.payout = Math.min(bet.stake * bet.hit, MAX_PAYOUT);
+  creditPlayer(playerId, bet.payout);
+  res.json({ ok:true, multiplier: bet.hit, payout: Number(bet.payout.toFixed(2)), balance: ensurePlayer(playerId).balance });
 });
 
-// cashier top-up + balance (scoped to aviator wallet)
-app.post('/wallet/load', (req,res)=>{
-  const { playerId, amount } = req.body || {};
-  if (!playerId || !amount) return res.status(400).json({ ok:false, error:'playerId & amount required' });
-  aviCredit(playerId, amount);
-  res.json({ ok:true, playerId, balance: aviGetBal(playerId) });
+// ----------------- Root -----------------
+app.get('/', (_req,res)=> res.redirect('/static/cashier.html'));
+
+// ----------------- Boot -----------------
+app.listen(PORT, ()=>{
+  console.log(`Mastermind server on :${PORT} (${DOMAIN})`);
+  // seed queues
+  ['dog','horse','colors','lotto49'].forEach(g=>{ scheduleEvent(g); });
+  ['EPL','LALIGA','UCL'].forEach(L=> seedFootballBatch(L));
 });
-app.get('/wallet/:playerId', (req,res)=> res.json({ ok:true, playerId: req.params.playerId, balance: aviGetBal(req.params.playerId) }));
-
-// page
-app.get('/aviator', (req,res)=> res.sendFile(path.join(__dirname, 'static', 'aviator.html')));
-
-// ---- Bootstrap
-(function bootstrap(){
-  ['dog','horse','colors','lotto49'].forEach(g=>scheduleEvent(g));
-  ['EPL','LALIGA','UCL'].forEach(L=>seedFootballBatch(L));
-  startAviatorRound();
-})();
-
-app.listen(PORT, ()=> console.log(`mastermind-bet virtuals on :${PORT} (${DOMAIN})`) );
