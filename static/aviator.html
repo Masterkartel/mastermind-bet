@@ -222,9 +222,9 @@ function multFromProgress(t){
   
 /* visual progress cap per second (Spribe-like pacing) */
 let progressVis = 0;
-/* TUNE ONLY THESE TWO if needed later */
-const BASE_MAX = 0.015;   // ~5–6s to reach 2× (fastest case)
-const SLOW_SCALE = 5;     // slows more as odds rise
+/* ONLY CHANGED THESE TWO TO SLOW THE ODDS/VISUAL GROWTH */
+const BASE_MAX = 0.005;   // slower fastest rate (~3×+ slower than before)
+const SLOW_SCALE = 8;     // stronger slowdown as odds climb
   
 function curveY(p, baseY, target){   
   return baseY - Math.pow(p,2.0)*(baseY*0.9)*Math.log10((Math.max(1,target))+0.9);   
@@ -283,9 +283,7 @@ function animate(now){
   const backend = Number(STATE.multiplier||1);  
   const targetProgress = progressFromMult(backend);  
   
-  /* Spribe-like pacing:
-     - fastest rate = BASE_MAX
-     - slows further with progress (higher odds) by SLOW_SCALE */
+  /* Spribe-like pacing with stronger cap so odds don't "run" too fast */
   const effMax = BASE_MAX / (1 + SLOW_SCALE * targetProgress);
   const maxStep = effMax * Math.max(0, dt);  
   const delta = Math.max(-maxStep, Math.min(maxStep, targetProgress - progressVis));  
