@@ -228,8 +228,8 @@ function multFromProgress(t){
 
 /* visual progress that cannot move faster than maxProgressPerSec */
 let progressVis = 0;
-/* 3× slower than before: 0.16 / 3 */
-const maxProgressPerSec = 0.0533333333;
+/* 4× slower than original 0.16 */
+const maxProgressPerSec = 0.04;
 
 function curveY(p, baseY, target){ 
   return baseY - Math.pow(p,2.0)*(baseY*0.9)*Math.log10((Math.max(1,target))+0.9); 
@@ -362,7 +362,7 @@ function wireCard(pid){
       const r=await fetch(`${api}/aviator/bet`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, stake})});
       const j=await r.json(); if(!j.ok) return alert(j.error||'Bet failed');
       status.textContent='LIVE'; tEl.textContent=j.ticketId; pEl.textContent='—';
-      addT({playerId:pid,ticketId:j.ticketId,stake,state:'LIVE'}); refreshBal(pid);
+      addT({playerId:pid,ticketId:j.ticketId,stake,state='LIVE'}); refreshBal(pid);
     }catch(e){}
   };
   cashBtn.onclick = async ()=>{
