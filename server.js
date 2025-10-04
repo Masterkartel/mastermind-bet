@@ -92,7 +92,8 @@ const STATE = {
   results: { football:[], dog:[], horse:[], colors:[], lotto49:[], aviator:[] },
   cashiers: new Map(),       // cashierId -> {balance}
   players: new Map(),        // playerId  -> {balance}
-  aviator: { phase:'betting', multiplier:1.00, history:[], t0:Date.now(), nextChangeAt:Date.now()+5000, seed:Math.floor(Math.random()*2**31), bustAt:5.0, bets:new Map() }
+  // NOTE: initial betting window set to ~7s to match desired cadence
+  aviator: { phase:'betting', multiplier:1.00, history:[], t0:Date.now(), nextChangeAt:Date.now()+7000, seed:Math.floor(Math.random()*2**31), bustAt:5.0, bets:new Map() }
 };
 
 function ensureCashier(id){ if(!STATE.cashiers.has(id)) STATE.cashiers.set(id,{balance:0}); return STATE.cashiers.get(id); }
@@ -243,16 +244,6 @@ function buildMarketsForEvent(ev){
     putMarket({ id:uuidv4(), eventId:ev.id, type:'QUINELLA', status:'OPEN',
       selections:Object.keys(quinellaOdds).map(k=>({id:k, name:k.replace('&',' + ')})),
       odds:quinellaOdds });
-
-    const tricastOdds = {}; let count=0; const limit = ev.game==='dog'?60:80;
-    for(let a=1;a<=runners;a++){ for(let b=1;b<=runners;b++){ for(let c=1;c<=runners;c++){
-      if (a===b||b===c||a===c) continue;
-      const p = probs[a-1] * (probs[b-1]/(1-probs[a-1]+1e-9)) * (probs[c-1]/(1-probs[a-1]-probs[b-1]+1e-9));
-      tricastOdds[`R${a}>R${b}>R${c}`] = Number((1/(p*0.82)).toFixed(2)); count++; if(count>=limit) break;
-    }} if(count>=limit) break; }
-    putMarket({ id:uuidv4(), eventId:ev.id, type:'TRICAST', status:'OPEN',
-      selections:Object.keys(tricastOdds).map(k=>({id:k, name:k.replace(/>/g,' → ')})),
-      odds:tricastOdds });
   }
 
   if (ev.game==='colors'){
@@ -485,7 +476,8 @@ setInterval(()=>{
     }
   } else if (A.phase === 'flying'){
     const dt = (now - A.t0)/1000;
-    const speed = 0.62;
+    // pacing tuned to ~6.9s to 2x (exp(0.10 * t))
+    const speed = 0.10;
     A.multiplier = Math.max(1.00, Math.exp(speed*dt));
     // auto cashouts
     for (const [pid, bet] of A.bets){
@@ -504,12 +496,13 @@ setInterval(()=>{
       for (const [pid, bet] of A.bets){
         if (bet.live && !bet.cashed){ bet.live=false; bet.payout=0; bet.hit=m; }
       }
-      A.nextChangeAt = now + 3000;
+      // short post-bust pause (~4s) before switching back to betting
+      A.nextChangeAt = now + 4000;
     }
   } else if (A.phase === 'busted'){
     if (now >= A.nextChangeAt){
       A.phase='betting'; A.multiplier=1.00; A.bets.clear();
-      A.t0=now; A.nextChangeAt = now + 5000;
+      A.t0=now; A.nextChangeAt = now + 7000; // ~7s betting window before next flight
     }
   }
 }, 100);
