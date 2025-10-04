@@ -11,33 +11,33 @@
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--bg);color:var(--text)}
-  header{padding:12px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px}
+  header{padding:12px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;justify-content:space-between}
   .brand{font-weight:900}
-  .chip{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0f1933;color:#cfe1ff}
-  .wrap{max-width:1300px;margin:0 auto;padding:14px;display:grid;grid-template-columns:2fr 1fr;gap:14px}
+  .chip{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0f1933;color:#cfe1ff;text-decoration:none}
+  .wrap{max-width:1300px;margin:0 auto;padding:14px;display:grid;gap:14px}
+
   .stage{background:radial-gradient(ellipse at 50% 30%, #0f2748 0 55%, #0b1426 60% 100%);
          border:1px solid var(--line);border-radius:18px;height:520px;position:relative;overflow:hidden}
   canvas{position:absolute;inset:0}
-  .centerText{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:62px;text-shadow:0 5px 22px #0006}
+  .centerText{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:62px;text-shadow:0 5px 22px #0006; white-space:pre-line; text-align:center}
   .flew{color:#ff5a5a;letter-spacing:.5px}
   .multi{color:#ffffff}
-
-  .topbar{position:absolute;top:8px;left:12px;right:12px;display:flex;gap:12px;align-items:center}
+  .topbar{position:absolute;top:8px;left:12px;right:12px;display:flex;gap:12px;align-items:center;justify-content:space-between}
+  .leftTB{display:flex;gap:12px;align-items:center}
   .history{display:flex;gap:8px;overflow:auto;padding:6px 8px;background:#0b1324;border:1px solid var(--line);border-radius:10px}
   .hx{font-weight:800;padding:4px 8px;border-radius:8px;background:#071024;border:1px solid #0f2347;font-size:12px;white-space:nowrap}
   .hx.good{color:#22c55e;border-color:#1b4027;background:#0b2013}
   .hx.avg{color:#f59e0b;border-color:#4b3e12;background:#2b250f}
   .hx.bad{color:#ef4444;border-color:#4d1313;background:#3b0b0b}
+  .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0e172f;color:#cfe1ff}
+  .clock{min-width:180px;text-align:right}
 
-  .right{display:grid;gap:14px}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px}
-  .title{font-weight:900;margin-bottom:8px}
-  .tabs{display:flex;gap:8px;margin-bottom:10px}
-  .tab{padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:#0f1933;color:#e6edf3;cursor:pointer;font-weight:800}
+  .players{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px;display:grid;gap:10px}
+  .ttl{display:flex;align-items:center;justify-content:space-between}
+  .tabs{display:flex;gap:6px}
+  .tab{padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:#0f1933;color:#e6edf3;cursor:pointer;font-weight:800}
   .tab.active{outline:2px solid #22c55e}
-
-  .controls{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .card{background:#0b1224;border:1px solid var(--line);border-radius:12px;padding:10px;display:grid;gap:8px}
   label{font-size:12px;color:var(--muted)}
   input[type="number"]{width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:#0d1428;color:#fff}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -45,167 +45,189 @@
   .btn.green{background:#0f2b1b;border-color:#1b4d28}
   .btn.red{background:#3b0b0b;border-color:#4d1313}
   .kpi{font-size:12px;color:#b9c2cf}
-  .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0e172f}
-  .sep{height:1px;background:var(--line);margin:10px 0}
-  .players{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-  .player{background:#0b1224;border:1px solid var(--line);border-radius:12px;padding:10px;display:grid;gap:8px}
-  .ttl{font-weight:900}
-  .warn{color:#f59e0b}
-  .ok{color:#22c55e}
-  .danger{color:#ef4444}
-  .badge{font-size:12px;border:1px solid var(--line);border-radius:8px;padding:2px 6px;background:#0f1933}
-  .footer{display:flex;gap:8px;align-items:center;justify-content:space-between}
+  .tickets{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px}
 </style>
 </head>
 <body>
 <header>
   <div class="brand">MASTERMIND — Aviator</div>
-  <span class="chip">Cashier mode (KES)</span>
-  <a class="chip" href="/static/cashier.html">⇐ Back to Cashier</a>
+  <div class="row">
+    <span class="chip">Cashier mode (KES)</span>
+    <a class="chip" href="/static/cashier.html">⇐ Back to Cashier</a>
+  </div>
 </header>
 
 <div class="wrap">
-  <!-- LEFT: Stage -->
+  <!-- Stage -->
   <div class="stage">
     <div class="topbar">
-      <div class="history" id="history"></div>
-      <div class="pill" id="phasePill">…</div>
-      <div class="pill">Next round starts automatically</div>
+      <div class="leftTB">
+        <div class="history" id="history"></div>
+        <div class="pill" id="phasePill">API unavailable</div>
+        <div class="pill">Next round starts automatically</div>
+      </div>
+      <div class="pill clock" id="clock">—</div>
     </div>
     <canvas id="cv"></canvas>
     <div class="centerText" id="centerText"></div>
   </div>
 
-  <!-- RIGHT: Controls -->
-  <div class="right">
-    <div class="panel">
-      <div class="title">Bet Mode</div>
-      <div class="tabs">
-        <div class="tab active" data-tab="manual">Bet</div>
-        <div class="tab" data-tab="auto">Auto</div>
-      </div>
-
-      <div id="manualPane" class="controls">
-        <div class="card">
-          <div class="row"><span class="badge">Player A</span><span class="kpi" id="pA-status">idle</span></div>
-          <label>Stake (KES)</label>
-          <input id="pA-stake" type="number" min="20" max="1000" value="100"/>
-          <div class="row">
-            <button class="btn green" id="pA-bet">Bet</button>
-            <button class="btn red" id="pA-cash">Cash-Out</button>
-          </div>
-          <div class="row">
-            <div class="pill">Ticket: <b id="pA-ticket">—</b></div>
-            <div class="pill">Payout: <b id="pA-payout">—</b></div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="row"><span class="badge">Player B</span><span class="kpi" id="pB-status">idle</span></div>
-          <label>Stake (KES)</label>
-          <input id="pB-stake" type="number" min="20" max="1000" value="100"/>
-          <div class="row">
-            <button class="btn green" id="pB-bet">Bet</button>
-            <button class="btn red" id="pB-cash">Cash-Out</button>
-          </div>
-          <div class="row">
-            <div class="pill">Ticket: <b id="pB-ticket">—</b></div>
-            <div class="pill">Payout: <b id="pB-payout">—</b></div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="row"><span class="badge">Player C</span><span class="kpi" id="pC-status">idle</span></div>
-          <label>Stake (KES)</label>
-          <input id="pC-stake" type="number" min="20" max="1000" value="100"/>
-          <div class="row">
-            <button class="btn green" id="pC-bet">Bet</button>
-            <button class="btn red" id="pC-cash">Cash-Out</button>
-          </div>
-          <div class="row">
-            <div class="pill">Ticket: <b id="pC-ticket">—</b></div>
-            <div class="pill">Payout: <b id="pC-payout">—</b></div>
-          </div>
+  <!-- Players under stage -->
+  <div class="players">
+    <!-- Player A -->
+    <div class="card" data-player="pA">
+      <div class="ttl">
+        <div><b>Player A</b> <span class="kpi" id="pA-status">idle</span></div>
+        <div class="tabs">
+          <div class="tab active" data-mode="manual">Bet</div>
+          <div class="tab" data-mode="auto">Auto</div>
         </div>
       </div>
 
-      <div id="autoPane" class="controls" style="display:none">
-        <div class="card">
-          <div class="ttl">Auto — Player A</div>
-          <div class="row">
+      <div class="pane manual">
+        <label>Stake (KES)</label>
+        <input id="pA-stake" type="number" min="20" max="1000" value="100"/>
+        <div class="row">
+          <button class="btn green" id="pA-bet">Bet</button>
+          <button class="btn red" id="pA-cash">Cash-Out</button>
+        </div>
+      </div>
+
+      <div class="pane auto" style="display:none">
+        <div class="row" style="width:100%">
+          <div style="flex:1">
             <label>Stake (KES)</label>
             <input id="pA-auto-stake" type="number" min="20" max="1000" value="100"/>
           </div>
-          <div class="row">
+          <div style="flex:1">
             <label>Auto Cash-Out at (x)</label>
             <input id="pA-auto-x" type="number" step="0.01" min="1.05" value="1.10"/>
           </div>
-          <button class="btn green" id="pA-auto-on">Place Auto</button>
-          <div class="kpi">Will place & auto cash out every round at the chosen multiplier.</div>
         </div>
-        <div class="card">
-          <div class="ttl">Auto — Player B</div>
-          <div class="row">
+        <button class="btn green" id="pA-auto-on">Place Auto</button>
+      </div>
+
+      <div class="row">
+        <div class="pill">Ticket: <b id="pA-ticket">—</b></div>
+        <div class="pill">Payout: <b id="pA-payout">—</b></div>
+      </div>
+    </div>
+
+    <!-- Player B -->
+    <div class="card" data-player="pB">
+      <div class="ttl">
+        <div><b>Player B</b> <span class="kpi" id="pB-status">idle</span></div>
+        <div class="tabs">
+          <div class="tab active" data-mode="manual">Bet</div>
+          <div class="tab" data-mode="auto">Auto</div>
+        </div>
+      </div>
+
+      <div class="pane manual">
+        <label>Stake (KES)</label>
+        <input id="pB-stake" type="number" min="20" max="1000" value="100"/>
+        <div class="row">
+          <button class="btn green" id="pB-bet">Bet</button>
+          <button class="btn red" id="pB-cash">Cash-Out</button>
+        </div>
+      </div>
+
+      <div class="pane auto" style="display:none">
+        <div class="row" style="width:100%">
+          <div style="flex:1">
             <label>Stake (KES)</label>
             <input id="pB-auto-stake" type="number" min="20" max="1000" value="100"/>
           </div>
-          <div class="row">
+          <div style="flex:1">
             <label>Auto Cash-Out at (x)</label>
             <input id="pB-auto-x" type="number" step="0.01" min="1.05" value="1.20"/>
           </div>
-          <button class="btn green" id="pB-auto-on">Place Auto</button>
-          <div class="kpi">Repeats each round until busted before target or cashed out.</div>
         </div>
-        <div class="card">
-          <div class="ttl">Auto — Player C</div>
-          <div class="row">
+        <button class="btn green" id="pB-auto-on">Place Auto</button>
+      </div>
+
+      <div class="row">
+        <div class="pill">Ticket: <b id="pB-ticket">—</b></div>
+        <div class="pill">Payout: <b id="pB-payout">—</b></div>
+      </div>
+    </div>
+
+    <!-- Player C -->
+    <div class="card" data-player="pC">
+      <div class="ttl">
+        <div><b>Player C</b> <span class="kpi" id="pC-status">idle</span></div>
+        <div class="tabs">
+          <div class="tab active" data-mode="manual">Bet</div>
+          <div class="tab" data-mode="auto">Auto</div>
+        </div>
+      </div>
+
+      <div class="pane manual">
+        <label>Stake (KES)</label>
+        <input id="pC-stake" type="number" min="20" max="1000" value="100"/>
+        <div class="row">
+          <button class="btn green" id="pC-bet">Bet</button>
+          <button class="btn red" id="pC-cash">Cash-Out</button>
+        </div>
+      </div>
+
+      <div class="pane auto" style="display:none">
+        <div class="row" style="width:100%">
+          <div style="flex:1">
             <label>Stake (KES)</label>
             <input id="pC-auto-stake" type="number" min="20" max="1000" value="100"/>
           </div>
-          <div class="row">
+          <div style="flex:1">
             <label>Auto Cash-Out at (x)</label>
             <input id="pC-auto-x" type="number" step="0.01" min="1.05" value="1.50"/>
           </div>
-          <button class="btn green" id="pC-auto-on">Place Auto</button>
-          <div class="kpi">Great for quick demo in the shop.</div>
         </div>
+        <button class="btn green" id="pC-auto-on">Place Auto</button>
       </div>
 
-      <div class="sep"></div>
-      <div class="footer">
-        <div class="kpi">Min 20 KES • Max 1000 KES • Max payout capped at 20,000 KES</div>
-        <div class="kpi">Phase: <span id="phaseText">…</span></div>
+      <div class="row">
+        <div class="pill">Ticket: <b id="pC-ticket">—</b></div>
+        <div class="pill">Payout: <b id="pC-payout">—</b></div>
       </div>
     </div>
+  </div>
 
-    <div class="panel">
-      <div class="title">Recent Tickets (this terminal)</div>
-      <div id="tickets" class="kpi">No tickets yet.</div>
-    </div>
+  <!-- Tickets -->
+  <div class="tickets">
+    <div class="kpi"><b>Recent Tickets (this terminal)</b></div>
+    <div id="ticketsBox" class="kpi">No tickets yet.</div>
   </div>
 </div>
 
 <script>
-/* ---------- helpers ---------- */
-const api = location.origin.replace(/:\\d+$/, ':4000');  // same origin behind nginx
+const api = location.origin.replace(/:\\d+$/, ':4000');
 const KES = x => new Intl.NumberFormat('en-KE',{style:'currency',currency:'KES'}).format(Number(x||0));
 const clamp = (n,min,max)=> Math.max(min, Math.min(max,n));
 
-/* ---------- canvas drawing ---------- */
-const cv = document.getElementById('cv');
-const ctx = cv.getContext('2d');
-const W = ()=> cv.width  = cv.clientWidth  || cv.parentElement.clientWidth;
-const H = ()=> cv.height = cv.clientHeight || cv.parentElement.clientHeight;
-W(); H(); window.addEventListener('resize', ()=>{W();H();});
-const centerText = document.getElementById('centerText');
+// clock (server-synced from /health when available)
+const clk = document.getElementById('clock');
+let skew = 0;
+async function syncClock(){
+  try{
+    const r = await fetch(`${api}/health`, {cache:'no-store'});
+    const j = await r.json();
+    skew = j.ts - Date.now();
+  }catch(e){}
+}
+setInterval(()=>{ const d = new Date(Date.now()+skew); clk.textContent = d.toLocaleString(); }, 500);
+syncClock();
 
-let lastMult = 1.00;
+/* canvas drawing */
+const cv = document.getElementById('cv'); const ctx = cv.getContext('2d');
+function fit(){ cv.width = cv.clientWidth || cv.parentElement.clientWidth; cv.height = cv.clientHeight || 520; }
+fit(); addEventListener('resize',fit);
+const centerText = document.getElementById('centerText');
 function draw(mult, phase){
   ctx.clearRect(0,0,cv.width,cv.height);
-  // path: y = a * (e^(b*t) - 1) scaled to mult for a smooth curve
   const maxX = cv.width-60, maxY = cv.height-80;
-  const target = Math.max(1, mult);
-  // draw red growth area
+  const target = Math.max(1, mult||1);
+
+  // red growth fill
   ctx.beginPath(); ctx.moveTo(60, maxY);
   const steps = 240;
   for (let i=0;i<=steps;i++){
@@ -215,160 +237,138 @@ function draw(mult, phase){
     ctx.lineTo(x,y);
   }
   ctx.lineTo(cv.width, cv.height); ctx.lineTo(60, cv.height); ctx.closePath();
-  ctx.fillStyle = 'rgba(239,68,68,0.35)';
-  ctx.fill();
+  ctx.fillStyle = 'rgba(239,68,68,0.35)'; ctx.fill();
 
-  // plane
+  // plane triangle
   const px = 60 + 0.9*maxX * Math.min(1, Math.log10(target+0.9));
   const py = maxY - (maxY*0.85) * Math.log10(target+0.9);
   ctx.fillStyle = '#ff4d6d';
-  ctx.beginPath();
-  ctx.moveTo(px-14, py+6); ctx.lineTo(px+18, py); ctx.lineTo(px-8, py-6); ctx.closePath();
-  ctx.fill();
+  ctx.beginPath(); ctx.moveTo(px-14, py+6); ctx.lineTo(px+18, py); ctx.lineTo(px-8, py-6); ctx.closePath(); ctx.fill();
 
-  // text
   centerText.className = 'centerText ' + (phase==='busted' ? 'flew' : 'multi');
-  centerText.textContent = (phase==='busted' ? 'FLEW AWAY!\n' : '') + (mult? `${mult.toFixed(2)}x` : '');
+  centerText.textContent = (phase==='busted' ? 'FLEW AWAY!\n' : '') + (mult? `${Number(mult).toFixed(2)}x` : '');
 }
 
-/* ---------- state & polling ---------- */
-const phaseText = document.getElementById('phaseText');
-const phasePill = document.getElementById('phasePill');
-const historyBox = document.getElementById('history');
+/* polling state */
+const phasePill = document.getElementById('phasePill'); const hist = document.getElementById('history');
 let STATE = { phase:'betting', multiplier:1.00, history:[] };
-
-async function fetchState(){
+async function poll(){
   try{
     const r = await fetch(`${api}/aviator/state`, {cache:'no-store'});
-    if(!r.ok) throw new Error('state '+r.status);
+    if(!r.ok) throw new Error();
     STATE = await r.json();
-    updateUI();
+    phasePill.textContent = STATE.phase.toUpperCase();
+    draw(STATE.multiplier, STATE.phase);
+    hist.innerHTML='';
+    (STATE.history||[]).slice(-24).reverse().forEach(v=>{
+      const d=document.createElement('div'); d.className='hx'; 
+      if (v>=2.0) d.classList.add('good'); else if (v>=1.3) d.classList.add('avg'); else d.classList.add('bad');
+      d.textContent = v.toFixed(2)+'x'; hist.appendChild(d);
+    });
+    autoLoop();
   }catch(e){
     phasePill.textContent = 'API unavailable';
   }
 }
+setInterval(poll, 150); poll();
 
-function updateUI(){
-  phaseText.textContent = STATE.phase.toUpperCase();
-  phasePill.textContent = STATE.phase.toUpperCase();
-  draw(STATE.multiplier||1.00, STATE.phase);
-  // history
-  historyBox.innerHTML = '';
-  (STATE.history||[]).slice(-24).reverse().forEach(v=>{
-    const d = document.createElement('div'); d.className='hx';
-    if (v>=2.0) d.classList.add('good'); else if (v>=1.3) d.classList.add('avg'); else d.classList.add('bad');
-    d.textContent = v.toFixed(2)+'x';
-    historyBox.appendChild(d);
-  });
-  // auto cashout check
-  autoLoop();
-}
-
-/* ---------- tickets (local) ---------- */
-const ticketsBox = document.getElementById('tickets');
-const tickets = []; // {playerId, ticketId, stake, autoCashOut?, state:'LIVE'|'CASHED'|'BUST', payout}
-function addTicket(t){ tickets.unshift(t); renderTickets(); }
-function renderTickets(){
-  if(!tickets.length){ ticketsBox.textContent='No tickets yet.'; return; }
-  ticketsBox.innerHTML = '';
-  tickets.slice(0,10).forEach(t=>{
-    const div=document.createElement('div');
-    div.innerHTML = `<span class="badge">${t.playerId}</span> stake ${KES(t.stake)} ` +
-                    (t.autoCashOut? `auto@${t.autoCashOut}x `:'') +
-                    `— <b>${t.state}</b>` +
-                    (t.payout? ` — ${KES(t.payout)} @ ${t.hit?.toFixed?.(2)||'—'}x`:'');
-    ticketsBox.appendChild(div);
+/* tickets list */
+const tBox = document.getElementById('ticketsBox');
+const tickets = [];
+function addTicket(t){ tickets.unshift(t); renderT(); }
+function renderT(){
+  if(!tickets.length){ tBox.textContent='No tickets yet.'; return; }
+  tBox.innerHTML='';
+  tickets.slice(0,12).forEach(t=>{
+    const d=document.createElement('div');
+    d.innerHTML = `<b>${t.playerId}</b>: ${KES(t.stake)} ` +
+                  (t.autoCashOut? `auto@${t.autoCashOut}x `:'') +
+                  `— <b>${t.state}</b>` +
+                  (t.payout? ` — ${KES(t.payout)} @ ${t.hit?.toFixed?.(2)||'—'}x`:'');
+    tBox.appendChild(d);
   });
 }
 
-/* ---------- manual: 3 players ---------- */
-function wireManual(pid){
-  const stakeEl = document.getElementById(`${pid}-stake`);
-  const betBtn  = document.getElementById(`${pid}-bet`);
-  const cashBtn = document.getElementById(`${pid}-cash`);
-  const status  = document.getElementById(`${pid}-status`);
-  const tEl     = document.getElementById(`${pid}-ticket`);
-  const pEl     = document.getElementById(`${pid}-payout`);
+/* wire one card (manual+auto tabs inside) */
+function wireCard(pid){
+  const card = document.querySelector(`.card[data-player="${pid}"]`);
+  const tabs = card.querySelectorAll('.tab');
+  const manualPane = card.querySelector('.pane.manual');
+  const autoPane   = card.querySelector('.pane.auto');
+  tabs.forEach(tb=>tb.onclick = ()=>{
+    tabs.forEach(x=>x.classList.remove('active'));
+    tb.classList.add('active');
+    const m = tb.dataset.mode;
+    manualPane.style.display = m==='manual'?'block':'none';
+    autoPane.style.display   = m==='auto'  ?'block':'none';
+  });
 
+  const status = card.querySelector(`#${pid}-status`);
+  const tEl    = card.querySelector(`#${pid}-ticket`);
+  const pEl    = card.querySelector(`#${pid}-payout`);
+
+  // manual
+  const stakeEl= card.querySelector(`#${pid}-stake`);
+  const betBtn = card.querySelector(`#${pid}-bet`);
+  const cashBtn= card.querySelector(`#${pid}-cash`);
   betBtn.onclick = async ()=>{
-    const stake = clamp(Number(stakeEl.value||0), 20, 1000);
+    const stake = clamp(Number(stakeEl.value||0),20,1000);
     try{
-      const r = await fetch(`${api}/aviator/bet`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({playerId:pid, stake})});
-      const j = await r.json();
-      if(!j.ok) return alert(j.error||'Bet failed');
+      const r=await fetch(`${api}/aviator/bet`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, stake})});
+      const j=await r.json(); if(!j.ok) return alert(j.error||'Bet failed');
       status.textContent='LIVE'; tEl.textContent=j.ticketId; pEl.textContent='—';
-      addTicket({playerId:pid,ticketId:j.ticketId,stake, state:'LIVE'});
+      addTicket({playerId:pid,ticketId:j.ticketId,stake,state:'LIVE'});
     }catch(e){ alert('Bet error'); }
   };
   cashBtn.onclick = async ()=>{
     try{
-      const r = await fetch(`${api}/aviator/cashout`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({playerId:pid})});
-      const j = await r.json();
-      if(!j.ok) return alert(j.error||'Cashout failed');
+      const r=await fetch(`${api}/aviator/cashout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid})});
+      const j=await r.json(); if(!j.ok) return alert(j.error||'Cashout failed');
       status.textContent='CASHED'; pEl.textContent=KES(j.payout);
-      const t = tickets.find(x=>x.playerId===pid && x.state==='LIVE'); if(t){ t.state='CASHED'; t.payout=j.payout; t.hit=j.multiplier; }
-      renderTickets();
+      const t=tickets.find(x=>x.playerId===pid && x.state==='LIVE'); if(t){ t.state='CASHED'; t.payout=j.payout; t.hit=j.multiplier; }
+      renderT();
     }catch(e){ alert('Cashout error'); }
   };
-}
-['pA','pB','pC'].forEach(wireManual);
 
-/* ---------- auto ---------- */
-const autos = {
-  pA:null, pB:null, pC:null
-};
-function wireAuto(pid){
-  const stakeEl = document.getElementById(`${pid}-auto-stake`);
-  const xEl     = document.getElementById(`${pid}-auto-x`);
-  const btn     = document.getElementById(`${pid}-auto-on`);
-  btn.onclick = async ()=>{
-    const stake = clamp(Number(stakeEl.value||0), 20, 1000);
-    const x = clamp(Number(xEl.value||0), 1.05, 1000);
+  // auto
+  const aStake= card.querySelector(`#${pid}-auto-stake`);
+  const aX    = card.querySelector(`#${pid}-auto-x`);
+  const aBtn  = card.querySelector(`#${pid}-auto-on`);
+  aBtn.onclick = async ()=>{
+    const stake = clamp(Number(aStake.value||0),20,1000);
+    const x = clamp(Number(aX.value||0),1.05,1000);
     try{
-      const r = await fetch(`${api}/aviator/bet`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({playerId:pid, stake, autoCashOut:x})});
-      const j = await r.json();
-      if(!j.ok) return alert(j.error||'Auto bet failed');
+      const r=await fetch(`${api}/aviator/bet`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, stake, autoCashOut:x})});
+      const j=await r.json(); if(!j.ok) return alert(j.error||'Auto bet failed');
       autos[pid] = {stake, target:x, ticketId:j.ticketId, live:true};
-      addTicket({playerId:pid,ticketId:j.ticketId,stake, autoCashOut:x, state:'LIVE'});
+      addTicket({playerId:pid,ticketId:j.ticketId,stake,autoCashOut:x,state:'LIVE'});
+      status.textContent='LIVE'; tEl.textContent=j.ticketId; pEl.textContent='—';
     }catch(e){ alert('Auto bet error'); }
   };
 }
-['pA','pB','pC'].forEach(wireAuto);
 
-// automatically cash out when multiplier >= target
+['pA','pB','pC'].forEach(wireCard);
+
+// auto cashout watcher (during flight)
+const autos = {pA:null,pB:null,pC:null};
 async function autoLoop(){
   if (STATE.phase!=='flying') return;
   for (const pid of Object.keys(autos)){
     const a = autos[pid]; if (!a || !a.live) continue;
-    if ((STATE.multiplier||1) >= a.target){
+    if (Number(STATE.multiplier||1) >= a.target){
       try{
-        const r = await fetch(`${api}/aviator/cashout`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({playerId:pid})});
-        const j = await r.json();
-        if (j && j.ok){
+        const r=await fetch(`${api}/aviator/cashout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid})});
+        const j=await r.json();
+        if(j && j.ok){
           a.live=false;
-          const t = tickets.find(x=>x.ticketId===a.ticketId);
+          const t=tickets.find(x=>x.ticketId===a.ticketId);
           if(t){ t.state='CASHED'; t.payout=j.payout; t.hit=j.multiplier; }
-          renderTickets();
+          renderT();
         }
       }catch(e){}
     }
   }
 }
-
-/* ---------- mode tabs ---------- */
-document.querySelectorAll('.tab').forEach(tab=>{
-  tab.onclick = ()=>{
-    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-    tab.classList.add('active');
-    const id = tab.dataset.tab;
-    document.getElementById('manualPane').style.display = (id==='manual')?'grid':'none';
-    document.getElementById('autoPane').style.display   = (id==='auto')  ?'grid':'none';
-  };
-});
-
-/* ---------- poll loop ---------- */
-setInterval(fetchState, 150); // smooth updates ~6fps
-fetchState();
 </script>
 </body>
 </html>
