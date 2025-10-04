@@ -173,7 +173,7 @@ const cv = document.getElementById('area'); const ctx=cv.getContext('2d');
 function fit(){ const rect=cv.parentElement.getBoundingClientRect(); cv.width=rect.width; cv.height=cv.parentElement.clientHeight; }  
 fit(); addEventListener('resize',fit);  
 
-/* Plane SVG (same art) */
+/* Plane SVG */
 const planeImg = new Image();  
 planeImg.src = 'data:image/svg+xml;utf8,'+encodeURIComponent(`  
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 60">  
@@ -186,7 +186,7 @@ planeImg.src = 'data:image/svg+xml;utf8,'+encodeURIComponent(`
 </svg>`);  
 
 /* stage helpers */
-const marginL=0, marginB=0; // tail tip will sit exactly at bottom-left
+const marginL=0, marginB=0; // tail tip sits exactly at bottom-left
 function chipClass(v){ return v>=2?'good':(v>=1.3?'avg':'bad'); }
 const phasePill = document.getElementById('phasePill');
 const centerText = document.getElementById('centerText');
@@ -211,11 +211,11 @@ function paintChips(list){
   });
 }
 
-/* ===== Progress driver (smooth, but follows backend phase exactly) ===== */
+/* ===== Progress driver ===== */
 let STATE = { phase:'betting', multiplier:1, history:[] };
 let lastPhase = 'betting';
 
-/* mapping between multiplier and visual progress (0..1) */
+/* map multiplier <-> visual progress */
 function progressFromMult(m){
   if (!m || m<=1) return 0;
   return Math.min(1, Math.log(m)/9);
@@ -224,39 +224,43 @@ function multFromProgress(t){
   return Math.exp(9 * Math.max(0, Math.min(1, t)));
 }
 
-/* Smooth the plane a bit, but DO NOT end early; follow backend phase */
+/* TAKEOFF PROFILE:
+   - Rapid at start (BASE_FAST), then relax (BASE_SLOW) as progress rises.
+   - Still follows backend exactly (no early bust/hold). */
 let progressVis = 0;
-const BASE_MAX = 0.012; // pacing cap
-const SLOW_SCALE = 6;
+const BASE_FAST = 0.060; // initial snappy climb
+const BASE_SLOW = 0.012; // relaxed mid-air
+function lerp(a,b,t){ return a + (b-a)*t; }
 
+/* Upward arc; a bit steeper for bigger targets */
 function curveY(p, baseY, target){ 
-  // rising arc upward; slightly steeper for higher targets
   const steep = Math.log10(Math.max(1,target)+0.9);
   return baseY - (p*p) * (baseY*0.9) * steep; 
 }
 
-/* draw: trail starts exactly at tail tip; tail anchored to bottom-left */
+/* draw: trail touches tail tip exactly; plane pitched up even in BETTING */
 function draw(mult, phase){
   ctx.clearRect(0,0,cv.width,cv.height);
   const left=marginL, right=cv.width-1, baseY=cv.height-marginB-1, trackW=Math.max(0,right-left);
 
-  const t = progressFromMult(mult);
-  const steps = Math.max(2, Math.floor(300*t));
+  // t: 0 in betting (standby), evolves during flying
+  let t = (phase==='betting') ? 0 : progressFromMult(mult);
+  const steps = Math.max(2, Math.floor(300*Math.max(t, 0.001)));
 
-  if (phase==='flying' && steps>1){
-    // trail stroke in plane color, starting exactly at corner
-    ctx.beginPath();
-    ctx.moveTo(left, baseY);
-    for(let i=0;i<=steps;i++){
-      const p=i/300;
-      const x=left+p*trackW;
-      ctx.lineTo(x, curveY(p, baseY, mult));
-    }
-    ctx.strokeStyle='#ff4d6d';
-    ctx.lineWidth=2;
-    ctx.stroke();
+  // Trail always starts from the corner, even in BETTING (short stub)
+  ctx.beginPath();
+  ctx.moveTo(left, baseY);
+  for(let i=0;i<=steps;i++){
+    const p = (phase==='betting') ? i/300 * 0.02 : i/300 * t; // tiny stub in betting
+    const x = left + p*trackW;
+    ctx.lineTo(x, curveY(p, baseY, Math.max(1,mult)));
+  }
+  ctx.strokeStyle='#ff4d6d';
+  ctx.lineWidth=2;
+  ctx.stroke();
 
-    // soft fill under the curve
+  if (phase==='flying' && t>0){
+    // soft fill under curve during flight
     ctx.lineTo(left + t*trackW, baseY);
     ctx.lineTo(left, baseY);
     ctx.closePath();
@@ -264,37 +268,35 @@ function draw(mult, phase){
     ctx.fill();
   }
 
-  if (phase==='flying'){
-    const px = left + t*trackW;
-    const py = curveY(t, baseY, mult);
-    const t2 = Math.max(0, t - 0.01);
-    const px2 = left + t2*trackW;
-    const py2 = curveY(t2, baseY, mult);
-    const ang = Math.atan2(py - py2, px - px2);
+  // Plane
+  const planeT = (phase==='betting') ? 0 : t;
+  const px = left + planeT*trackW;
+  const py = curveY(planeT, baseY, Math.max(1,mult));
+  const prevT = Math.max(0, planeT - 0.01);
+  const px2 = left + prevT*trackW;
+  const py2 = curveY(prevT, baseY, Math.max(1,mult));
+  let ang = Math.atan2(py - py2, px - px2);
+  if (phase==='betting') ang = -Math.PI/10; // slight upward pitch while waiting
 
-    // Half previous big size (nice balance)
-    const SCALE = 1.5;
-    const w = 140*SCALE, h = 60*SCALE;
+  // Size and tail-anchor
+  const SCALE = 1.5;               // (same half-sized look you liked)
+  const w = 140*SCALE, h = 60*SCALE;
+  const tailAx = 4/140, tailAy = 36/60;
 
-    // Anchor to tail tip in the SVG (approx tail at 4,36 in 140x60 viewBox)
-    const tailAx = 4/140;   // ~0.0286
-    const tailAy = 36/60;   // 0.6
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.rotate(ang);
+  ctx.drawImage(planeImg, -w*tailAx, -h*tailAy, w, h);
+  ctx.restore();
 
-    ctx.save();
-    ctx.translate(px, py);
-    ctx.rotate(ang);
-    // draw so that (tailAx*w, tailAy*h) maps to (0,0) => tail at px,py
-    ctx.drawImage(planeImg, -w*tailAx, -h*tailAy, w, h);
-    ctx.restore();
-  }
-
+  // Center text
   centerText.className='centerText '+(phase==='busted'?'flew':'multi');
   if (phase==='betting') centerText.textContent='Place your bets…';
   else if (phase==='busted') centerText.textContent='FLEW AWAY!\n'+(mult?`${Number(mult).toFixed(2)}x`:``);
   else centerText.textContent = mult?`${Number(mult).toFixed(2)}x`:``;
 }
 
-/* animation loop — follow backend phase exactly */
+/* animation loop — follow backend phase exactly; rapid-then-relax speed */
 let lastAnimTs = performance.now();
 function animate(now){
   const dt = (now - lastAnimTs) / 1000;
@@ -303,16 +305,16 @@ function animate(now){
   const backend = Number(STATE.multiplier||1);
   const targetProgress = progressFromMult(backend);
 
-  // smooth plane motion but never get stuck early
-  const effMax = BASE_MAX / (1 + SLOW_SCALE * targetProgress);
+  // Ease factor grows with progress: 0 (start, fast) -> 1 (mid/high, slow)
+  const ease = Math.min(1, Math.pow(targetProgress, 0.7));
+  const effMax = lerp(BASE_FAST, BASE_SLOW, ease);
+
   const maxStep = effMax * Math.max(0, dt);
   const step = Math.max(-maxStep, Math.min(maxStep, targetProgress - progressVis));
   progressVis += step;
 
   const multForDraw = multFromProgress(progressVis);
-  const visualPhase = STATE.phase; // <-- key: no early gating; exactly follow backend phase
-
-  draw(multForDraw, visualPhase);
+  draw(multForDraw, STATE.phase);  // NO gating: sync with backend
   requestAnimationFrame(animate);
 }
 requestAnimationFrame(animate);
@@ -344,9 +346,7 @@ async function poll(){
                        (j.liveMultiplier!=null? Number(j.liveMultiplier):1);
     const history = Array.isArray(j.history)? j.history : [];
 
-    // reset plane visual progress on each new flight so tail starts at corner
-    if (lastPhase!=='flying' && phase==='flying'){ progressVis = 0; }
-
+    if (lastPhase!=='flying' && phase==='flying'){ progressVis = 0; }       // tail from corner
     if (lastPhase!=='busted' && phase==='busted'){ markAllLiveAsLost(backendMult); }
 
     STATE = { phase, multiplier: backendMult, history };
