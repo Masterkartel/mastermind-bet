@@ -214,17 +214,15 @@ function paintChips(list){
   });  
 }  
   
-/* ===== Smoothed, rate-limited progress driver ===== */  
+/* ===== State ===== */  
 let STATE = { phase:'betting', multiplier:1, history:[] };
 let lastPhase = 'betting';
 let lastPollTs = performance.now();
 
-/* Defer bust so the plane always appears for a moment */
-let flightStartAt = 0;
-let pendingBust = null;
-let bustHandled = false;
-let lastFlyingMult = 1;
-const MIN_FLIGHT_VIS_MS = 2600;
+/* crash freeze so odds/plane/label stop together */
+let crashed = false;
+let crashMult = 1;
+let lastLiveMult = 1;
 
 /* mapping between multiplier and visual progress (0..1) */  
 function progressFromMult(m){  
@@ -235,20 +233,8 @@ function multFromProgress(t){
   return Math.exp(9 * Math.max(0, Math.min(1, t)));  
 }  
 
-/* Two-stage smoothing:
-   1) backendVis follows backend odds SLOWER (odds speed reduced)
-   2) progressVis follows backendVis FASTER (plane speed 3x) */
-let backendVis = 0;   // smoothed backend progress
-let progressVis = 0;  // plane progress
-
-/* base pacing numbers */
-const BASE_MAX = 0.0045;   // base rate
-const SLOW_SCALE = 12;     // slowdown as odds rise
-
-/* odds speed reduced by 1 factor (≈2x slower) */
-const BACKEND_RATE_MULT = 0.5;
-/* plane animation speed increased 3x */
-const PLANE_RATE_MULT = 3.0;
+/* plane progress (snap to backend so speeds match) */
+let progressVis = 0;
   
 function curveY(p, baseY, target){   
   return baseY - Math.pow(p,2.0)*(baseY*0.9)*Math.log10((Math.max(1,target))+0.9);   
@@ -300,29 +286,19 @@ function draw(mult, phase){
   else centerText.textContent = mult?`${Number(mult).toFixed(2)}x`:``;  
 }  
   
-/* animation loop — decouple odds smoothing from plane easing */  
+/* animation loop — SNAP plane to backend odds so they match exactly */  
 let lastAnimTs = performance.now();  
 function animate(now){  
-  const dt = (now - lastAnimTs) / 1000;  
   lastAnimTs = now;  
 
-  /* target from backend */
-  const backendTarget = progressFromMult(Number(STATE.multiplier||1));
+  // backend target (or frozen crash)
+  const targetMult = crashed ? crashMult : Number(STATE.multiplier||1);
 
-  /* 1) Smooth backend (slower odds) */
-  const effBackend = (BASE_MAX * BACKEND_RATE_MULT) / (1 + SLOW_SCALE * backendVis);
-  const maxBackendStep = effBackend * Math.max(0, dt);
-  const dBack = Math.max(-maxBackendStep, Math.min(maxBackendStep, backendTarget - backendVis));
-  backendVis += dBack;
+  // snap plane progress to backend instantly (no lag)
+  progressVis = progressFromMult(STATE.phase==='betting' ? 1 : targetMult);
 
-  /* 2) Plane chases backend (faster plane) */
-  const effPlane = (BASE_MAX * PLANE_RATE_MULT) / (1 + SLOW_SCALE * progressVis);
-  const maxPlaneStep = effPlane * Math.max(0, dt);
-  const dPlane = Math.max(-maxPlaneStep, Math.min(maxPlaneStep, backendVis - progressVis));
-  progressVis += dPlane;
-
-  const fakeMultForDraw = multFromProgress(progressVis);  
-  draw(fakeMultForDraw, STATE.phase);  
+  const multForDraw = multFromProgress(progressVis);  
+  draw(multForDraw, STATE.phase);  
   
   requestAnimationFrame(animate);  
 }  
@@ -344,7 +320,7 @@ function renderT(){
 }  
 function markAllLiveAsLost(mult){ tickets.forEach(t=>{ if(t.state==='LIVE'){ t.state='LOST'; t.hit=mult; t.payout=0; } }); renderT(); }  
   
-/* Poll backend — with "grace window" so bust never renders instantly */  
+/* Poll backend — freeze everything at bust to avoid "odds still running" */  
 async function poll(){  
   try{  
     const r=await fetch(`${api}/aviator/state`,{cache:'no-store'}); if(!r.ok) throw 0;  
@@ -353,45 +329,30 @@ async function poll(){
     const rawMultiplier = j.multiplier!=null ? Number(j.multiplier) : (j.liveMultiplier!=null? Number(j.liveMultiplier):1);  
     const history = Array.isArray(j.history)? j.history : [];  
 
-    let phase = rawPhase;
-    let multiplier = rawMultiplier;
-
-    // detect new flight start
-    if (lastPhase!=='flying' && phase==='flying'){ 
-      backendVis = 0;
-      progressVis = 0; 
-      flightStartAt = performance.now();
-      pendingBust = null;
-      bustHandled = false;
-      lastFlyingMult = 1;
+    // transitions
+    if (lastPhase!=='flying' && rawPhase==='flying'){ 
+      crashed = false;
+      crashMult = 1;
+      lastLiveMult = 1;
+      progressVis = 0;
     }
 
-    // track last live multiplier while flying
-    if (phase==='flying'){
-      if (rawMultiplier > 1) lastFlyingMult = rawMultiplier;
-    }
-
-    // if backend says busted too early, defer showing bust until grace elapses
-    if (phase==='busted'){
-      const sinceStart = flightStartAt ? (performance.now() - flightStartAt) : Infinity;
-      if (sinceStart < MIN_FLIGHT_VIS_MS){
-        // hold bust
-        pendingBust = rawMultiplier || pendingBust || lastFlyingMult || 1;
-        phase = 'flying';
-        multiplier = lastFlyingMult || 1;
-      }else{
-        // grace passed; finalize bust once
-        if (!bustHandled){
-          const crashMult = pendingBust || rawMultiplier || lastFlyingMult || 1;
-          markAllLiveAsLost(crashMult);
-          bustHandled = true;
-          multiplier = crashMult;
-        }
+    if (rawPhase==='flying'){
+      if (rawMultiplier > 1) lastLiveMult = rawMultiplier;
+      STATE = { phase:'flying', multiplier:rawMultiplier, history };
+    } else if (rawPhase==='busted'){
+      if (!crashed){
+        crashed = true;
+        crashMult = (j.multiplier!=null ? Number(j.multiplier) : lastLiveMult || 1);
+        markAllLiveAsLost(crashMult);
       }
+      STATE = { phase:'busted', multiplier:crashMult, history };
+    } else {
+      // betting
+      STATE = { phase:'betting', multiplier:1, history };
     }
 
-    STATE = { phase, multiplier, history };  
-    phasePill.textContent = phase.toUpperCase();  
+    phasePill.textContent = STATE.phase.toUpperCase();  
     paintChips(history);  
     lastPollTs = performance.now();  
     lastPhase = rawPhase;  
