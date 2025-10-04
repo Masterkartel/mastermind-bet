@@ -207,10 +207,17 @@ function paintChips(list){
 }  
   
 /* ===== Smoothed, rate-limited progress driver ===== */  
-let STATE = { phase:'betting', multiplier:1, history:[] };  
-let lastPhase = 'betting';  
-let lastPollTs = performance.now();  
-  
+let STATE = { phase:'betting', multiplier:1, history:[] };
+let lastPhase = 'betting';
+let lastPollTs = performance.now();
+
+/* Defer bust so the plane always appears for a moment */
+let flightStartAt = 0;           // perf.now() when flight began
+let pendingBust = null;          // multiplier to show at bust after grace
+let bustHandled = false;         // avoid double processing
+let lastFlyingMult = 1;          // last live multiplier while flying
+const MIN_FLIGHT_VIS_MS = 2600;  // minimum on-screen flight time before showing "FLEW AWAY"
+
 /* mapping between multiplier and visual progress (0..1) */  
 function progressFromMult(m){  
   if (!m || m<=1) return 0;  
@@ -222,9 +229,9 @@ function multFromProgress(t){
   
 /* visual progress cap per second (Spribe-like pacing) */
 let progressVis = 0;
-/* ONLY CHANGED THESE TWO TO SLOW THE ODDS/VISUAL GROWTH */
-const BASE_MAX = 0.005;   // slower fastest rate (~3×+ slower than before)
-const SLOW_SCALE = 8;     // stronger slowdown as odds climb
+/* Pace tuned so odds don't outrun the plane; slows more at higher odds */
+const BASE_MAX = 0.0045;   // fastest progress rate (lower = slower)
+const SLOW_SCALE = 12;     // slowdown factor as odds/progress increase
   
 function curveY(p, baseY, target){   
   return baseY - Math.pow(p,2.0)*(baseY*0.9)*Math.log10((Math.max(1,target))+0.9);   
@@ -283,7 +290,7 @@ function animate(now){
   const backend = Number(STATE.multiplier||1);  
   const targetProgress = progressFromMult(backend);  
   
-  /* Spribe-like pacing with stronger cap so odds don't "run" too fast */
+  /* Spribe-like pacing with strong cap so odds don't "run" too fast */
   const effMax = BASE_MAX / (1 + SLOW_SCALE * targetProgress);
   const maxStep = effMax * Math.max(0, dt);  
   const delta = Math.max(-maxStep, Math.min(maxStep, targetProgress - progressVis));  
@@ -312,21 +319,51 @@ function renderT(){
 }  
 function markAllLiveAsLost(mult){ tickets.forEach(t=>{ if(t.state==='LIVE'){ t.state='LOST'; t.hit=mult; t.payout=0; } }); renderT(); }  
   
-/* Poll backend */  
+/* Poll backend — with "grace window" so bust never renders instantly */  
 async function poll(){  
   try{  
     const r=await fetch(`${api}/aviator/state`,{cache:'no-store'}); if(!r.ok) throw 0;  
     const j=await r.json();  
-    const phase = j.phase ? j.phase :  
-                  (j.status==='RUNNING'?'flying': j.status==='BUST'?'busted': 'betting');  
-    const multiplier = j.multiplier!=null ? Number(j.multiplier) :  
-                       (j.liveMultiplier!=null? Number(j.liveMultiplier):1);  
+    const rawPhase = j.phase ? j.phase : (j.status==='RUNNING'?'flying': j.status==='BUST'?'busted': 'betting');  
+    const rawMultiplier = j.multiplier!=null ? Number(j.multiplier) : (j.liveMultiplier!=null? Number(j.liveMultiplier):1);  
     const history = Array.isArray(j.history)? j.history : [];  
-  
-    // when a new flight starts, start drawing from bottom-left
-    if (lastPhase!=='flying' && phase==='flying') { progressVis = 0; }  
-    if (lastPhase!=='busted' && phase==='busted'){ markAllLiveAsLost(multiplier); }  
-  
+
+    let phase = rawPhase;
+    let multiplier = rawMultiplier;
+
+    // detect new flight start
+    if (lastPhase!=='flying' && phase==='flying'){ 
+      progressVis = 0; 
+      flightStartAt = performance.now();
+      pendingBust = null;
+      bustHandled = false;
+      lastFlyingMult = 1;
+    }
+
+    // track last live multiplier while flying
+    if (phase==='flying'){
+      if (rawMultiplier > 1) lastFlyingMult = rawMultiplier;
+    }
+
+    // if backend says busted too early, defer showing bust until grace elapses
+    if (phase==='busted'){
+      const sinceStart = flightStartAt ? (performance.now() - flightStartAt) : Infinity;
+      if (sinceStart < MIN_FLIGHT_VIS_MS){
+        // hold bust
+        pendingBust = rawMultiplier || pendingBust || lastFlyingMult || 1;
+        phase = 'flying';
+        multiplier = lastFlyingMult || 1;
+      }else{
+        // grace passed; finalize bust once
+        if (!bustHandled){
+          const crashMult = pendingBust || rawMultiplier || lastFlyingMult || 1;
+          markAllLiveAsLost(crashMult);
+          bustHandled = true;
+          multiplier = crashMult;
+        }
+      }
+    }
+
     STATE = { phase, multiplier, history };  
     phasePill.textContent = phase.toUpperCase();  
     paintChips(history);  
