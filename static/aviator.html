@@ -13,9 +13,9 @@
   body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--bg);color:var(--text)}
   header{padding:12px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;justify-content:space-between}
   .brand{font-weight:900}
-  .chip{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0f1933;color:#cfe1ff;text-decoration:none}
+  .clock{min-width:220px;text-align:right;font-variant-numeric:tabular-nums}
   .wrap{max-width:1300px;margin:0 auto;padding:14px;display:grid;gap:14px}
-
+  /* stage */
   .stage{background:radial-gradient(ellipse at 50% 30%, #0f2748 0 55%, #0b1426 60% 100%);
          border:1px solid var(--line);border-radius:18px;height:520px;position:relative;overflow:hidden}
   canvas{position:absolute;inset:0}
@@ -30,18 +30,18 @@
   .hx.avg{color:#f59e0b;border-color:#4b3e12;background:#2b250f}
   .hx.bad{color:#ef4444;border-color:#4d1313;background:#3b0b0b}
   .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0e172f;color:#cfe1ff}
-  .clock{min-width:180px;text-align:right}
 
+  /* players */
   .players{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px;display:grid;gap:10px}
   .ttl{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .tabs{display:flex;gap:6px}
-  .tab{padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:#0f1933;color:#e6edf3;cursor:pointer;font-weight:800}
+  .tab{padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:#0f1933;color:#e6edf3;cursor:pointer;font-weight:800;user-select:none}
   .tab.active{outline:2px solid #22c55e}
   label{font-size:12px;color:var(--muted)}
   input[type="number"]{width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:#0d1428;color:#fff}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .btn{padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#0d1428;color:#fff;cursor:pointer;font-weight:800}
+  .btn{padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#0d1428;color:#fff;cursor:pointer;font-weight:800;user-select:none}
   .btn.green{background:#0f2b1b;border-color:#1b4d28}
   .btn.red{background:#3b0b0b;border-color:#4d1313}
   .kpi{font-size:12px;color:#b9c2cf}
@@ -50,11 +50,8 @@
 </head>
 <body>
 <header>
-  <div class="brand">MASTERMIND — Aviator</div>
-  <div class="row">
-    <span class="chip">Cashier mode (KES)</span>
-    <a class="chip" href="/static/cashier.html">⇐ Back to Cashier</a>
-  </div>
+  <div class="brand">MASTERMIND — Aviator (Shop Mode)</div>
+  <div class="clock" id="clock">—</div>
 </header>
 
 <div class="wrap">
@@ -62,10 +59,9 @@
     <div class="topbar">
       <div class="leftTB">
         <div class="history" id="history"></div>
-        <div class="pill" id="phasePill">API unavailable</div>
+        <div class="pill" id="phasePill">—</div>
         <div class="pill">Next round starts automatically</div>
       </div>
-      <div class="pill clock" id="clock">—</div>
     </div>
     <canvas id="cv"></canvas>
     <div class="centerText" id="centerText"></div>
@@ -76,12 +72,9 @@
     <div class="card" data-player="pA">
       <div class="ttl">
         <div><b>Player A</b> <span class="kpi">Bal: <b id="pA-bal">0</b> KES</span> <span class="kpi" id="pA-status">idle</span></div>
-        <div class="row">
-          <button class="btn" id="pA-load">+1000</button>
-          <div class="tabs">
-            <div class="tab active" data-mode="manual">Bet</div>
-            <div class="tab" data-mode="auto">Auto</div>
-          </div>
+        <div class="tabs">
+          <div class="tab active" data-mode="manual">Bet</div>
+          <div class="tab" data-mode="auto">Auto</div>
         </div>
       </div>
 
@@ -118,12 +111,9 @@
     <div class="card" data-player="pB">
       <div class="ttl">
         <div><b>Player B</b> <span class="kpi">Bal: <b id="pB-bal">0</b> KES</span> <span class="kpi" id="pB-status">idle</span></div>
-        <div class="row">
-          <button class="btn" id="pB-load">+1000</button>
-          <div class="tabs">
-            <div class="tab active" data-mode="manual">Bet</div>
-            <div class="tab" data-mode="auto">Auto</div>
-          </div>
+        <div class="tabs">
+          <div class="tab active" data-mode="manual">Bet</div>
+          <div class="tab" data-mode="auto">Auto</div>
         </div>
       </div>
 
@@ -160,12 +150,9 @@
     <div class="card" data-player="pC">
       <div class="ttl">
         <div><b>Player C</b> <span class="kpi">Bal: <b id="pC-bal">0</b> KES</span> <span class="kpi" id="pC-status">idle</span></div>
-        <div class="row">
-          <button class="btn" id="pC-load">+1000</button>
-          <div class="tabs">
-            <div class="tab active" data-mode="manual">Bet</div>
-            <div class="tab" data-mode="auto">Auto</div>
-          </div>
+        <div class="tabs">
+          <div class="tab active" data-mode="manual">Bet</div>
+          <div class="tab" data-mode="auto">Auto</div>
         </div>
       </div>
 
@@ -206,23 +193,32 @@
 </div>
 
 <script>
-const api  = location.origin.replace(/:\\d+$/, ':4000');
-const KES  = x => new Intl.NumberFormat('en-KE',{style:'currency',currency:'KES'}).format(Number(x||0));
-const clamp= (n,min,max)=> Math.max(min, Math.min(max,n));
+/* ====== CONFIG / HELPERS ====== */
+const API = ''; // same-origin
+const KES = x => new Intl.NumberFormat('en-KE',{style:'currency',currency:'KES'}).format(Number(x||0));
+const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
 
-// clock
+/* Optional audio — add files later in /static/sfx/ and uncomment
+const sWhoosh = new Audio('/static/sfx/whoosh.wav');
+const sTick   = new Audio('/static/sfx/tick.wav');
+const sBust   = new Audio('/static/sfx/bust.wav');
+*/
+
+/* ====== CLOCK ====== */
 const clk = document.getElementById('clock'); let skew=0;
-async function syncClock(){ try{ const r=await fetch(`${api}/health`); const j=await r.json(); skew=j.ts-Date.now(); }catch(e){} }
-setInterval(()=>{ const d=new Date(Date.now()+skew); clk.textContent=d.toLocaleString(); }, 500); syncClock();
+async function syncClock(){
+  try{ const r=await fetch(`${API}/health`,{cache:'no-store'}); const j=await r.json(); if(j.ts) skew=j.ts-Date.now(); }catch{}
+}
+setInterval(()=>{ const d=new Date(Date.now()+skew); clk.textContent=d.toLocaleString(); }, 500);
+syncClock();
 
-// canvas
-const cv = document.getElementById('cv'); const ctx=cv.getContext('2d');
-function fit(){ cv.width=cv.clientWidth||cv.parentElement.clientWidth; cv.height=cv.clientHeight||520; }
+/* ====== CANVAS / DRAW ====== */
+const cv=document.getElementById('cv'); const ctx=cv.getContext('2d'); const centerText=document.getElementById('centerText');
+function fit(){ cv.width=cv.clientWidth||cv.parentElement.clientWidth||1200; cv.height=cv.clientHeight||520; }
 fit(); addEventListener('resize',fit);
-const centerText = document.getElementById('centerText');
 function draw(mult, phase){
   ctx.clearRect(0,0,cv.width,cv.height);
-  const maxX=cv.width-60, maxY=cv.height-80, target=Math.max(1,mult||1);
+  const maxX=cv.width-60, maxY=cv.height-80, target=Math.max(1,Number(mult)||1);
   ctx.beginPath(); ctx.moveTo(60,maxY);
   for (let i=0;i<=240;i++){
     const p=i/240, x=60+p*maxX*0.9, y=maxY - Math.pow(p,2.2)*(maxY*0.85)*Math.log10(target+0.9);
@@ -231,35 +227,43 @@ function draw(mult, phase){
   ctx.lineTo(cv.width,cv.height); ctx.lineTo(60,cv.height); ctx.closePath();
   ctx.fillStyle='rgba(239,68,68,0.35)'; ctx.fill();
   const px=60+0.9*maxX*Math.min(1,Math.log10(target+0.9)), py=maxY-(maxY*0.85)*Math.log10(target+0.9);
+  // plane (simple triangular marker)
   ctx.fillStyle='#ff4d6d'; ctx.beginPath(); ctx.moveTo(px-14,py+6); ctx.lineTo(px+18,py); ctx.lineTo(px-8,py-6); ctx.closePath(); ctx.fill();
   centerText.className='centerText '+(phase==='busted'?'flew':'multi');
-  centerText.textContent=(phase==='busted'?'FLEW AWAY!\n':'')+(mult?`${Number(mult).toFixed(2)}x`:'' );
+  centerText.textContent=(phase==='busted'?'FLEW AWAY!\n':'')+(target?`${Number(target).toFixed(2)}x`:'' );
 }
 
-// state polling (accepts both new+legacy shapes)
-const phasePill = document.getElementById('phasePill'), histBox = document.getElementById('history');
-let STATE = { phase:'betting', multiplier:1.00, history:[] };
+/* ====== STATE POLLING ====== */
+const phasePill=document.getElementById('phasePill'), histBox=document.getElementById('history');
+let STATE={phase:'betting', multiplier:1.00, history:[]};
+
 async function poll(){
   try{
-    const r=await fetch(`${api}/aviator/state`, {cache:'no-store'}); if(!r.ok) throw new Error();
+    const r=await fetch(`${API}/aviator/state`,{cache:'no-store'});
+    if(!r.ok) throw new Error('bad');
     const j=await r.json();
     const phase = j.phase ? j.phase : (j.status==='RUNNING'?'flying': j.status==='BUST'?'busted':'betting');
     const multiplier = j.multiplier!=null ? Number(j.multiplier) : (j.liveMultiplier!=null? Number(j.liveMultiplier):1);
     STATE = { phase, multiplier, history: j.history||[] };
     phasePill.textContent = phase.toUpperCase();
     draw(multiplier, phase);
+
     histBox.innerHTML='';
     (STATE.history||[]).slice(-24).reverse().forEach(v=>{
       const d=document.createElement('div'); d.className='hx';
       if (v>=2) d.classList.add('good'); else if (v>=1.3) d.classList.add('avg'); else d.classList.add('bad');
       d.textContent=Number(v).toFixed(2)+'x'; histBox.appendChild(d);
     });
-    autoLoop();
-  }catch(e){ phasePill.textContent='API unavailable'; }
-}
-setInterval(poll,150); poll();
 
-// tickets
+    autoLoop();
+  }catch(e){
+    phasePill.textContent='API unavailable';
+  }
+}
+// faster while flying for smoothness
+setInterval(poll, 200);
+
+/* ====== TICKETS (LOCAL LIST) ====== */
 const tBox=document.getElementById('ticketsBox'); const tickets=[];
 function addT(t){ tickets.unshift(t); renderT(); }
 function renderT(){
@@ -273,59 +277,73 @@ function renderT(){
   });
 }
 
-// wallet helpers
+/* ====== WALLET (READ ONLY HERE) ====== */
 async function refreshBal(pid){
-  try{ const r=await fetch(`${api}/wallet/${pid}`); const j=await r.json();
-       if(j && j.ok!==false){ const el=document.getElementById(`${pid}-bal`); if(el) el.textContent=j.balance||0; }
-  }catch(e){}
-}
-async function loadBal(pid, amt){
-  try{ const r=await fetch(`${api}/wallet/load`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, amount:amt})});
-       const j=await r.json(); if(j && j.ok){ const el=document.getElementById(`${pid}-bal`); if(el) el.textContent=j.balance||0; } else alert(j.error||'Load failed'); }
-  }catch(e){ alert('Load error'); }
+  try{ const r=await fetch(`${API}/aviator/wallet/${pid}`,{cache:'no-store'}); const j=await r.json();
+       if(j && j.balance!=null){ const el=document.getElementById(`${pid}-bal`); if(el) el.textContent=j.balance; }
+  }catch{}
 }
 
-// wire one player card
+/* ====== WIRE PLAYER CARDS ====== */
+const autos={pA:null,pB:null,pC:null};
+
 function wireCard(pid){
   const card=document.querySelector(`.card[data-player="${pid}"]`);
   const tabs=card.querySelectorAll('.tab'); const manual=card.querySelector('.pane.manual'); const auto=card.querySelector('.pane.auto');
-  tabs.forEach(tb=>tb.onclick=()=>{ tabs.forEach(x=>x.classList.remove('active')); tb.classList.add('active'); const m=tb.dataset.mode; manual.style.display=m==='manual'?'block':'none'; auto.style.display=m==='auto'?'block':'none'; });
 
-  const status=card.querySelector(`#${pid}-status`), tEl=card.querySelector(`#${pid}-ticket`), pEl=card.querySelector(`#${pid}-payout`);
-  const stakeEl=card.querySelector(`#${pid}-stake`), betBtn=card.querySelector(`#${pid}-bet`), cashBtn=card.querySelector(`#${pid}-cash`);
-  const aStake=card.querySelector(`#${pid}-auto-stake`), aX=card.querySelector(`#${pid}-auto-x`), aBtn=card.querySelector(`#${pid}-auto-on`);
-  const loadBtn=card.querySelector(`#${pid}-load`);
+  tabs.forEach(tb=>{
+    tb.addEventListener('click', ()=>{
+      tabs.forEach(x=>x.classList.remove('active'));
+      tb.classList.add('active');
+      const mode=tb.dataset.mode;
+      manual.style.display = mode==='manual' ? 'block' : 'none';
+      auto.style.display   = mode==='auto'   ? 'block' : 'none';
+    });
+  });
 
-  loadBtn.onclick = ()=> loadBal(pid, 1000);
+  const status=card.querySelector(`#${pid}-status`);
+  const tEl=card.querySelector(`#${pid}-ticket`);
+  const pEl=card.querySelector(`#${pid}-payout`);
+
+  const stakeEl=card.querySelector(`#${pid}-stake`);
+  const betBtn =card.querySelector(`#${pid}-bet`);
+  const cashBtn=card.querySelector(`#${pid}-cash`);
+
+  const aStake=card.querySelector(`#${pid}-auto-stake`);
+  const aX    =card.querySelector(`#${pid}-auto-x`);
+  const aBtn  =card.querySelector(`#${pid}-auto-on`);
 
   betBtn.onclick = async ()=>{
     const stake=clamp(Number(stakeEl.value||0),20,1000);
     try{
-      const r=await fetch(`${api}/aviator/bet`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, stake})});
+      const r=await fetch(`${API}/aviator/bet`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, stake})});
       const j=await r.json(); if(!j.ok) return alert(j.error||'Bet failed');
       status.textContent='LIVE'; tEl.textContent=j.ticketId; pEl.textContent='—';
-      if(j.balance!=null){ const bal=document.getElementById(`${pid}-bal`); if(bal) bal.textContent=j.balance; }
       addT({playerId:pid,ticketId:j.ticketId,stake,state:'LIVE'});
+      refreshBal(pid);
     }catch(e){ alert('Bet error'); }
   };
+
   cashBtn.onclick = async ()=>{
     try{
-      const r=await fetch(`${api}/aviator/cashout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid})});
+      const r=await fetch(`${API}/aviator/cashout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid})});
       const j=await r.json(); if(!j.ok) return alert(j.error||'Cashout failed');
       status.textContent='CASHED'; pEl.textContent=KES(j.payout);
-      if(j.balance!=null){ const bal=document.getElementById(`${pid}-bal`); if(bal) bal.textContent=j.balance; }
       const t=tickets.find(x=>x.playerId===pid && x.state==='LIVE'); if(t){ t.state='CASHED'; t.payout=j.payout; t.hit=j.multiplier; } renderT();
+      refreshBal(pid);
     }catch(e){ alert('Cashout error'); }
   };
+
   aBtn.onclick = async ()=>{
-    const stake=clamp(Number(aStake.value||0),20,1000), x=clamp(Number(aX.value||0),1.05,1000);
+    const stake=clamp(Number(aStake.value||0),20,1000);
+    const x=clamp(Number(aX.value||0),1.05,1000);
     try{
-      const r=await fetch(`${api}/aviator/bet`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, stake, autoCashOut:x})});
+      const r=await fetch(`${API}/aviator/bet`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, stake, autoCashOut:x})});
       const j=await r.json(); if(!j.ok) return alert(j.error||'Auto bet failed');
       autos[pid]={stake, target:x, ticketId:j.ticketId, live:true};
-      if(j.balance!=null){ const bal=document.getElementById(`${pid}-bal`); if(bal) bal.textContent=j.balance; }
       status.textContent='LIVE'; tEl.textContent=j.ticketId; pEl.textContent='—';
       addT({playerId:pid,ticketId:j.ticketId,stake,autoCashOut:x,state:'LIVE'});
+      refreshBal(pid);
     }catch(e){ alert('Auto bet error'); }
   };
 
@@ -333,17 +351,21 @@ function wireCard(pid){
 }
 ['pA','pB','pC'].forEach(wireCard);
 
-// auto cashout
-const autos={pA:null,pB:null,pC:null};
+/* ====== AUTO LOOP (AUTO CASHOUT WHEN TARGET REACHED) ====== */
 async function autoLoop(){
   if(STATE.phase!=='flying') return;
   for(const pid of Object.keys(autos)){
     const a=autos[pid]; if(!a||!a.live) continue;
     if(Number(STATE.multiplier||1)>=a.target){
       try{
-        const r=await fetch(`${api}/aviator/cashout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid})});
-        const j=await r.json(); if(j&&j.ok){ a.live=false; const t=tickets.find(x=>x.ticketId===a.ticketId); if(t){ t.state='CASHED'; t.payout=j.payout; t.hit=j.multiplier; } renderT(); }
-      }catch(e){}
+        const r=await fetch(`${API}/aviator/cashout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid})});
+        const j=await r.json(); if(j&&j.ok){
+          a.live=false;
+          const t=tickets.find(x=>x.ticketId===a.ticketId);
+          if(t){ t.state='CASHED'; t.payout=j.payout; t.hit=j.multiplier; } renderT();
+          refreshBal(pid);
+        }
+      }catch{}
     }
   }
 }
