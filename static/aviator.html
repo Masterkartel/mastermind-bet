@@ -228,7 +228,8 @@ function multFromProgress(t){
 
 /* visual progress that cannot move faster than maxProgressPerSec */
 let progressVis = 0;
-const maxProgressPerSec = 0.16; // ~6–7s visible climb typical
+/* 3× slower than before: 0.16 / 3 */
+const maxProgressPerSec = 0.0533333333;
 
 function curveY(p, baseY, target){ 
   return baseY - Math.pow(p,2.0)*(baseY*0.9)*Math.log10((Math.max(1,target))+0.9); 
@@ -291,8 +292,6 @@ function animate(now){
   const maxStep = maxProgressPerSec * Math.max(0, dt);
   const delta = Math.max(-maxStep, Math.min(maxStep, targetProgress - progressVis));
   progressVis += delta;
-
-  // NOTE: removed the per-frame reset here
 
   const fakeMultForDraw = multFromProgress(progressVis);
   draw(fakeMultForDraw, STATE.phase);
