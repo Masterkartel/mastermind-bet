@@ -211,21 +211,20 @@ let STATE = { phase:'betting', multiplier:1, history:[] };
 let lastPhase = 'betting';  
 let lastPollTs = performance.now();  
   
-/* your mapping (kept) */  
+/* mapping between multiplier and visual progress (0..1) */  
 function progressFromMult(m){  
   if (!m || m<=1) return 0;  
   return Math.min(1, Math.log(m)/9);  
 }  
-/* inverse to feed existing draw() which expects a multiplier */  
 function multFromProgress(t){  
   return Math.exp(9 * Math.max(0, Math.min(1, t)));  
 }  
   
-/* visual progress that cannot move faster than maxProgressPerSec */  
-let progressVis = 0;  
-/* FASTEST allowed (0.16 × 3). Long odds get slower via SLOW_SCALE. */
-const BASE_MAX = 0.0533333333;
-const SLOW_SCALE = 3; // increase if you want even longer flights at high odds
+/* visual progress cap per second (Spribe-like pacing) */
+let progressVis = 0;
+/* TUNE ONLY THESE TWO if needed later */
+const BASE_MAX = 0.015;   // ~5–6s to reach 2× (fastest case)
+const SLOW_SCALE = 5;     // slows more as odds rise
   
 function curveY(p, baseY, target){   
   return baseY - Math.pow(p,2.0)*(baseY*0.9)*Math.log10((Math.max(1,target))+0.9);   
@@ -237,7 +236,7 @@ function draw(mult, phase){
   const left=marginL, right=cv.width-16, baseY=cv.height-marginB, trackW=Math.max(0,right-left);  
   
   const t = progressFromMult(mult);  
-  const steps = Math.max(2, Math.floor(200*t)); // reduced from 280 to lighten draw cost  
+  const steps = Math.max(2, Math.floor(200*t)); // keep light on CPU  
   
   if (phase==='flying' && steps>1){  
     ctx.beginPath();   
@@ -275,7 +274,7 @@ function draw(mult, phase){
   else centerText.textContent = mult?`${Number(mult).toFixed(2)}x`:``;  
 }  
   
-/* animation loop — rate limit visible progress, then convert back to a fake multiplier for draw() */  
+/* animation loop — odds-aware cap on progress speed */  
 let lastAnimTs = performance.now();  
 function animate(now){  
   const dt = (now - lastAnimTs) / 1000;  
@@ -284,7 +283,9 @@ function animate(now){
   const backend = Number(STATE.multiplier||1);  
   const targetProgress = progressFromMult(backend);  
   
-  // odds-aware cap: fast when low, slower as target increases
+  /* Spribe-like pacing:
+     - fastest rate = BASE_MAX
+     - slows further with progress (higher odds) by SLOW_SCALE */
   const effMax = BASE_MAX / (1 + SLOW_SCALE * targetProgress);
   const maxStep = effMax * Math.max(0, dt);  
   const delta = Math.max(-maxStep, Math.min(maxStep, targetProgress - progressVis));  
@@ -324,9 +325,8 @@ async function poll(){
                        (j.liveMultiplier!=null? Number(j.liveMultiplier):1);  
     const history = Array.isArray(j.history)? j.history : [];  
   
-    // reset progress only when a NEW flight starts  
+    // when a new flight starts, start drawing from bottom-left
     if (lastPhase!=='flying' && phase==='flying') { progressVis = 0; }  
-  
     if (lastPhase!=='busted' && phase==='busted'){ markAllLiveAsLost(multiplier); }  
   
     STATE = { phase, multiplier, history };  
@@ -352,7 +352,7 @@ function wireCard(pid){
   const status=card.querySelector(`#${pid}-status`), tEl=card.querySelector(`#${pid}-ticket`), pEl=card.querySelector(`#${pid}-payout`);  
   const stakeEl=card.querySelector(`#${pid}-stake`), betBtn=card.querySelector(`#${pid}-bet`), cashBtn=card.querySelector(`#${pid}-cash`);  
   const aStake=card.querySelector(`#${pid}-auto-stake`), aX=card.querySelector(`#${pid}-auto-x`), aBtn=card.querySelector(`#${pid}-auto-on`);  
-  
+   
   betBtn.onclick = async ()=>{  
     const stake=clamp(Number(stakeEl.value||0),20,1000);  
     try{  
