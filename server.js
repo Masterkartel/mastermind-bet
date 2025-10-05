@@ -112,10 +112,18 @@ const STATE = {
 const AVIATOR_CFG = {
   SPEED: 0.46,          // exponential growth rate (Spribe-like feel)
   MIN_BET_MS: 4500,     // waiting window ("Place your bets…")
-  MIN_FLY_MS: 5500,     // minimum time airborne before we can show bust
+  MIN_FLY_MS: 5500,     // default minimum time airborne before we can show bust
   BUST_HOLD_MS: 2000,   // keep "FLEW AWAY" on screen before next betting
   MAX_BUST: 50
 };
+
+// === Dynamic min-flight (instant bust for tiny multipliers) ===
+function dynamicMinFlyMs(bust) {
+  if (!bust || bust <= 1.02) return 120;   // virtually instant
+  if (bust <= 1.10) return 900;            // ~1s
+  if (bust <= 1.30) return 2000;           // ~2s
+  return AVIATOR_CFG.MIN_FLY_MS;           // spribe-like default
+}
 
 function ensureCashier(id){ if(!STATE.cashiers.has(id)) STATE.cashiers.set(id,{balance:0}); return STATE.cashiers.get(id); }
 function creditCashier(id,amt){ ensureCashier(id).balance += Number(amt)||0; }
@@ -358,7 +366,7 @@ function runEvent(eventId){
     const mIds = STATE.marketsByEvent.get(ev.id) || [];
     const winM = mIds.map(id=>STATE.markets.get(id)).find(x=>x.type==='MAIN_WIN');
     const ids = winM?.selections?.map(s=>s.id) || [];
-    const fair = ids.map(id => 1/(winM.odds[id]||1));
+    const fair = ids.map(id => 1/(winM?.odds?.[id]||1));
     const s = fair.reduce((a,b)=>a+b,0)||1; for(let i=0;i<fair.length;i++) fair[i]/=s;
     const pool = ids.map((id,i)=>({id,w:fair[i]}));
     const positions=[]; let tmp=pool.slice();
@@ -446,7 +454,7 @@ setInterval(()=>{
   } else if (A.phase === 'flying'){
     const dtMs = t - A.t0;
     const mCand = Math.max(1.00, Math.exp(AVIATOR_CFG.SPEED * (dtMs/1000)));
-    // Freeze at bust value if we reach it early, but keep flying until MIN_FLY_MS passes
+    // Freeze at bust value if we reach it early, but keep flying until dynamic min passes
     A.multiplier = Math.min(mCand, A.bustAt);
 
     // Auto-cashouts
@@ -460,8 +468,8 @@ setInterval(()=>{
       }
     }
 
-    // Switch to BUST only after minimum flight time
-    if (mCand >= A.bustAt && dtMs >= AVIATOR_CFG.MIN_FLY_MS){
+    // Switch to BUST only after dynamic minimum flight time (instant for tiny busts)
+    if (mCand >= A.bustAt && dtMs >= dynamicMinFlyMs(A.bustAt)){
       A.phase = 'busted';
       const m = Number(A.bustAt.toFixed(2));
       STATE.results.aviator.unshift(m); if (STATE.results.aviator.length>120) STATE.results.aviator.length=120;
