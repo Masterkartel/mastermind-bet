@@ -9,6 +9,7 @@
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--bg);color:var(--text);}
+  /* sticky clock */
   .header{display:flex;align-items:center;justify-content:flex-end;padding:8px 14px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(10,14,26,.85);backdrop-filter:blur(6px);z-index:20}
   .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0e172f;color:#cfe1ff}
   .clock{min-width:220px;text-align:right}
@@ -225,17 +226,17 @@ function tFromMult(mult,bust){ if(!mult||mult<=1||!bust||bust<=1) return 0; retu
 function multFromT(t,bust){ const b=Math.max(1.000001,Number(bust||2)); return Math.pow(b, Math.max(0,Math.min(1,t))); }
 function damp(cur,tgt,rate,dt){ const k=Math.exp(-rate*Math.max(0,dt)); return cur*k + tgt*(1-k); }
 
-/* Upward path: very small horizontal travel, strong vertical climb */
-const HORIZ_FRACTION = 0.18;      // ≤ 18% of width by the tip
+/* Diagonal climb (smooth up-right) */
+const DIAG_END = 0.36;  // ~36% screen width at the tip
 function pathX(p, left, trackW){
-  const ease = 1 - Math.exp(-3.4*p);
-  return left + trackW * HORIZ_FRACTION * ease;
+  const s = 1 - Math.exp(-3.8 * p);       // soft ease → 0..1
+  return left + trackW * DIAG_END * s;    // tail stays at left
 }
 function pathY(p, baseY, bust){
-  const steep = Math.log(Math.max(1.0001, Number(bust||2)));
-  const k = 0.42 + 0.18*steep;          // ascent gain
-  const pow = 1.28 + 0.18*steep;        // curvature
-  return baseY - (Math.pow(p, pow)) * (baseY * (0.90*k));
+  const steep = Math.log(Math.max(1.0001, Number(bust || 2)));
+  const k   = 0.36 + 0.14 * steep;        // ascent gain (gentle)
+  const pow = 1.18 + 0.14 * steep;        // curvature
+  return baseY - Math.pow(p, pow) * (baseY * (0.90 * k));
 }
 
 /* sky draw */
@@ -262,12 +263,23 @@ function draw(mult,phase,dt){
   ctx.clearRect(0,0,cssW,cssH);
 
   const left=0, baseY=cssH-1, trackW=cssW-1, bust=STATE.bust||2;
-  const t = (phase==='flying') ? progressVis : (phase==='busted' ? tFromMult(mult,bust) : STANDBY_T);
 
-  drawSky(dt, t);
+  // Always paint sky
+  const tSky = (phase==='flying') ? progressVis : (phase==='busted' ? 1 : STANDBY_T);
+  drawSky(dt, tSky);
 
-  // slight camera zoom from the corner (kept subtle)
-  const camScale = 1 + t*0.45;
+  // If busted: hide plane AND trail (only show text + sky)
+  if (phase === 'busted') {
+    centerText.className='centerText flew';
+    centerText.textContent='FLEW AWAY!\n'+(mult?`${Number(mult).toFixed(2)}x`:``);
+    return;
+  }
+
+  // Otherwise compute progress and draw path+plane
+  const t = (phase==='flying') ? progressVis : STANDBY_T;
+
+  // subtle camera zoom (smaller to keep the diagonal feel)
+  const camScale = 1 + t*0.35;
   ctx.save(); ctx.translate(left, baseY); ctx.scale(camScale, camScale); ctx.translate(-left, -baseY);
 
   const steps=Math.max(2, Math.floor(320*t));
@@ -280,21 +292,18 @@ function draw(mult,phase,dt){
   ctx.lineTo(tipX, baseY); ctx.lineTo(left, baseY); ctx.closePath();
   ctx.fillStyle='rgba(255,77,109,0.20)'; ctx.fill();
 
-  if (phase!=='busted'){
-    const t2=Math.max(0,t-0.012);
-    const px2=pathX(t2,left,trackW), py2=pathY(t2,baseY,bust);
-    lastAngle = Math.atan2(tipY - py2, tipX - px2) - 0.05; // nose-up
-    const SCALE=1.5, w=140*SCALE, h=60*SCALE;
-    const tailAx=4/140, tailAy=36/60;
-    ctx.save(); ctx.translate(tipX, tipY); ctx.rotate(lastAngle);
-    ctx.drawImage(planeImg, -w*tailAx, -h*tailAy, w, h); ctx.restore();
-  }
+  const t2=Math.max(0,t-0.012);
+  const px2=pathX(t2,left,trackW), py2=pathY(t2,baseY,bust);
+  lastAngle = Math.atan2(tipY - py2, tipX - px2) - 0.05; // nose-up
+  const SCALE=1.5, w=140*SCALE, h=60*SCALE;
+  const tailAx=4/140, tailAy=36/60;
+  ctx.save(); ctx.translate(tipX, tipY); ctx.rotate(lastAngle);
+  ctx.drawImage(planeImg, -w*tailAx, -h*tailAy, w, h); ctx.restore();
+
   ctx.restore();
 
-  centerText.className='centerText '+(phase==='busted'?'flew':'multi');
-  if (phase==='betting') centerText.textContent='Place your bets…';
-  else if (phase==='busted') centerText.textContent='FLEW AWAY!\n'+(mult?`${Number(mult).toFixed(2)}x`:``);
-  else centerText.textContent = mult?`${Number(mult).toFixed(2)}x`:``;
+  centerText.className='centerText multi';
+  centerText.textContent = mult?`${Number(mult).toFixed(2)}x`:``;
 }
 
 /* animation: target progress is **time-based**, not multiplier-based */
@@ -365,7 +374,7 @@ async function poll(){
 }
 setInterval(poll, 220); poll();
 
-/* wallet + controls (demo auto-fund so it works immediately) */
+/* wallet + controls (auto-fund so it works immediately) */
 async function refreshBal(pid){
   try{ const r=await fetch(API.walletGet(pid)); const j=await r.json();
        if(j && j.ok!==false){ const el=document.getElementById(`${pid}-bal`); if(el) el.textContent=j.balance||0; return j.balance||0; }
