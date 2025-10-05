@@ -103,18 +103,28 @@ const STATE = {
     seed: Math.floor(Math.random()*2**31),
     bustAt: 5.0,
     bets: new Map(),
-    lastCashable: 1.00     // NEW: last fair live multiplier strictly below bust
+    lastCashable: 1.00     // last fair live multiplier strictly below bust
   }
 };
 
 // Tunable pacing (frontend references SPEED to sync visuals)
 const AVIATOR_CFG = {
-  SPEED: 0.69,          // 1.5x faster than 0.46
-  EASE_POWER: 1.12,     // NEW: >1 = slower start (gentler early ramp)
-  MIN_BET_MS: 4500,     // waiting window ("Place your bets…")
-  MIN_FLY_MS: 5500,     // default minimum time airborne before bust can appear
-  BUST_HOLD_MS: 2000,   // keep "FLEW AWAY" on screen before next betting
+  SPEED: 0.66,          // gentler than 0.69
+  EASE_POWER: 1.18,     // >1 = slower start (feels fairer)
+  MIN_BET_MS: 4500,
+  MIN_FLY_MS: 5500,
+  BUST_HOLD_MS: 2000,
   MAX_BUST: 50
+};
+
+// Exposure-aware shaping (fair show rounds / safer when exposure exists)
+const EXPOSURE_CFG = {
+  hiTailChanceNoBets: 0.25, // 25% chance to show a big round when nobody bet
+  hiTailMin: 8,
+  hiTailMax: 30,
+  softCapBase: 6.5,         // soft cap when there are bets
+  softCapPerK: 1.2,         // + per KES 1000 of live stakes
+  minBelowBustForManual: 0.01
 };
 
 // === Dynamic min-flight (instant bust for tiny multipliers) ===
@@ -402,90 +412,135 @@ function runEvent(eventId){
 }
 
 // ----------------- Aviator Helpers -----------------
-function drawBust(seed){
+function drawBustCore(seed, alpha = 3.2, min = 1.00, max = AVIATOR_CFG.MAX_BUST){
   const r = mulberry32(seed)();
-  const alpha = 3.2, min=1.00; // allow 1.00–1.01x cases
-  const bust = min / Math.pow(1-r, 1/alpha);
-  return Math.max(1.00, Math.min(bust, AVIATOR_CFG.MAX_BUST));
+  const bust = min / Math.pow(1 - r, 1/alpha);
+  return Math.max(min, Math.min(bust, max));
+}
+function drawBust(seed){ // default distribution
+  return drawBustCore(seed, 3.2, 1.00, AVIATOR_CFG.MAX_BUST);
 }
 function roundRef(){ return 'R-' + String(STATE.results.aviator.length+1).padStart(5,'0'); }
 
+function liveExposureSummary(A){
+  let stakeTotal = 0, liveCount = 0;
+  for (const [,bet] of A.bets){ if (bet.live && !bet.cashed){ liveCount++; stakeTotal += bet.stake||0; } }
+  return { liveCount, stakeTotal };
+}
+function pickBustForRound(A){
+  const { liveCount, stakeTotal } = liveExposureSummary(A);
+
+  // No bets → sometimes let it fly high for show/history
+  if (liveCount === 0){
+    const show = mulberry32(A.seed ^ 0x5a5a)() < EXPOSURE_CFG.hiTailChanceNoBets;
+    if (show){
+      return Math.max(
+        EXPOSURE_CFG.hiTailMin,
+        Math.min(
+          drawBustCore(A.seed ^ 0x7777, 2.2, 1.00, EXPOSURE_CFG.hiTailMax),
+          EXPOSURE_CFG.hiTailMax
+        )
+      );
+    }
+    return drawBust(A.seed);
+  }
+
+  // There ARE bets → soften tail by applying a soft cap that tightens with exposure
+  const perK = Math.max(0, stakeTotal/1000);
+  const softCap = Math.max(2.0, EXPOSURE_CFG.softCapBase + perK * EXPOSURE_CFG.softCapPerK);
+
+  const base = drawBust(A.seed);
+  if (base <= softCap) return base;
+
+  // smooth squash: more above the cap → more compression, never below the cap
+  const over = base - softCap;
+  const squashed = softCap + over / (1 + over); // asymptotically approaches softCap+1
+  return Math.min(squashed, AVIATOR_CFG.MAX_BUST);
+}
+
 // ----------------- Ticker -----------------
 setInterval(()=>{
-  const t = NOW();
+  try {
+    const t = NOW();
 
-  // Timer for pre-scheduled games
-  for (const ev of STATE.events.values()){
-    if (ev.status==='OPEN' && t >= ev.locksAt) ev.status='LOCKED';
-    if ((ev.status==='LOCKED'||ev.status==='OPEN') && t >= ev.runsAt) runEvent(ev.id);
-  }
-
-  // Keep queues filled
-  ['dog','horse','colors','lotto49'].forEach(g=>{
-    const future = [...STATE.events.values()].filter(e=>e.game===g && (e.status==='OPEN'||e.status==='LOCKED'));
-    if (future.length < 1) scheduleEvent(g);
-  });
-  ['EPL','LALIGA','UCL'].forEach(L=>{
-    const future = [...STATE.events.values()].filter(e=>e.game==='football' && e.league===L && (e.status==='OPEN'||e.status==='LOCKED'));
-    if (future.length < 10) seedFootballBatch(L);
-  });
-
-  // ---- Aviator engine ----
-  const A = STATE.aviator;
-
-  if (A.phase === 'betting'){
-    if (t >= A.nextChangeAt){
-      A.phase = 'flying';
-      A.t0 = t;
-      A.seed = (A.seed + 1) >>> 0;
-      A.bustAt = drawBust(A.seed);
-      A.multiplier = 1.00;
-      A.lastCashable  = 1.00;    // reset at takeoff
+    // Timer for pre-scheduled games
+    for (const ev of STATE.events.values()){
+      if (ev.status==='OPEN' && t >= ev.locksAt) ev.status='LOCKED';
+      if ((ev.status==='LOCKED'||ev.status==='OPEN') && t >= ev.runsAt) runEvent(ev.id);
     }
-  } else if (A.phase === 'flying'){
-    const dtMs   = t - A.t0;
-    const tSec   = dtMs / 1000;
-    // Eased growth: gentler early ramp, same long-run speed feel
-    const shaped = Math.pow(Math.max(0, tSec), AVIATOR_CFG.EASE_POWER);
-    const mLive  = Math.max(1.00, Math.exp(AVIATOR_CFG.SPEED * shaped)); // live, uncapped
 
-    A.multiplier   = Math.min(mLive, A.bustAt);                  // display (cap at bust)
-    // Track last fair multiplier strictly BELOW bust to prevent bust-payout on manual clicks
-    A.lastCashable = Math.max(1.00, Math.min(mLive, A.bustAt - 0.01));
+    // Keep queues filled
+    ['dog','horse','colors','lotto49'].forEach(g=>{
+      const future = [...STATE.events.values()].filter(e=>e.game===g && (e.status==='OPEN'||e.status==='LOCKED'));
+      if (future.length < 1) scheduleEvent(g);
+    });
+    ['EPL','LALIGA','UCL'].forEach(L=>{
+      const future = [...STATE.events.values()].filter(e=>e.game==='football' && e.league===L && (e.status==='OPEN'||e.status==='LOCKED'));
+      if (future.length < 10) seedFootballBatch(L);
+    });
 
-    // Auto-cashouts: pay EXACT target
-    for (const [pid, bet] of A.bets){
-      if (!bet.live || bet.cashed || !bet.autoCashOut) continue;
-      if (A.multiplier >= bet.autoCashOut){
-        bet.cashed = true; bet.live=false;
-        bet.hit    = Number(bet.autoCashOut.toFixed(2));
-        bet.payout = Math.min(bet.stake * bet.hit, MAX_PAYOUT);
-        creditPlayer(pid, bet.payout);
+    // ---- Aviator engine ----
+    const A = STATE.aviator;
+
+    if (A.phase === 'betting'){
+      if (t >= A.nextChangeAt){
+        A.phase = 'flying';
+        A.t0 = t;
+        A.seed = (A.seed + 1) >>> 0;
+        A.bustAt = pickBustForRound(A); // exposure-aware bust
+        A.multiplier = 1.00;
+        A.lastCashable  = 1.00;    // reset at takeoff
       }
-    }
+    } else if (A.phase === 'flying'){
+      const dtMs   = t - A.t0;
+      const tSec   = dtMs / 1000;
+      // Eased growth: gentler early ramp, same long-run speed feel
+      const shaped = Math.pow(Math.max(0, tSec), AVIATOR_CFG.EASE_POWER);
+      const mLive  = Math.max(1.00, Math.exp(AVIATOR_CFG.SPEED * shaped)); // live, uncapped
 
-    // Transition to BUST only after dynamic minimum flight time
-    if (mLive >= A.bustAt && dtMs >= dynamicMinFlyMs(A.bustAt)){
-      A.phase = 'busted';
-      const m = Number(A.bustAt.toFixed(2));
-      STATE.results.aviator.unshift(m); if (STATE.results.aviator.length>120) STATE.results.aviator.length=120;
+      A.multiplier   = Math.min(mLive, A.bustAt); // display (cap at bust)
+      // Track last fair multiplier strictly BELOW bust to prevent bust-payout on manual clicks
+      A.lastCashable = Math.max(1.00, Math.min(mLive, A.bustAt - EXPOSURE_CFG.minBelowBustForManual));
 
+      // Auto-cashouts: pay EXACT target (not the displayed multiplier)
       for (const [pid, bet] of A.bets){
-        if (bet.live && !bet.cashed){ bet.live=false; bet.payout=0; bet.hit=m; }
+        if (!bet.live || bet.cashed || !bet.autoCashOut) continue;
+        if (A.multiplier >= bet.autoCashOut){
+          bet.cashed = true; bet.live=false;
+          bet.hit    = Number(bet.autoCashOut.toFixed(2));
+          bet.payout = Math.min(bet.stake * bet.hit, MAX_PAYOUT);
+          creditPlayer(pid, bet.payout);
+        }
       }
-      A.nextChangeAt = t + AVIATOR_CFG.BUST_HOLD_MS;
-      A.multiplier = A.bustAt; // show exact bust value during hold
+
+      // Transition to BUST only after dynamic minimum flight time
+      if (mLive >= A.bustAt && dtMs >= dynamicMinFlyMs(A.bustAt)){
+        A.phase = 'busted';
+        const m = Number(A.bustAt.toFixed(2));
+        STATE.results.aviator.unshift(m); if (STATE.results.aviator.length>120) STATE.results.aviator.length=120;
+
+        for (const [pid, bet] of A.bets){
+          if (bet.live && !bet.cashed){ bet.live=false; bet.payout=0; bet.hit=m; }
+        }
+        A.nextChangeAt = t + AVIATOR_CFG.BUST_HOLD_MS;
+        A.multiplier = A.bustAt; // show exact bust value during hold
+      }
+    } else if (A.phase === 'busted'){
+      if (t >= A.nextChangeAt){
+        A.phase='betting';
+        A.multiplier=1.00;
+        A.bets.clear();
+        A.t0=t;
+        A.nextChangeAt = t + AVIATOR_CFG.MIN_BET_MS;
+      }
     }
-  } else if (A.phase === 'busted'){
-    if (t >= A.nextChangeAt){
-      A.phase='betting';
-      A.multiplier=1.00;
-      A.bets.clear();
-      A.t0=t;
-      A.nextChangeAt = t + AVIATOR_CFG.MIN_BET_MS;
-    }
+  } catch (err) {
+    console.error('Ticker error:', err);
   }
 }, 100);
+
+process.on('unhandledRejection', e => console.error('unhandledRejection', e));
+process.on('uncaughtException', e => console.error('uncaughtException', e));
 
 // ----------------- API: Common -----------------
 app.get('/health', (_req,res)=> res.json({ ok:true, ts:Date.now(), sha:BUILD_SHA }));
