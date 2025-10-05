@@ -16,7 +16,7 @@
 
   .wrap{max-width:100vw;margin:0 auto;padding:0;display:grid;gap:14px}
 
-  /* Endless sky feel */
+  /* Endless sky feel (CSS base; motion added via canvas parallax) */
   .stage{
     position:relative;width:100%;height:min(62vh,620px);min-height:360px;border:1px solid var(--line);
     border-radius:18px;overflow:hidden;
@@ -207,8 +207,8 @@ const chipsBox=document.getElementById('chips'); const drawerGrid=document.getEl
 const expander=document.getElementById('expander'); const moreBtn=document.getElementById('moreBtn');
 let expanded=false; moreBtn.onclick=()=>{ expanded=!expanded; expander.style.display=expanded?'block':'none'; };
 function paintChips(list){
-  chipsBox.innerHTML=''; (list||[]).slice(0,6).forEach(v=>{ const c=document.createElement('div'); c.className='chip '+chipClass(v); c.textContent=Number(v).toFixed(2)+'x'; chipsBox.appendChild(c); });
-  drawerGrid.innerHTML=''; (list||[]).slice(0,96).forEach(v=>{ const d=document.createElement('div'); d.className='chip '+chipClass(v); d.textContent=Number(v).toFixed(2)+'x'; drawerGrid.appendChild(d); });
+  chipsBox.innerHTML=''; (list||[]).slice(0,6).forEach(v=>{ const c=document.createElement('div'); c.className='chip '+chipClass(v); c.textContent=Number(v).toFixed(2)+'x'; c.title=c.textContent; chipsBox.appendChild(c); });
+  drawerGrid.innerHTML=''; (list||[]).slice(0,96).forEach(v=>{ const d=document.createElement('div'); d.className='chip '+chipClass(v); d.textContent=Number(v).toFixed(2)+'x'; d.title=d.textContent; drawerGrid.appendChild(d); });
 }
 const phasePill=document.getElementById('phasePill'); const centerText=document.getElementById('centerText');
 
@@ -226,34 +226,42 @@ function tFromMult(mult,bust){ if(!mult||mult<=1||!bust||bust<=1) return 0; retu
 function multFromT(t,bust){ const b=Math.max(1.000001,Number(bust||2)); return Math.pow(b, Math.max(0,Math.min(1,t))); }
 function damp(cur,tgt,rate,dt){ const k=Math.exp(-rate*Math.max(0,dt)); return cur*k + tgt*(1-k); }
 
-/* Diagonal climb (smooth up-right) */
+/* Diagonal, steady climb (no rocket) */
 const DIAG_END = 0.36;  // ~36% screen width at the tip
 function pathX(p, left, trackW){
-  const s = 1 - Math.exp(-3.8 * p);       // soft ease → 0..1
-  return left + trackW * DIAG_END * s;    // tail stays at left
+  // near-linear x growth with very soft ease-out
+  const s = 1 - Math.exp(-2.4 * p);       // softer than before => steadier
+  return left + trackW * DIAG_END * s;
 }
 function pathY(p, baseY, bust){
+  // gentler curve; scales with bust but stays stable early on
   const steep = Math.log(Math.max(1.0001, Number(bust || 2)));
-  const k   = 0.36 + 0.14 * steep;        // ascent gain (gentle)
-  const pow = 1.18 + 0.14 * steep;        // curvature
+  const k   = 0.32 + 0.12 * steep;        // ascent gain (gentle)
+  const pow = 1.12 + 0.12 * steep;        // curvature (gentle)
   return baseY - Math.pow(p, pow) * (baseY * (0.90 * k));
 }
 
-/* sky draw */
+/* sky draw — includes a vertical slide proportional to progress (infinite feel) */
 function drawSky(dt, tNorm){
+  const slideY = tNorm * cssH * 0.28; // slide “world” upward as we climb
+
   SKY.clouds.forEach(c=>{
     c.x += c.spx*dt; c.y += c.spy*dt*(1+0.6*tNorm);
-    if (c.x - c.r > cssW) c.x = -c.r;
-    if (c.y + c.r < -40) { c.y = cssH + c.r*0.5; c.x = Math.random()*cssW*0.5; }
-    const g=ctx.createRadialGradient(c.x, c.y, c.r*0.1, c.x, c.y, c.r);
+    let y = c.y - slideY;
+    let x = c.x;
+    if (x - c.r > cssW) x = c.x = -c.r;
+    if (y + c.r < -40) { c.y = cssH + c.r*0.5 + slideY; x = c.x = Math.random()*cssW*0.5; y = c.y - slideY; }
+    const g=ctx.createRadialGradient(x, y, c.r*0.1, x, y, c.r);
     g.addColorStop(0, `rgba(170,200,255,${c.a})`); g.addColorStop(1, `rgba(20,40,80,0)`);
-    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x, y, c.r, 0, Math.PI*2); ctx.fill();
   });
+
   SKY.streaks.forEach(s=>{
     s.x += s.sp*dt*(0.7+0.9*tNorm); s.y -= s.sp*dt*(0.9+0.9*tNorm);
-    if (s.x - s.len > cssW || s.y + s.len < 0){ s.x = -20 - Math.random()*80; s.y = cssH + Math.random()*120; }
+    let x = s.x, y = s.y - slideY;
+    if (x - s.len > cssW || y + s.len < 0){ s.x = -20 - Math.random()*80; s.y = cssH + Math.random()*120 + slideY; x=s.x; y=s.y - slideY; }
     ctx.strokeStyle = `rgba(200,220,255,${s.a})`; ctx.lineWidth = s.th;
-    ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x - s.len, s.y + s.len); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - s.len, y + s.len); ctx.stroke();
   });
 }
 
@@ -264,37 +272,39 @@ function draw(mult,phase,dt){
 
   const left=0, baseY=cssH-1, trackW=cssW-1, bust=STATE.bust||2;
 
-  // Always paint sky
-  const tSky = (phase==='flying') ? progressVis : (phase==='busted' ? 1 : STANDBY_T);
+  // Paint sky first (always)
+  const tSky = (phase==='flying') ? progressVis : (phase==='busted' ? 1 : 0);
   drawSky(dt, tSky);
 
-  // If busted: hide plane AND trail (only show text + sky)
+  // If busted: hide plane AND trail (sky + text only)
   if (phase === 'busted') {
     centerText.className='centerText flew';
     centerText.textContent='FLEW AWAY!\n'+(mult?`${Number(mult).toFixed(2)}x`:``);
     return;
   }
 
-  // Otherwise compute progress and draw path+plane
+  // Progress for trail/plane
   const t = (phase==='flying') ? progressVis : STANDBY_T;
 
-  // subtle camera zoom (smaller to keep the diagonal feel)
-  const camScale = 1 + t*0.35;
+  // Subtle camera zoom from corner (reduced so diagonal stays steady)
+  const camScale = 1 + t*0.28;
   ctx.save(); ctx.translate(left, baseY); ctx.scale(camScale, camScale); ctx.translate(-left, -baseY);
 
+  // Trail path
   const steps=Math.max(2, Math.floor(320*t));
-  ctx.beginPath(); ctx.arc(left, baseY, 1.15, 0, Math.PI*2); ctx.fillStyle='#ff4d6d'; ctx.fill();
+  ctx.beginPath(); ctx.arc(left, baseY, 1.05, 0, Math.PI*2); ctx.fillStyle='#ff4d6d'; ctx.fill();
   ctx.beginPath(); ctx.moveTo(left, baseY);
   for(let i=0;i<=steps;i++){ const p=i/320; const x=pathX(p, left, trackW); ctx.lineTo(x, pathY(p, baseY, bust)); }
   ctx.strokeStyle='#ff4d6d'; ctx.lineWidth=2; ctx.stroke();
 
   const tipX=pathX(t, left, trackW), tipY=pathY(t, baseY, bust);
   ctx.lineTo(tipX, baseY); ctx.lineTo(left, baseY); ctx.closePath();
-  ctx.fillStyle='rgba(255,77,109,0.20)'; ctx.fill();
+  ctx.fillStyle='rgba(255,77,109,0.18)'; ctx.fill();
 
+  // Plane (tail still glued)
   const t2=Math.max(0,t-0.012);
   const px2=pathX(t2,left,trackW), py2=pathY(t2,baseY,bust);
-  lastAngle = Math.atan2(tipY - py2, tipX - px2) - 0.05; // nose-up
+  lastAngle = Math.atan2(tipY - py2, tipX - px2) - 0.03; // tiny nose-up
   const SCALE=1.5, w=140*SCALE, h=60*SCALE;
   const tailAx=4/140, tailAy=36/60;
   ctx.save(); ctx.translate(tipX, tipY); ctx.rotate(lastAngle);
@@ -302,23 +312,32 @@ function draw(mult,phase,dt){
 
   ctx.restore();
 
-  centerText.className='centerText multi';
-  centerText.textContent = mult?`${Number(mult).toFixed(2)}x`:``;
+  // HUD text
+  if (phase==='betting'){
+    centerText.className='centerText multi';
+    centerText.textContent='Place your bets…';
+  }else{
+    centerText.className='centerText multi';
+    centerText.textContent = mult?`${Number(mult).toFixed(2)}x`:``;
+  }
 }
 
 /* animation: target progress is **time-based**, not multiplier-based */
 function tick(now){
   const dt=(now-lastTs)/1000; lastTs=now;
 
-  // progress by expected timeline
-  let target = STANDBY_T;
+  let target = 0;
   if (STATE.phase==='flying'){
     const elapsedSec = Math.max(0, (now - flightStartMs)/1000);
     target = Math.min(1, elapsedSec / flightDurSec);
-  } else if (STATE.phase==='busted'){
+  } else if (STATE.phase==='betting'){
+    target = 0; // no motion
+  } else { // busted
     target = 1;
   }
-  const rate = (STATE.phase==='flying' && progressVis<0.12) ? 18 : 9;
+
+  // Smooth, steady follow (no rocket push)
+  const rate = (STATE.phase==='flying') ? 7.0 : 9.0;
   progressVis = damp(progressVis, target, rate, dt);
 
   const bust=Number(STATE.bust||2);
@@ -356,13 +375,13 @@ async function poll(){
     const bust = Number(j.bust || j.bustAt || 2);
     const speed = Number(j.speed || 0.46);
 
-    // on flight start or first detection, align client time with server state
+    // when flight starts (or we first notice it), sync our timeline to server
     if (lastPhase !== 'flying' && phase === 'flying'){
       const timeToBustSec = Math.log(Math.max(1.000001,bust)) / Math.max(0.01, speed);
-      flightDurSec = Math.max(MIN_FLY_SEC_FRONT, timeToBustSec);    // server waits at least MIN_FLY
+      flightDurSec = Math.max(MIN_FLY_SEC_FRONT, timeToBustSec);
       const offsetSec = Math.min(flightDurSec, Math.log(Math.max(1.000001,m)) / Math.max(0.01, speed));
-      flightStartMs = performance.now() - offsetSec*1000;           // backfill start so we sync mid-round
-      progressVis = STANDBY_T;                                      // lift off from the dot
+      flightStartMs = performance.now() - offsetSec*1000;
+      progressVis = 0; // start from ground with gentle takeoff
     }
     if (lastPhase !== 'busted' && phase === 'busted'){ markAllLiveAsLost(m); }
 
