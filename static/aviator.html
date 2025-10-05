@@ -191,10 +191,52 @@ function fit(){
   cv.style.width = cssW+'px'; cv.style.height = cssH+'px';
   cv.width  = Math.round(cssW*dpr); cv.height = Math.round(cssH*dpr);
   ctx.setTransform(dpr,0,0,dpr,0,0);
+  initStars(); // re-seed starfield to stage size
 }
 fit(); addEventListener('resize',()=>requestAnimationFrame(fit));
 
-/* Parallax sky */
+/* ==== Extra Screen Animations ==== */
+let tAccum = 0;
+
+/* Sun glow (back layer) */
+function drawSun(){
+  const cx = cssW*0.5, cy = -cssH*0.12, r = cssH*0.85;
+  const g = ctx.createRadialGradient(cx,cy, r*0.05, cx,cy, r);
+  g.addColorStop(0, 'rgba(255,240,180,0.25)');
+  g.addColorStop(0.35, 'rgba(255,200,120,0.12)');
+  g.addColorStop(1, 'rgba(255,200,120,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+}
+
+/* Stars (twinkling with slight camera slide) */
+const STARS=[];
+function initStars(){
+  STARS.length=0;
+  const n = 120;
+  for(let i=0;i<n;i++){
+    STARS.push({
+      x: Math.random()*cssW,
+      y: Math.random()*cssH*0.8,
+      r: 0.4 + Math.random()*1.2,
+      a: 0.25 + Math.random()*0.55,
+      w: 0.8 + Math.random()*1.6,
+      ph: Math.random()*Math.PI*2
+    });
+  }
+}
+function drawStars(slideY){
+  ctx.save();
+  for(const s of STARS){
+    const y = s.y - slideY*0.6; // slight parallax
+    const tw = 0.6 + 0.4*Math.sin(s.w*tAccum + s.ph);
+    ctx.fillStyle = `rgba(220,235,255,${s.a*tw})`;
+    ctx.beginPath(); ctx.arc(s.x, y, s.r, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+/* Parallax sky streaks & clouds */
 const SKY = { streaks:[], clouds:[] };
 (function initSky(){
   SKY.streaks.length=0; SKY.clouds.length=0;
@@ -207,6 +249,42 @@ const SKY = { streaks:[], clouds:[] };
   LAYERS.forEach(L=>{ for(let i=0;i<L.n;i++){ SKY.streaks.push({ x:Math.random()*cssW, y:Math.random()*cssH, len:rnd(L.len[0],L.len[1]), th:rnd(L.th[0],L.th[1]), sp:L.sp*(0.7+Math.random()*0.6), a:L.a*(0.6+Math.random()*0.8) }); }});
   for(let i=0;i<7;i++){ SKY.clouds.push({ x:Math.random()*cssW, y:Math.random()*cssH*0.7, r:120+Math.random()*220, a:0.05+Math.random()*0.08, spx:2+Math.random()*3, spy:-4 - Math.random()*4 }); }
 })();
+
+/* contrail particles */
+const PARTICLES=[];
+function spawnParticles(px,py,dt){
+  // emit more as it climbs
+  const count = Math.min(30, Math.round(18 * dt * (0.6 + 1.1*progressVis)));
+  for(let i=0;i<count;i++){
+    PARTICLES.push({
+      x: px + (Math.random()*6-3),
+      y: py + (Math.random()*6-3),
+      vx: -20 - Math.random()*22,
+      vy:  6  + Math.random()*10,
+      life: 0.9 + Math.random()*1.0,
+      age: 0,
+      r: 1.0 + Math.random()*1.4
+    });
+  }
+}
+function updateParticles(dt){
+  for(let i=PARTICLES.length-1; i>=0; i--){
+    const p = PARTICLES[i];
+    p.age += dt;
+    p.x += p.vx*dt;
+    p.y += p.vy*dt;
+    if (p.age > p.life) PARTICLES.splice(i,1);
+  }
+}
+function drawParticles(){
+  ctx.save();
+  for(const p of PARTICLES){
+    const a = Math.max(0, 1 - p.age/p.life) * 0.5;
+    ctx.fillStyle = `rgba(255,180,210,${a})`;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r*(0.7+0.6*(1-p.age/p.life)), 0, Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+}
 
 /* plane sprite */
 const planeImg=new Image();
@@ -236,7 +314,7 @@ let STATE={ phase:'betting', multiplier:1, bust:2, history:[], speed:0.46, round
 
 /* dynamic min flight (matches backend “instant bust” behavior) */
 function minFrontSeconds(bust){
-  if (!bust || bust <= 1.02) return 0.12; // instant feel
+  if (!bust || bust <= 1.02) return 0.10; // instant feel
   if (bust <= 1.10) return 0.9;
   if (bust <= 1.30) return 1.8;
   return 5.5; // spribe-like default
@@ -252,10 +330,10 @@ function mulberry32(a){ return function(){ let t=(a+=0x6D2B79F5); t=Math.imul(t^
 function seedFromString(s){ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return h>>>0; }
 function reseedNoise(roundId){
   const rnd = mulberry32(seedFromString(String(roundId||'x')));
-  NOISE.sx = 0.0015 + rnd()*0.0015;  // x amp (as fraction of width)
-  NOISE.sy = 0.0030 + rnd()*0.0030;  // y amp (as fraction of height)
-  NOISE.fx = 1.1   + rnd()*1.2;      // x freq (in π units)
-  NOISE.fy = 1.3   + rnd()*1.4;      // y freq
+  NOISE.sx = 0.0012 + rnd()*0.0014;  // x amp (smaller = less right drift)
+  NOISE.sy = 0.0035 + rnd()*0.0035;  // y amp a bit larger = more “up” life
+  NOISE.fx = 1.0   + rnd()*1.2;      // x freq
+  NOISE.fy = 1.2   + rnd()*1.4;      // y freq
   NOISE.phx= rnd()*Math.PI*2;
   NOISE.phy= rnd()*Math.PI*2;
 }
@@ -264,9 +342,9 @@ function tFromMult(mult,bust){ if(!mult||mult<=1||!bust||bust<=1) return 0; retu
 function multFromT(t,bust){ const b=Math.max(1.000001,Number(bust||2)); return Math.pow(b, Math.max(0,Math.min(1,t))); }
 function damp(cur,tgt,rate,dt){ const k=Math.exp(-rate*Math.max(0,dt)); return cur*k + tgt*(1-k); }
 
-/* Diagonal, steady climb; plane stays LEVEL. 
-   Increased DIAG_END to 0.54 (≈1.5× perceived speed without desync). */
-const DIAG_END = 0.54;
+/* Diagonal, but MORE UP than right; plane stays LEVEL.
+   Reduced DIAG_END so the path leans skyward. */
+const DIAG_END = 0.36;  /* ↓ from 0.54 */
 function baseX(p, left, trackW){
   const s = 1 - Math.exp(-2.4 * p);  // soft ease
   return left + trackW * DIAG_END * s;
@@ -282,14 +360,18 @@ function wobbleY(p, height){
 function pathX(p, left, trackW){ return baseX(p,left,trackW) + wobbleX(p, trackW); }
 function pathY(p, baseY, bust){
   const steep = Math.log(Math.max(1.0001, Number(bust || 2)));
-  const k   = 0.32 + 0.12 * steep;   // gentle ascent
-  const pow = 1.12 + 0.12 * steep;   // gentle curvature
-  return baseY - Math.pow(p, pow) * (baseY * (0.90 * k)) + wobbleY(p, baseY);
+  const k   = 0.40 + 0.16 * steep;   // stronger ascent
+  const pow = 1.06 + 0.10 * steep;   // gentle curvature
+  return baseY - Math.pow(p, pow) * (baseY * (0.95 * k)) + wobbleY(p, baseY);
 }
 
-/* sky draw — vertical slide for “infinite” feel (scaled for 1.5× speed look) */
+/* sky draw — vertical slide for “infinite” feel */
 function drawSky(dt, tNorm){
-  const slideY = tNorm * cssH * 0.42; // was 0.28 → 0.42 for faster visual drift
+  const slideY = tNorm * cssH * 0.42;
+  drawSun();            // back sun first
+  drawStars(slideY);    // twinkle above sun
+
+  // clouds + streaks
   SKY.clouds.forEach(c=>{
     c.x += c.spx*dt; c.y += c.spy*dt*(1+0.6*tNorm);
     let y = c.y - slideY, x=c.x;
@@ -321,7 +403,7 @@ function draw(mult,phase,dt){
   if (phase === 'busted') {
     centerText.className='centerText flew';
     centerText.textContent='FLEW AWAY!\n'+(mult?`${Number(mult).toFixed(2)}x`:``);
-    return; // hide trail + plane
+    return; // hide trail + plane + particles
   }
 
   if (phase === 'betting'){
@@ -333,20 +415,27 @@ function draw(mult,phase,dt){
   // FLYING
   const t = progressVis;
 
-  // slight camera zoom around the corner anchor (0, baseY) — a bit stronger for 1.5× feel
-  const camScale = 1 + t*0.33; // was 0.22
+  // camera zoom around the corner anchor (0, baseY) — slightly stronger
+  const camScale = 1 + t*0.30;
   ctx.save(); ctx.translate(left, baseY); ctx.scale(camScale, camScale); ctx.translate(-left, -baseY);
 
   // trail (starts EXACTLY at bottom-left)
-  const steps=Math.max(2, Math.floor(320*t));
+  const steps=Math.max(2, Math.floor(340*t));
   ctx.beginPath(); ctx.moveTo(left, baseY);
-  for(let i=0;i<=steps;i++){ const p=i/320; ctx.lineTo(pathX(p,left,trackW), pathY(p,baseY,bust)); }
+  for(let i=0;i<=steps;i++){ const p=i/340; ctx.lineTo(pathX(p,left,trackW), pathY(p,baseY,bust)); }
   ctx.strokeStyle='#ff4d6d'; ctx.lineWidth=2; ctx.stroke();
 
   // fill under curve to the corner
   const tipX=pathX(t, left, trackW), tipY=pathY(t, baseY, bust);
   ctx.lineTo(tipX, baseY); ctx.lineTo(left, baseY); ctx.closePath();
   ctx.fillStyle='rgba(255,77,109,0.18)'; ctx.fill();
+
+  // emit + update + draw contrail particles (at a point slightly behind the tip)
+  const p2 = Math.max(0, t - 0.010);
+  const px2 = pathX(p2, left, trackW), py2 = pathY(p2, baseY, bust);
+  spawnParticles(px2, py2, dt);
+  updateParticles(dt);
+  drawParticles();
 
   // plane — LEVEL (no nose-up); tail glued to curve
   const SCALE=1.5, w=140*SCALE, h=60*SCALE;
@@ -363,6 +452,7 @@ function draw(mult,phase,dt){
 /* animation loop (time-synced) */
 function tick(now){
   const dt=(now-lastTs)/1000; lastTs=now;
+  tAccum += dt;
 
   let target = 0;
   if (STATE.phase==='flying'){
@@ -370,6 +460,9 @@ function tick(now){
     target = Math.min(1, elapsedSec / flightDurSec);
   } else if (STATE.phase==='busted'){
     target = 1;
+    PARTICLES.length = 0; // clear residual
+  } else {
+    PARTICLES.length = 0;
   }
 
   const rate = (STATE.phase==='flying') ? 7.0 : 9.0; // steady follow
@@ -451,7 +544,7 @@ async function poll(){
     STATE={ phase, multiplier:m, history, bust, speed, roundId };
     paintChips(history);
     lastPhase = phase;
-  }catch{ /* offline chip left empty */ }
+  }catch{ /* offline -> keep prior visuals */ }
 }
 setInterval(poll, 220); poll();
 
