@@ -9,14 +9,15 @@
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--bg);color:var(--text);}
-  /* sticky clock */
+
+  /* sticky clock (shared design for all pages) */
   .header{display:flex;align-items:center;justify-content:flex-end;padding:8px 14px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(10,14,26,.85);backdrop-filter:blur(6px);z-index:20}
   .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0e172f;color:#cfe1ff}
   .clock{min-width:220px;text-align:right}
 
   .wrap{max-width:100vw;margin:0 auto;padding:0;display:grid;gap:14px}
 
-  /* Endless sky feel (CSS base; motion added via canvas parallax) */
+  /* Stage / “endless sky” */
   .stage{
     position:relative;width:100%;height:min(62vh,620px);min-height:360px;border:1px solid var(--line);
     border-radius:18px;overflow:hidden;
@@ -53,6 +54,14 @@
   .btn.red{background:#3b0b0b;border-color:#4d1313}
   .kpi{font-size:12px;color:#b9c2cf}
   .tickets{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px;margin:0 14px 14px}
+
+  /* Toasts (non-blocking, no browser-origin popup) */
+  .toaster{position:fixed;top:16px;right:16px;display:flex;flex-direction:column;gap:10px;z-index:50}
+  .toast{background:#0f1933;border:1px solid #2a3b63;color:#e6edf3;padding:10px 12px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.35);opacity:0;transform:translateY(-6px);transition:opacity .18s ease, transform .18s ease}
+  .toast.show{opacity:1;transform:none}
+  .toast.success{border-color:#1d3f2a;background:#0e2217}
+  .toast.error{border-color:#4d1a1a;background:#2a0e0e}
+  .toast b{font-weight:900}
 
   @media (max-width:1100px){ .players{grid-template-columns:1fr} .centerText{font-size:44px} }
   @media (max-width:600px){ .centerText{font-size:36px} .stage{height:52vh} }
@@ -143,6 +152,9 @@
     </div>
   </div>
 
+  <!-- toast container -->
+  <div id="toaster" class="toaster"></div>
+
 <script>
 /* same-origin endpoints */
 const API = {
@@ -155,7 +167,17 @@ const API = {
 };
 const KES  = x => new Intl.NumberFormat('en-KE',{style:'currency',currency:'KES'}).format(Number(x||0));
 const clamp= (n,min,max)=> Math.max(min, Math.min(max,n));
-const toast = (m)=>alert(m);
+
+/* ===== Toasts (no browser alerts) ===== */
+const toaster = document.getElementById('toaster');
+function notify(msg, type='info', ms=2400){
+  const t=document.createElement('div');
+  t.className='toast'+(type==='success'?' success':type==='error'?' error':'');
+  t.textContent=msg;
+  toaster.appendChild(t);
+  requestAnimationFrame(()=>t.classList.add('show'));
+  setTimeout(()=>{ t.classList.remove('show'); setTimeout(()=>t.remove(),180); }, ms);
+}
 
 /* ===== Clock ===== */
 const clk=document.getElementById('clock'); let skew=0;
@@ -171,7 +193,7 @@ function fit(){
   cssW = rect.width; cssH = cv.parentElement.clientHeight;
   cv.style.width = cssW+'px'; cv.style.height = cssH+'px';
   cv.width  = Math.round(cssW*dpr); cv.height = Math.round(cssH*dpr);
-  ctx.setTransform(dpr,0,0,dpr,0,0); // draw in CSS px
+  ctx.setTransform(dpr,0,0,dpr,0,0);
 }
 fit(); addEventListener('resize',()=>requestAnimationFrame(fit));
 
@@ -201,7 +223,7 @@ planeImg.src='data:image/svg+xml;utf8,'+encodeURIComponent(`
   </g>
 </svg>`);
 
-/* UI bits */
+/* UI */
 function chipClass(v){ return v>=2?'good':(v>=1.3?'avg':'bad'); }
 const chipsBox=document.getElementById('chips'); const drawerGrid=document.getElementById('drawerGrid');
 const expander=document.getElementById('expander'); const moreBtn=document.getElementById('moreBtn');
@@ -215,47 +237,42 @@ const phasePill=document.getElementById('phasePill'); const centerText=document.
 /* ===== Flight model (SYNC TO BACKEND TIME) ===== */
 let STATE={ phase:'betting', multiplier:1, bust:2, history:[], speed:0.46 };
 
-const STANDBY_T=0.002;            // tiny dot at origin
-const MIN_FLY_SEC_FRONT = 5.5;    // matches server MIN_FLY_MS≈5500
+const STANDBY_T=0.002;
+const MIN_FLY_SEC_FRONT = 5.5;
 
-let flightStartMs = 0;            // client clock when this flight began
-let flightDurSec  = 6.0;          // expected duration this round (sec)
-let progressVis   = 0;            // 0..1, visual progress
+let flightStartMs = 0;
+let flightDurSec  = 6.0;
+let progressVis   = 0;
 
 function tFromMult(mult,bust){ if(!mult||mult<=1||!bust||bust<=1) return 0; return Math.min(1, Math.log(mult)/Math.log(bust)); }
 function multFromT(t,bust){ const b=Math.max(1.000001,Number(bust||2)); return Math.pow(b, Math.max(0,Math.min(1,t))); }
 function damp(cur,tgt,rate,dt){ const k=Math.exp(-rate*Math.max(0,dt)); return cur*k + tgt*(1-k); }
 
-/* Diagonal, steady climb (no rocket) */
-const DIAG_END = 0.36;  // ~36% screen width at the tip
+/* Diagonal, steady climb — plane stays LEVEL (no nose-up) */
+const DIAG_END = 0.36;  // horizontal coverage (~36% of width)
 function pathX(p, left, trackW){
-  // near-linear x growth with very soft ease-out
-  const s = 1 - Math.exp(-2.4 * p);       // softer than before => steadier
+  const s = 1 - Math.exp(-2.4 * p);  // soft ease
   return left + trackW * DIAG_END * s;
 }
 function pathY(p, baseY, bust){
-  // gentler curve; scales with bust but stays stable early on
   const steep = Math.log(Math.max(1.0001, Number(bust || 2)));
-  const k   = 0.32 + 0.12 * steep;        // ascent gain (gentle)
-  const pow = 1.12 + 0.12 * steep;        // curvature (gentle)
+  const k   = 0.32 + 0.12 * steep;   // gentle ascent
+  const pow = 1.12 + 0.12 * steep;   // gentle curvature
   return baseY - Math.pow(p, pow) * (baseY * (0.90 * k));
 }
 
-/* sky draw — includes a vertical slide proportional to progress (infinite feel) */
+/* sky draw — vertical slide for “infinite” feel */
 function drawSky(dt, tNorm){
-  const slideY = tNorm * cssH * 0.28; // slide “world” upward as we climb
-
+  const slideY = tNorm * cssH * 0.28;
   SKY.clouds.forEach(c=>{
     c.x += c.spx*dt; c.y += c.spy*dt*(1+0.6*tNorm);
-    let y = c.y - slideY;
-    let x = c.x;
+    let y = c.y - slideY, x=c.x;
     if (x - c.r > cssW) x = c.x = -c.r;
     if (y + c.r < -40) { c.y = cssH + c.r*0.5 + slideY; x = c.x = Math.random()*cssW*0.5; y = c.y - slideY; }
     const g=ctx.createRadialGradient(x, y, c.r*0.1, x, y, c.r);
     g.addColorStop(0, `rgba(170,200,255,${c.a})`); g.addColorStop(1, `rgba(20,40,80,0)`);
     ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x, y, c.r, 0, Math.PI*2); ctx.fill();
   });
-
   SKY.streaks.forEach(s=>{
     s.x += s.sp*dt*(0.7+0.9*tNorm); s.y -= s.sp*dt*(0.9+0.9*tNorm);
     let x = s.x, y = s.y - slideY;
@@ -266,31 +283,28 @@ function drawSky(dt, tNorm){
 }
 
 /* draw everything */
-let lastAngle=-Math.PI/4, lastTs=performance.now();
+let lastTs=performance.now();
 function draw(mult,phase,dt){
   ctx.clearRect(0,0,cssW,cssH);
 
   const left=0, baseY=cssH-1, trackW=cssW-1, bust=STATE.bust||2;
 
-  // Paint sky first (always)
   const tSky = (phase==='flying') ? progressVis : (phase==='busted' ? 1 : 0);
   drawSky(dt, tSky);
 
-  // If busted: hide plane AND trail (sky + text only)
   if (phase === 'busted') {
     centerText.className='centerText flew';
     centerText.textContent='FLEW AWAY!\n'+(mult?`${Number(mult).toFixed(2)}x`:``);
-    return;
+    return; // hide trail + plane
   }
 
-  // Progress for trail/plane
   const t = (phase==='flying') ? progressVis : STANDBY_T;
 
-  // Subtle camera zoom from corner (reduced so diagonal stays steady)
-  const camScale = 1 + t*0.28;
+  // very light camera zoom
+  const camScale = 1 + t*0.24;
   ctx.save(); ctx.translate(left, baseY); ctx.scale(camScale, camScale); ctx.translate(-left, -baseY);
 
-  // Trail path
+  // trail
   const steps=Math.max(2, Math.floor(320*t));
   ctx.beginPath(); ctx.arc(left, baseY, 1.05, 0, Math.PI*2); ctx.fillStyle='#ff4d6d'; ctx.fill();
   ctx.beginPath(); ctx.moveTo(left, baseY);
@@ -301,13 +315,11 @@ function draw(mult,phase,dt){
   ctx.lineTo(tipX, baseY); ctx.lineTo(left, baseY); ctx.closePath();
   ctx.fillStyle='rgba(255,77,109,0.18)'; ctx.fill();
 
-  // Plane (tail still glued)
-  const t2=Math.max(0,t-0.012);
-  const px2=pathX(t2,left,trackW), py2=pathY(t2,baseY,bust);
-  lastAngle = Math.atan2(tipY - py2, tipX - px2) - 0.03; // tiny nose-up
+  // plane — LEVEL (no nose-up)
   const SCALE=1.5, w=140*SCALE, h=60*SCALE;
   const tailAx=4/140, tailAy=36/60;
-  ctx.save(); ctx.translate(tipX, tipY); ctx.rotate(lastAngle);
+  ctx.save(); ctx.translate(tipX, tipY);
+  ctx.rotate(0); // <- keep level
   ctx.drawImage(planeImg, -w*tailAx, -h*tailAy, w, h); ctx.restore();
 
   ctx.restore();
@@ -322,7 +334,7 @@ function draw(mult,phase,dt){
   }
 }
 
-/* animation: target progress is **time-based**, not multiplier-based */
+/* animation loop (time-synced) */
 function tick(now){
   const dt=(now-lastTs)/1000; lastTs=now;
 
@@ -331,13 +343,12 @@ function tick(now){
     const elapsedSec = Math.max(0, (now - flightStartMs)/1000);
     target = Math.min(1, elapsedSec / flightDurSec);
   } else if (STATE.phase==='betting'){
-    target = 0; // no motion
-  } else { // busted
+    target = 0;
+  } else {
     target = 1;
   }
 
-  // Smooth, steady follow (no rocket push)
-  const rate = (STATE.phase==='flying') ? 7.0 : 9.0;
+  const rate = (STATE.phase==='flying') ? 7.0 : 9.0; // steady follow
   progressVis = damp(progressVis, target, rate, dt);
 
   const bust=Number(STATE.bust||2);
@@ -345,6 +356,10 @@ function tick(now){
                     : Math.max(1, multFromT(progressVis, bust));
 
   draw(visualMult, STATE.phase, dt);
+
+  // auto-cashout toast detection (client-side)
+  maybeNotifyAutoWins(visualMult);
+
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
@@ -363,7 +378,24 @@ function renderT(){
 }
 function markAllLiveAsLost(mult){ tickets.forEach(t=>{ if(t.state==='LIVE'){ t.state='LOST'; t.hit=mult; t.payout=0; } }); renderT(); }
 
-/* polling (captures speed + computes flight timing) */
+/* Notify auto-cashout when multiplier crosses player threshold */
+function maybeNotifyAutoWins(currentMult){
+  if (STATE.phase!=='flying') return;
+  tickets.forEach(t=>{
+    if (t.state==='LIVE' && t.autoCashOut && !t._autoAnnounced && currentMult >= t.autoCashOut){
+      const est = Math.min(t.stake * currentMult, 20000); // cap mirrors server MAX_PAYOUT
+      notify(`Auto cash-out: ${KES(est)} at ${currentMult.toFixed(2)}x`, 'success');
+      t.state='CASHED'; t.payout=est; t.hit=currentMult; t._autoAnnounced=true;
+      const statusEl=document.getElementById(`${t.playerId}-status`);
+      const pEl=document.getElementById(`${t.playerId}-payout`);
+      if(statusEl) statusEl.textContent='CASHED (auto)';
+      if(pEl) pEl.textContent=KES(est);
+      renderT();
+    }
+  });
+}
+
+/* polling (sync with backend) */
 let lastPhase='betting';
 async function poll(){
   try{
@@ -375,13 +407,12 @@ async function poll(){
     const bust = Number(j.bust || j.bustAt || 2);
     const speed = Number(j.speed || 0.46);
 
-    // when flight starts (or we first notice it), sync our timeline to server
     if (lastPhase !== 'flying' && phase === 'flying'){
       const timeToBustSec = Math.log(Math.max(1.000001,bust)) / Math.max(0.01, speed);
       flightDurSec = Math.max(MIN_FLY_SEC_FRONT, timeToBustSec);
       const offsetSec = Math.min(flightDurSec, Math.log(Math.max(1.000001,m)) / Math.max(0.01, speed));
       flightStartMs = performance.now() - offsetSec*1000;
-      progressVis = 0; // start from ground with gentle takeoff
+      progressVis = 0; // gentle takeoff
     }
     if (lastPhase !== 'busted' && phase === 'busted'){ markAllLiveAsLost(m); }
 
@@ -389,7 +420,7 @@ async function poll(){
     phasePill.textContent = phase.toUpperCase();
     paintChips(history);
     lastPhase = phase;
-  }catch(e){ phasePill.textContent='OFFLINE'; }
+  }catch{ phasePill.textContent='OFFLINE'; }
 }
 setInterval(poll, 220); poll();
 
@@ -417,28 +448,35 @@ function wireCard(pid){
     const stake=clamp(Number(stakeEl.value||0),20,1000);
     try{
       const r=await fetch(API.bet(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, stake})});
-      const j=await r.json(); if(!j.ok) return toast(j.error||'Bet failed');
+      const j=await r.json(); if(!j.ok) return notify(j.error||'Bet failed','error');
       status.textContent='LIVE'; tEl.textContent=j.ticketId; pEl.textContent='—';
-      addT({playerId:pid,ticketId:j.ticketId,stake,state:'LIVE'}); await refreshBal(pid);
-    }catch{ toast('Network error placing bet'); }
+      addT({playerId:pid,ticketId:j.ticketId,stake,state:'LIVE'});
+      notify(`Bet placed: ${KES(stake)}`, 'success', 1600);
+      await refreshBal(pid);
+    }catch{ notify('Network error placing bet','error'); }
   };
   cashBtn.onclick=async ()=>{
     try{
       const r=await fetch(API.cashout(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid})});
-      const j=await r.json(); if(!j.ok) return toast(j.error||'Cashout failed');
+      const j=await r.json(); if(!j.ok) return notify(j.error||'Cashout failed','error');
       status.textContent='CASHED'; pEl.textContent=KES(j.payout);
-      const t=tickets.find(x=>x.playerId===pid && x.state==='LIVE'); if(t){ t.state='CASHED'; t.payout=j.payout; t.hit=j.multiplier; } renderT();
+      const t=tickets.find(x=>x.playerId===pid && x.state==='LIVE');
+      if(t){ t.state='CASHED'; t.payout=j.payout; t.hit=j.multiplier; }
+      renderT();
+      notify(`Cashout: ${KES(j.payout)} at ${Number(j.multiplier).toFixed(2)}x`, 'success');
       await refreshBal(pid);
-    }catch{ toast('Network error during cashout'); }
+    }catch{ notify('Network error during cashout','error'); }
   };
   aBtn.onclick=async ()=>{
     const stake=clamp(Number(aStake.value||0),20,1000), x=clamp(Number(aX.value||0),1.05,1000);
     try{
       const r=await fetch(API.bet(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, stake, autoCashOut:x})});
-      const j=await r.json(); if(!j.ok) return toast(j.error||'Auto bet failed');
+      const j=await r.json(); if(!j.ok) return notify(j.error||'Auto bet failed','error');
       status.textContent='LIVE'; tEl.textContent=j.ticketId; pEl.textContent='—';
-      addT({playerId:pid,ticketId:j.ticketId,stake,autoCashOut:x,state:'LIVE'}); await refreshBal(pid);
-    }catch{ toast('Network error placing auto bet'); }
+      addT({playerId:pid,ticketId:j.ticketId,stake,autoCashOut:x,state:'LIVE'});
+      notify(`Auto bet placed: ${KES(stake)} @ ${x}x`, 'success', 1700);
+      await refreshBal(pid);
+    }catch{ notify('Network error placing auto bet','error'); }
   };
 
   ensureMinBalance(pid, 100);
