@@ -122,11 +122,15 @@ const AVIATOR_CFG = {
   MAX_BUST: 50
 };
 
-// Exposure-aware shaping (house edge preserved)
+// Exposure-aware shaping (house edge preserved) — no fixed 8.00 clamp
 const EXPOSURE_CFG = {
   hiTailChanceNoBets: 0.35, // more big rounds when nobody bet
-  hiTailMin: 8,
-  hiTailMax: 30,
+  // random hi-tail bounds per round (prevents repeated 8.00x)
+  hiTailMinLo: 6.8,
+  hiTailMinHi: 9.0,
+  hiTailMaxLo: 12.0,
+  hiTailMaxHi: 35.0,
+
   softCapBase: 6.5,
   softCapPerK: 1.2,
   minBelowBustForManual: 0.01 // manual payouts strictly < bust
@@ -436,36 +440,40 @@ function liveExposureSummary(A){
   for (const [,bet] of A.bets){ if (bet.live && !bet.cashed){ liveCount++; stakeTotal += bet.stake||0; } }
   return { liveCount, stakeTotal };
 }
+
 function pickBustForRound(A){
   const { liveCount, stakeTotal } = liveExposureSummary(A);
+
   // Wider alpha jitter for more variety (2.2–5.0)
   const alphaJitter = 2.2 + mulberry32(A.seed ^ 0x3434)()*2.8;
 
-  // No bets: allow heavy tails more often
   if (liveCount === 0){
-    const hi = mulberry32(A.seed ^ 0x5a5a)() < EXPOSURE_CFG.hiTailChanceNoBets;
-    if (hi){
-      // micro-jitter to diversify decimals
-      const micro = 1 + (mulberry32(A.seed ^ 0x9e9e)() - 0.5)*0.02; // +/-1%
-      return Math.max(
-        EXPOSURE_CFG.hiTailMin,
-        Math.min(drawBustCore(A.seed ^ 0x7777, alphaJitter, 1.00, EXPOSURE_CFG.hiTailMax)*micro, EXPOSURE_CFG.hiTailMax)
-      );
+    const rA = mulberry32(A.seed ^ 0x5a5a);
+    const goHi = rA() < EXPOSURE_CFG.hiTailChanceNoBets;
+    if (goHi){
+      const hiMin = EXPOSURE_CFG.hiTailMinLo + rA()*(EXPOSURE_CFG.hiTailMinHi - EXPOSURE_CFG.hiTailMinLo);
+      const hiMax = EXPOSURE_CFG.hiTailMaxLo + rA()*(EXPOSURE_CFG.hiTailMaxHi - EXPOSURE_CFG.hiTailMaxLo);
+      const micro = 0.96 + rA()*0.10; // ±5%
+      const base  = drawBustCore(A.seed ^ 0x7777, alphaJitter, 1.00, hiMax) * micro;
+      return Math.max(hiMin, base);
     }
-    const micro = 1 + (mulberry32(A.seed ^ 0x8a8a)() - 0.5)*0.02;
-    return drawBustCore(A.seed, alphaJitter, 1.00, AVIATOR_CFG.MAX_BUST)*micro;
+    const micro = 0.98 + rA()*0.06; // ±3%
+    return drawBustCore(A.seed, alphaJitter, 1.00, AVIATOR_CFG.MAX_BUST) * micro;
   }
 
   // With exposure: soft cap increases with stakes
   const perK = Math.max(0, stakeTotal/1000);
   const softCap = Math.max(2.0, EXPOSURE_CFG.softCapBase + perK * EXPOSURE_CFG.softCapPerK);
 
-  const micro = 1 + (mulberry32(A.seed ^ 0x7c7c)() - 0.5)*0.02;
-  const base = drawBustCore(A.seed, alphaJitter, 1.00, AVIATOR_CFG.MAX_BUST)*micro;
+  const rB = mulberry32(A.seed ^ 0x7c7c);
+  const micro = 0.98 + rB()*0.06; // ±3%
+  const base  = drawBustCore(A.seed ^ 0x5b5b, alphaJitter, 1.00, AVIATOR_CFG.MAX_BUST) * micro;
+
   if (base <= softCap) return base;
 
+  // Smoothly squash above cap (keeps variety without hard clamps)
   const over = base - softCap;
-  const squashed = softCap + over / (1 + 0.9*over); // smooth squashing above softCap
+  const squashed = softCap + over / (1 + 0.6*over);
   return Math.min(Math.max(1.00, squashed), AVIATOR_CFG.MAX_BUST);
 }
 
@@ -489,6 +497,7 @@ function liveMultiplierNow(A, now){
 function advanceAviator(now){
   const A = STATE.aviator;
 
+  // failsafe if nextChangeAt drifted
   if (A.phase==='betting' && now - A.nextChangeAt > 60000){
     A.nextChangeAt = now + 800;
   }
