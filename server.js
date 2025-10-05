@@ -199,6 +199,15 @@ function generateRoundFixtures(leagueKey, roundIdx){
   return fixtures;
 }
 
+function seedFootballBatch(leagueKey){
+  const round = STATE.footballRounds[leagueKey] || 0;
+  const fixtures = generateRoundFixtures(leagueKey, round);
+  for (const [home, away] of fixtures.slice(0,10)){ // 10 fixtures
+    scheduleEvent('football', { league: leagueKey, home, away });
+  }
+  STATE.footballRounds[leagueKey] = (round + 1) % 19;
+}
+
 function buildMarketsForEvent(ev){
   const rand = mulberry32(ev.seed);
 
@@ -350,7 +359,7 @@ function settleBetsForEvent(ev){
       if (m.type==='MAIN_WIN') won = (bet.selectionId===ev.result.positions[0].id);
       if (m.type==='FORECAST'){ const [a,b] = bet.selectionId.split('>').map(s=>s.trim()); won = (ev.result.positions[0].id===a && ev.result.positions[1].id===b); }
       if (m.type==='QUINELLA'){ const [a,b] = bet.selectionId.split('&').map(s=>s.trim()); const top2 = ev.result.positions.slice(0,2).map(p=>p.id); won = top2.includes(a) && top2.includes(b); }
-      if (m.type==='TRICAST'){ const [a,b,c] = bet.selectionId.split('>').map(s=>s.trim()); const p=ev.result.positions; won = (p[0].id===a && p[1].id===b && p[2]===c); }
+      if (m.type==='TRICAST'){ const [a,b,c] = bet.selectionId.split('>').map(s=>s.trim()); const p=ev.result.positions; won = (p[0].id===a && p[1].id===b && p[2].id===c); }
     }
     if (ev.game==='colors' && m.type==='MAIN_COLOR'){ won = (bet.selectionId===ev.result.color); }
     if (ev.game==='lotto49' && m.type==='PICK1'){ won = (String(ev.result.ball)===String(bet.selectionId)); }
@@ -534,10 +543,29 @@ function advanceAviator(now){
   }
 }
 
-// ----------------- Ticker -----------------
+// ----------------- Global scheduler (other games) -----------------
+function schedulerTick(now){
+  for (const ev of STATE.events.values()){
+    if (ev.status==='OPEN' && now >= ev.locksAt) ev.status='LOCKED';
+    if ((ev.status==='LOCKED' || ev.status==='OPEN') && now >= ev.runsAt) runEvent(ev.id);
+  }
+  // keep queues filled
+  ['dog','horse','colors','lotto49'].forEach(g=>{
+    const future = [...STATE.events.values()].filter(e=>e.game===g && (e.status==='OPEN'||e.status==='LOCKED'));
+    if (future.length < 1) scheduleEvent(g);
+  });
+  ['EPL','LALIGA','UCL'].forEach(L=>{
+    const future = [...STATE.events.values()].filter(e=>e.game==='football' && e.league===L && (e.status==='OPEN'||e.status==='LOCKED'));
+    if (future.length < 10) seedFootballBatch(L);
+  });
+}
+
+// ----------------- Tickers -----------------
 const TICK_MS = 100;
-setInterval(()=>{ try{ advanceAviator(NOW()); }catch(e){ console.error('Ticker error:', e); } }, TICK_MS);
+setInterval(()=>{ try{ advanceAviator(NOW()); }catch(e){ console.error('Aviator tick error:', e); } }, TICK_MS);
+setInterval(()=>{ try{ schedulerTick(NOW()); }catch(e){ console.error('Scheduler tick error:', e); } }, 1000);
 advanceAviator(NOW());
+schedulerTick(NOW());
 
 // ----------------- API: Common -----------------
 app.get('/health', (_req,res)=> res.json({ ok:true, ts:Date.now(), sha:BUILD_SHA }));
