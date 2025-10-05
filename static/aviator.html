@@ -234,7 +234,14 @@ const centerText=document.getElementById('centerText');
 /* ===== Flight model (time-synced) ===== */
 let STATE={ phase:'betting', multiplier:1, bust:2, history:[], speed:0.46, roundId:'-' };
 
-const MIN_FLY_SEC_FRONT = 5.5;
+/* dynamic min flight (matches backend “instant bust” behavior) */
+function minFrontSeconds(bust){
+  if (!bust || bust <= 1.02) return 0.12; // instant feel
+  if (bust <= 1.10) return 0.9;
+  if (bust <= 1.30) return 1.8;
+  return 5.5; // spribe-like default
+}
+
 let flightStartMs = 0;
 let flightDurSec  = 6.0;
 let progressVis   = 0;
@@ -257,14 +264,14 @@ function tFromMult(mult,bust){ if(!mult||mult<=1||!bust||bust<=1) return 0; retu
 function multFromT(t,bust){ const b=Math.max(1.000001,Number(bust||2)); return Math.pow(b, Math.max(0,Math.min(1,t))); }
 function damp(cur,tgt,rate,dt){ const k=Math.exp(-rate*Math.max(0,dt)); return cur*k + tgt*(1-k); }
 
-/* Diagonal, steady climb; plane stays LEVEL. Tail glued at (0, baseY). */
-const DIAG_END = 0.36;
+/* Diagonal, steady climb; plane stays LEVEL. 
+   Increased DIAG_END to 0.54 (≈1.5× perceived speed without desync). */
+const DIAG_END = 0.54;
 function baseX(p, left, trackW){
   const s = 1 - Math.exp(-2.4 * p);  // soft ease
   return left + trackW * DIAG_END * s;
 }
 function wobbleX(p, trackW){
-  // zero at start (p^1.2), smooth sinus wobble
   const w = Math.pow(p, 1.2);
   return w * NOISE.sx * trackW * Math.sin(NOISE.fx * Math.PI * p + NOISE.phx);
 }
@@ -280,9 +287,9 @@ function pathY(p, baseY, bust){
   return baseY - Math.pow(p, pow) * (baseY * (0.90 * k)) + wobbleY(p, baseY);
 }
 
-/* sky draw — vertical slide for “infinite” feel */
+/* sky draw — vertical slide for “infinite” feel (scaled for 1.5× speed look) */
 function drawSky(dt, tNorm){
-  const slideY = tNorm * cssH * 0.28;
+  const slideY = tNorm * cssH * 0.42; // was 0.28 → 0.42 for faster visual drift
   SKY.clouds.forEach(c=>{
     c.x += c.spx*dt; c.y += c.spy*dt*(1+0.6*tNorm);
     let y = c.y - slideY, x=c.x;
@@ -326,8 +333,8 @@ function draw(mult,phase,dt){
   // FLYING
   const t = progressVis;
 
-  // slight camera zoom around the corner anchor (0, baseY)
-  const camScale = 1 + t*0.22;
+  // slight camera zoom around the corner anchor (0, baseY) — a bit stronger for 1.5× feel
+  const camScale = 1 + t*0.33; // was 0.22
   ctx.save(); ctx.translate(left, baseY); ctx.scale(camScale, camScale); ctx.translate(-left, -baseY);
 
   // trail (starts EXACTLY at bottom-left)
@@ -427,13 +434,18 @@ async function poll(){
 
     // new flight: sync timeline and seed wobble with this roundId
     if (lastPhase !== 'flying' && phase === 'flying'){
+      // base server timeline
       const timeToBustSec = Math.log(Math.max(1.000001,bust)) / Math.max(0.01, speed);
-      flightDurSec = Math.max(MIN_FLY_SEC_FRONT, timeToBustSec);
+      // dynamic min to allow instant tiny busts
+      flightDurSec = Math.max(minFrontSeconds(bust), timeToBustSec);
+
       const offsetSec = Math.min(flightDurSec, Math.log(Math.max(1.000001,m)) / Math.max(0.01, speed));
       flightStartMs = performance.now() - offsetSec*1000;
+
       progressVis = 0; // exact corner takeoff
       if (roundId !== lastRoundId){ reseedNoise(roundId); lastRoundId=roundId; }
     }
+
     if (lastPhase !== 'busted' && phase === 'busted'){ markAllLiveAsLost(m); }
 
     STATE={ phase, multiplier:m, history, bust, speed, roundId };
