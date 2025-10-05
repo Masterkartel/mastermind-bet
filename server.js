@@ -93,26 +93,24 @@ const STATE = {
   cashiers: new Map(),       // cashierId -> {balance}
   players: new Map(),        // playerId  -> {balance}
 
-  // ---- Aviator timing tuned to Spribe-like pacing ----
-  // Multiplier: m(t) = exp(SPEED * t)
-  // Windows: betting wait, minimum time airborne before bust can appear, short bust hold.
+  // ---- Aviator engine ----
   aviator: {
     phase: 'betting',
-    multiplier: 1.00,
+    multiplier: 1.00,     // displayed multiplier (capped at bust)
     history: [],
     t0: Date.now(),
     nextChangeAt: Date.now() + 5000,
     seed: Math.floor(Math.random()*2**31),
     bustAt: 5.0,
     bets: new Map(),
-    cashoutLocked: false,   // NEW: disallow manual cashout once we touch bust curve
-    lastCashable: 1.00      // NEW: last fair live multiplier before lock
+    lastCashable: 1.00     // NEW: last fair live multiplier strictly below bust
   }
 };
 
 // Tunable pacing (frontend references SPEED to sync visuals)
 const AVIATOR_CFG = {
-  SPEED: 0.69,          // 1.5x faster than previous 0.46 (Spribe-like feel)
+  SPEED: 0.69,          // 1.5x faster than 0.46
+  EASE_POWER: 1.12,     // NEW: >1 = slower start (gentler early ramp)
   MIN_BET_MS: 4500,     // waiting window ("Place your bets…")
   MIN_FLY_MS: 5500,     // default minimum time airborne before bust can appear
   BUST_HOLD_MS: 2000,   // keep "FLEW AWAY" on screen before next betting
@@ -124,7 +122,7 @@ function dynamicMinFlyMs(bust) {
   if (!bust || bust <= 1.02) return 120;   // virtually instant
   if (bust <= 1.10) return 900;            // ~1s
   if (bust <= 1.30) return 2000;           // ~2s
-  return AVIATOR_CFG.MIN_FLY_MS;           // spribe-like default
+  return AVIATOR_CFG.MIN_FLY_MS;           // default
 }
 
 function ensureCashier(id){ if(!STATE.cashiers.has(id)) STATE.cashiers.set(id,{balance:0}); return STATE.cashiers.get(id); }
@@ -403,16 +401,6 @@ function runEvent(eventId){
   return ev;
 }
 
-// ----------------- Football Scheduler -----------------
-function seedFootballBatch(leagueKey){
-  const round = STATE.footballRounds[leagueKey] || 0;
-  const fixtures = generateRoundFixtures(leagueKey, round);
-  for (const [home, away] of fixtures.slice(0,10)){ // 10 fixtures
-    scheduleEvent('football', { league: leagueKey, home, away });
-  }
-  STATE.footballRounds[leagueKey] = (round + 1) % 19;
-}
-
 // ----------------- Aviator Helpers -----------------
 function drawBust(seed){
   const r = mulberry32(seed)();
@@ -442,7 +430,7 @@ setInterval(()=>{
     if (future.length < 10) seedFootballBatch(L);
   });
 
-  // ---- Aviator engine (Spribe-like pacing) ----
+  // ---- Aviator engine ----
   const A = STATE.aviator;
 
   if (A.phase === 'betting'){
@@ -452,37 +440,31 @@ setInterval(()=>{
       A.seed = (A.seed + 1) >>> 0;
       A.bustAt = drawBust(A.seed);
       A.multiplier = 1.00;
-      A.cashoutLocked = false;   // NEW: reset at takeoff
-      A.lastCashable  = 1.00;    // NEW: reset at takeoff
+      A.lastCashable  = 1.00;    // reset at takeoff
     }
   } else if (A.phase === 'flying'){
-    const dtMs  = t - A.t0;
-    const mLive = Math.max(1.00, Math.exp(AVIATOR_CFG.SPEED * (dtMs/1000))); // live, uncapped
-    A.multiplier = Math.min(mLive, A.bustAt);                                  // displayed (cap at bust)
+    const dtMs   = t - A.t0;
+    const tSec   = dtMs / 1000;
+    // Eased growth: gentler early ramp, same long-run speed feel
+    const shaped = Math.pow(Math.max(0, tSec), AVIATOR_CFG.EASE_POWER);
+    const mLive  = Math.max(1.00, Math.exp(AVIATOR_CFG.SPEED * shaped)); // live, uncapped
 
-    // Track last fair, cashable multiplier while not locked
-    if (!A.cashoutLocked) {
-      A.lastCashable = A.multiplier; // equals mLive until we reach bust cap
-    }
+    A.multiplier   = Math.min(mLive, A.bustAt);                  // display (cap at bust)
+    // Track last fair multiplier strictly BELOW bust to prevent bust-payout on manual clicks
+    A.lastCashable = Math.max(1.00, Math.min(mLive, A.bustAt - 0.01));
 
-    // As soon as we reach the bust curve, close manual cashouts (pre-bust freeze)
-    if (mLive >= A.bustAt && !A.cashoutLocked) {
-      A.cashoutLocked = true;
-    }
-
-    // Auto-cashouts: pay exactly the user target (not the current/bust multiplier)
+    // Auto-cashouts: pay EXACT target
     for (const [pid, bet] of A.bets){
       if (!bet.live || bet.cashed || !bet.autoCashOut) continue;
       if (A.multiplier >= bet.autoCashOut){
-        bet.cashed = true;
-        bet.live   = false;
+        bet.cashed = true; bet.live=false;
         bet.hit    = Number(bet.autoCashOut.toFixed(2));
         bet.payout = Math.min(bet.stake * bet.hit, MAX_PAYOUT);
         creditPlayer(pid, bet.payout);
       }
     }
 
-    // Switch to BUST only after dynamic minimum flight time (instant for tiny busts)
+    // Transition to BUST only after dynamic minimum flight time
     if (mLive >= A.bustAt && dtMs >= dynamicMinFlyMs(A.bustAt)){
       A.phase = 'busted';
       const m = Number(A.bustAt.toFixed(2));
@@ -589,6 +571,7 @@ app.get('/aviator/state', (_req,res)=>{
     bustHoldMs: AVIATOR_CFG.BUST_HOLD_MS
   });
 });
+
 app.post('/aviator/wallet/load', (req,res)=>{
   const { playerId, amount } = req.body || {};
   if (!playerId || !amount) return res.status(400).json({ ok:false, error:'playerId & amount required' });
@@ -612,6 +595,7 @@ app.post('/aviator/bet', (req,res)=>{
   res.json({ ok:true, ticketId: bet.ticketId, stake: bet.stake, autoCashOut: bet.autoCashOut, balance: ensurePlayer(playerId).balance });
 });
 
+// Manual cashout: allowed any time during 'flying'; pays last fair (pre-bust) multiplier
 app.post('/aviator/cashout', (req,res)=>{
   const { playerId } = req.body || {};
   const A = STATE.aviator;
@@ -620,14 +604,8 @@ app.post('/aviator/cashout', (req,res)=>{
   if (A.phase !== 'flying') return res.status(400).json({ ok:false, error:'Not flying' });
   if (!bet.live || bet.cashed) return res.status(400).json({ ok:false, error:'Already settled' });
 
-  // If we've already touched the bust curve (pre-bust freeze), disallow manual cashout
-  if (A.cashoutLocked) return res.status(400).json({ ok:false, error:'Cashout closed' });
-
-  bet.cashed = true;
-  bet.live   = false;
-
-  // Pay exactly the last fair live multiplier (never bust value)
-  const hit = Math.max(1, Number(A.lastCashable.toFixed(2)));
+  bet.cashed = true; bet.live = false;
+  const hit = Math.max(1.00, Number(A.lastCashable.toFixed(2))); // strictly below bust by construction
   bet.hit    = hit;
   bet.payout = Math.min(bet.stake * hit, MAX_PAYOUT);
   creditPlayer(playerId, bet.payout);
