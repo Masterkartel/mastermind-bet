@@ -9,17 +9,26 @@
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--bg);color:var(--text);}
+  /* sticky clock like other pages */
   .header{display:flex;align-items:center;justify-content:flex-end;padding:8px 14px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(10,14,26,.85);backdrop-filter:blur(6px);z-index:20}
   .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0e172f;color:#cfe1ff}
   .clock{min-width:220px;text-align:right}
+
   .wrap{max-width:100vw;margin:0 auto;padding:0;display:grid;gap:14px}
-  .stage{position:relative;width:100%;height:min(62vh,620px);min-height:360px;border:1px solid var(--line);
-         border-radius:18px;overflow:hidden;background:radial-gradient(ellipse at 50% 30%, #0f2748 0 55%, #0b1426 60% 100%)}
+
+  /* Stage: deeper “endless” sky look (center above the top edge) */
+  .stage{
+    position:relative;width:100%;height:min(62vh,620px);min-height:360px;border:1px solid var(--line);
+    border-radius:18px;overflow:hidden;
+    background:
+      radial-gradient(120% 95% at 50% -20%, #163660 0 38%, #0f2748 39% 62%, #0b1426 63% 100%);
+  }
   canvas#area{position:absolute;inset:0;z-index:1}
   .centerText{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
               font-weight:900;font-size:52px;text-shadow:0 5px 22px #0006;white-space:pre-line;text-align:center;
               z-index:3;pointer-events:none}
   .flew{color:#ff5a5a} .multi{color:#fff}
+
   .topbar{position:absolute;top:8px;left:12px;right:12px;display:flex;gap:10px;align-items:center;justify-content:space-between;z-index:4}
   .leftTB{display:flex;gap:10px;align-items:center}
   .chipsRow{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
@@ -30,6 +39,7 @@
   .dotbtn{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:#0b1324;color:#cfe1ff;cursor:pointer;font-weight:900}
   .expander{position:absolute;left:12px;right:12px;top:46px;display:none;z-index:3}
   .grid{display:flex;gap:6px;flex-wrap:wrap}
+
   .players{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:8px;padding:0 14px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px;display:grid;gap:10px}
   .ttl{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -44,6 +54,7 @@
   .btn.red{background:#3b0b0b;border-color:#4d1313}
   .kpi{font-size:12px;color:#b9c2cf}
   .tickets{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px;margin:0 14px 14px}
+
   @media (max-width:1100px){ .players{grid-template-columns:1fr} .centerText{font-size:44px} }
   @media (max-width:600px){ .centerText{font-size:36px} .stage{height:52vh} }
 </style>
@@ -68,6 +79,7 @@
 
     <!-- Players -->
     <div class="players">
+      <!-- A -->
       <div class="card" data-player="pA">
         <div class="ttl">
           <div><b>Player A</b> <span class="kpi">Bal: <b id="pA-bal">0</b> KES</span> <span class="kpi" id="pA-status">idle</span></div>
@@ -86,7 +98,7 @@
         </div>
         <div class="row"><div class="pill">Ticket: <b id="pA-ticket">—</b></div><div class="pill">Payout: <b id="pA-payout">—</b></div></div>
       </div>
-
+      <!-- B -->
       <div class="card" data-player="pB">
         <div class="ttl">
           <div><b>Player B</b> <span class="kpi">Bal: <b id="pB-bal">0</b> KES</span> <span class="kpi" id="pB-status">idle</span></div>
@@ -105,7 +117,7 @@
         </div>
         <div class="row"><div class="pill">Ticket: <b id="pB-ticket">—</b></div><div class="pill">Payout: <b id="pB-payout">—</b></div></div>
       </div>
-
+      <!-- C -->
       <div class="card" data-player="pC">
         <div class="ttl">
           <div><b>Player C</b> <span class="kpi">Bal: <b id="pC-bal">0</b> KES</span> <span class="kpi" id="pC-status">idle</span></div>
@@ -164,6 +176,43 @@ function fit(){
 }
 fit(); addEventListener('resize',()=>requestAnimationFrame(fit));
 
+/* Parallax “endless” sky (cheap + smooth) */
+const SKY = { streaks:[], clouds:[], inited:false };
+function initSky(){
+  SKY.streaks.length=0; SKY.clouds.length=0;
+  // 3 layers of diagonal streaks
+  const LAYERS = [
+    {n:28, sp:  16, len:[20,60], th:[1,2], a:0.10},
+    {n:22, sp:  28, len:[30,90], th:[1,2], a:0.16},
+    {n:16, sp:  42, len:[40,120],th:[1,2], a:0.22},
+  ];
+  const rnd=(a,b)=> a + Math.random()*(b-a);
+  LAYERS.forEach((L,li)=>{
+    for(let i=0;i<L.n;i++){
+      SKY.streaks.push({
+        x: Math.random()*cssW, y: Math.random()*cssH,
+        len: rnd(L.len[0], L.len[1]),
+        th: rnd(L.th[0], L.th[1]),
+        sp: L.sp*(0.7+Math.random()*0.6),
+        a: L.a*(0.6+Math.random()*0.8),
+        layer: li
+      });
+    }
+  });
+  // soft clouds (big blurred spots drifting)
+  for(let i=0;i<7;i++){
+    SKY.clouds.push({
+      x: Math.random()*cssW, y: Math.random()*cssH*0.7,
+      r: 120+Math.random()*220,
+      a: 0.05+Math.random()*0.08,
+      spx: 2+Math.random()*3,
+      spy: -4 - Math.random()*4
+    });
+  }
+  SKY.inited=true;
+}
+initSky();
+
 /* plane sprite */
 const planeImg=new Image();
 planeImg.src='data:image/svg+xml;utf8,'+encodeURIComponent(`
@@ -194,40 +243,99 @@ const STANDBY_T=0.002;           // tiny dot at origin
 function tFromMult(mult,bust){ if(!mult||mult<=1||!bust||bust<=1) return 0; return Math.min(1, Math.log(mult)/Math.log(bust)); }
 function multFromT(t,bust){ const b=Math.max(1.000001,Number(bust||2)); return Math.pow(b, Math.max(0,Math.min(1,t))); }
 function damp(cur,tgt,rate,dt){ const k=Math.exp(-rate*Math.max(0,dt)); return cur*k + tgt*(1-k); }
-function curveY(p,baseY,bust){ const steep=Math.log(Math.max(1.0001,Number(bust||2))); return baseY - (p*p)*(baseY*0.9)*(0.28+0.12*steep); }
 
-/* drawing — use CSS px (cssW/cssH) */
+/* path tuned to “soar” — faster vertical rise with smooth x */
+function pathX(p, left, trackW){
+  // x eases out slightly so vertical climb feels faster
+  const ease = 1 - Math.exp(-3.4*p);
+  return left + trackW * ease;
+}
+function pathY(p, baseY, bust){
+  // stronger ascent curve than quadratic; scales with bust steepness
+  const steep = Math.log(Math.max(1.0001, Number(bust||2)));
+  const k = 0.36 + 0.18*steep;         // ascent gain
+  const pow = 1.22 + 0.18*steep;       // curvature
+  const y = baseY - (Math.pow(p, pow)) * (baseY * (0.92*k)); // can go well above top
+  return y;
+}
+
+/* draw background parallax (no transforms) */
+function drawSky(dt, tNorm){
+  // clouds
+  SKY.clouds.forEach(c=>{
+    c.x += c.spx*dt; c.y += c.spy*dt*(1+0.6*tNorm);
+    if (c.x - c.r > cssW) c.x = -c.r;
+    if (c.y + c.r < -40) { c.y = cssH + c.r*0.5; c.x = Math.random()*cssW*0.5; }
+    const g=ctx.createRadialGradient(c.x, c.y, c.r*0.1, c.x, c.y, c.r);
+    g.addColorStop(0, `rgba(170,200,255,${c.a})`);
+    g.addColorStop(1, `rgba(20,40,80,0)`);
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI*2); ctx.fill();
+  });
+
+  // streaks (diagonal up-right, wrap from left/bottom)
+  ctx.globalAlpha=1;
+  SKY.streaks.forEach(s=>{
+    s.x += s.sp*dt*(0.7+0.9*tNorm);
+    s.y -= s.sp*dt*(0.9+0.9*tNorm);
+    if (s.x - s.len > cssW || s.y + s.len < 0){
+      s.x = -20 - Math.random()*80; s.y = cssH + Math.random()*120;
+    }
+    ctx.strokeStyle = `rgba(200,220,255,${s.a})`;
+    ctx.lineWidth = s.th;
+    ctx.beginPath();
+    ctx.moveTo(s.x, s.y);
+    ctx.lineTo(s.x - s.len, s.y + s.len);
+    ctx.stroke();
+  });
+}
+
+/* drawing — uses CSS px; adds “camera” scale from bottom-left as t grows */
 let lastAngle=-Math.PI/4;
 function draw(mult,phase){
   ctx.clearRect(0,0,cssW,cssH);
+
   const left=0, baseY=cssH-1, right=cssW-1, trackW=Math.max(0,right-left), bust=STATE.bust||2;
+  const t = (phase==='flying') ? progressVis : (phase==='busted' ? tFromMult(mult,bust) : STANDBY_T);
 
-  const t = (phase==='flying') ? progressVis :
-            (phase==='busted') ? tFromMult(mult,bust) :
-            STANDBY_T;
+  // 1) Endless sky behind everything
+  // dt provided by the animation loop; reuse last dt via closure variable sky_dt
+  drawSky(window.__sky_dt||0.016, t);
 
+  // 2) Camera: zoom from tail corner (bottom-left)
+  const camScale = 1 + t*0.55; // subtle but noticeable
+  ctx.save();
+  ctx.translate(left, baseY);
+  ctx.scale(camScale, camScale);
+  ctx.translate(-left, -baseY);
+
+  // build the trail path
   const steps=Math.max(2, Math.floor(320*t));
-
   // origin pin (keeps trail glued)
   ctx.beginPath(); ctx.arc(left, baseY, 1.15, 0, Math.PI*2); ctx.fillStyle='#ff4d6d'; ctx.fill();
 
-  // trail
-  ctx.beginPath(); ctx.moveTo(left, baseY);
-  for(let i=0;i<=steps;i++){ const p=i/320; const x=left+p*trackW; ctx.lineTo(x, curveY(p, baseY, bust)); }
+  ctx.beginPath();
+  ctx.moveTo(left, baseY);
+  for(let i=0;i<=steps;i++){
+    const p=i/320;
+    const x=pathX(p, left, trackW);
+    ctx.lineTo(x, pathY(p, baseY, bust));
+  }
   ctx.strokeStyle='#ff4d6d'; ctx.lineWidth=2; ctx.stroke();
-  ctx.lineTo(left + t*trackW, baseY); ctx.lineTo(left, baseY); ctx.closePath();
+
+  // soft area under trail
+  const tipX=pathX(t, left, trackW), tipY=pathY(t, baseY, bust);
+  ctx.lineTo(tipX, baseY); ctx.lineTo(left, baseY); ctx.closePath();
   ctx.fillStyle='rgba(255,77,109,0.20)'; ctx.fill();
 
-  // plane anchored by tail tip (approx 4px,36px in 140x60 sprite)
+  // plane (anchored by precise tail)
   if (phase!=='busted'){
-    const px = left + t*trackW;
-    const py = curveY(t, baseY, bust);
     const t2=Math.max(0,t-0.012);
-    const px2=left + t2*trackW, py2=curveY(t2, baseY, bust);
+    const px = tipX, py = tipY;
+    const px2=pathX(t2, left, trackW), py2=pathY(t2, baseY, bust);
     lastAngle = Math.atan2(py - py2, px - px2) - 0.05; // slight nose-up bias
 
     const SCALE=1.5, w=140*SCALE, h=60*SCALE;
-    const tailAx=4/140, tailAy=36/60; // precise tail anchor
+    const tailAx=4/140, tailAy=36/60;
     ctx.save();
     ctx.translate(px, py);
     ctx.rotate(lastAngle);
@@ -235,6 +343,9 @@ function draw(mult,phase){
     ctx.restore();
   }
 
+  ctx.restore(); // end camera
+
+  // HUD text
   centerText.className='centerText '+(phase==='busted'?'flew':'multi');
   if (phase==='betting') centerText.textContent='Place your bets…';
   else if (phase==='busted') centerText.textContent='FLEW AWAY!\n'+(mult?`${Number(mult).toFixed(2)}x`:``);
@@ -245,6 +356,7 @@ function draw(mult,phase){
 let lastTs=performance.now();
 function tick(now){
   const dt=(now-lastTs)/1000; lastTs=now;
+  window.__sky_dt = dt;              // share with drawSky()
   const bust=Number(STATE.bust||2);
   const backendT=tFromMult(Number(STATE.multiplier||1), bust);
 
@@ -256,7 +368,7 @@ function tick(now){
   const rate = (phase==='flying' && progressVis<0.12) ? 18 : 9; // snappy liftoff, then glide
   progressVis = damp(progressVis, target, rate, dt);
 
-  // read odds from our visual progress (never jump ahead)
+  // read odds from our visual progress (no jump)
   const visualMult = (phase==='busted') ? Math.max(1, Number(STATE.multiplier||1))
                     : Math.max(1, multFromT(progressVis, bust));
 
@@ -301,7 +413,7 @@ async function poll(){
 }
 setInterval(poll, 220); poll();
 
-/* wallet + controls (demo auto-fund) */
+/* wallet + controls (demo auto-fund so it works immediately) */
 async function refreshBal(pid){
   try{ const r=await fetch(API.walletGet(pid)); const j=await r.json();
        if(j && j.ok!==false){ const el=document.getElementById(`${pid}-bal`); if(el) el.textContent=j.balance||0; return j.balance||0; }
