@@ -10,7 +10,7 @@
   html,body{height:100%}
   body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--bg);color:var(--text);}
 
-  /* sticky clock (shared design for all pages) */
+  /* sticky clock */
   .header{display:flex;align-items:center;justify-content:flex-end;padding:8px 14px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(10,14,26,.85);backdrop-filter:blur(6px);z-index:20}
   .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0e172f;color:#cfe1ff}
   .clock{min-width:220px;text-align:right}
@@ -29,7 +29,7 @@
               z-index:3;pointer-events:none}
   .flew{color:#ff5a5a} .multi{color:#fff}
 
-  .topbar{position:absolute;top:8px;left:12px;right:12px;display:flex;gap:10px;align-items:center;justify-content:space-between;z-index:4}
+  .topbar{position:absolute;top:8px;left:12px;right:12px;display:flex;gap:10px;align-items:center;justify-content:flex-start;z-index:4}
   .leftTB{display:flex;gap:10px;align-items:center}
   .chipsRow{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
   .chip{font-weight:800;padding:4px 8px;border-radius:8px;background:#071024;border:1px solid #0f2347;font-size:12px;white-space:nowrap}
@@ -55,7 +55,7 @@
   .kpi{font-size:12px;color:#b9c2cf}
   .tickets{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px;margin:0 14px 14px}
 
-  /* Toasts (non-blocking, no browser-origin popup) */
+  /* Toasts */
   .toaster{position:fixed;top:16px;right:16px;display:flex;flex-direction:column;gap:10px;z-index:50}
   .toast{background:#0f1933;border:1px solid #2a3b63;color:#e6edf3;padding:10px 12px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.35);opacity:0;transform:translateY(-6px);transition:opacity .18s ease, transform .18s ease}
   .toast.show{opacity:1;transform:none}
@@ -76,7 +76,6 @@
         <div class="leftTB">
           <button class="dotbtn" id="moreBtn" title="More history">⋯</button>
           <div class="chipsRow" id="chips"></div>
-          <div class="pill" id="phasePill">BETTING</div>
         </div>
       </div>
 
@@ -152,7 +151,6 @@
     </div>
   </div>
 
-  <!-- toast container -->
   <div id="toaster" class="toaster"></div>
 
 <script>
@@ -168,13 +166,12 @@ const API = {
 const KES  = x => new Intl.NumberFormat('en-KE',{style:'currency',currency:'KES'}).format(Number(x||0));
 const clamp= (n,min,max)=> Math.max(min, Math.min(max,n));
 
-/* ===== Toasts (no browser alerts) ===== */
-const toaster = document.getElementById('toaster');
-function notify(msg, type='info', ms=2400){
+/* Toasts */
+const toaster=document.getElementById('toaster');
+function notify(msg,type='info',ms=2400){
   const t=document.createElement('div');
   t.className='toast'+(type==='success'?' success':type==='error'?' error':'');
-  t.textContent=msg;
-  toaster.appendChild(t);
+  t.textContent=msg; toaster.appendChild(t);
   requestAnimationFrame(()=>t.classList.add('show'));
   setTimeout(()=>{ t.classList.remove('show'); setTimeout(()=>t.remove(),180); }, ms);
 }
@@ -232,33 +229,55 @@ function paintChips(list){
   chipsBox.innerHTML=''; (list||[]).slice(0,6).forEach(v=>{ const c=document.createElement('div'); c.className='chip '+chipClass(v); c.textContent=Number(v).toFixed(2)+'x'; c.title=c.textContent; chipsBox.appendChild(c); });
   drawerGrid.innerHTML=''; (list||[]).slice(0,96).forEach(v=>{ const d=document.createElement('div'); d.className='chip '+chipClass(v); d.textContent=Number(v).toFixed(2)+'x'; d.title=d.textContent; drawerGrid.appendChild(d); });
 }
-const phasePill=document.getElementById('phasePill'); const centerText=document.getElementById('centerText');
+const centerText=document.getElementById('centerText');
 
-/* ===== Flight model (SYNC TO BACKEND TIME) ===== */
-let STATE={ phase:'betting', multiplier:1, bust:2, history:[], speed:0.46 };
+/* ===== Flight model (time-synced) ===== */
+let STATE={ phase:'betting', multiplier:1, bust:2, history:[], speed:0.46, roundId:'-' };
 
-const STANDBY_T=0.002;
 const MIN_FLY_SEC_FRONT = 5.5;
-
 let flightStartMs = 0;
 let flightDurSec  = 6.0;
 let progressVis   = 0;
+
+/* per-round wobble seed (smooth + non-predictable look) */
+const NOISE = { sx:0, sy:0, fx:0, fy:0, phx:0, phy:0 };
+function mulberry32(a){ return function(){ let t=(a+=0x6D2B79F5); t=Math.imul(t^t>>>15,t|1); t^=t+Math.imul(t^t>>>7,t|61); return ((t^t>>>14)>>>0)/4294967296; } }
+function seedFromString(s){ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return h>>>0; }
+function reseedNoise(roundId){
+  const rnd = mulberry32(seedFromString(String(roundId||'x')));
+  NOISE.sx = 0.0015 + rnd()*0.0015;  // x amp (as fraction of width)
+  NOISE.sy = 0.0030 + rnd()*0.0030;  // y amp (as fraction of height)
+  NOISE.fx = 1.1   + rnd()*1.2;      // x freq (in π units)
+  NOISE.fy = 1.3   + rnd()*1.4;      // y freq
+  NOISE.phx= rnd()*Math.PI*2;
+  NOISE.phy= rnd()*Math.PI*2;
+}
 
 function tFromMult(mult,bust){ if(!mult||mult<=1||!bust||bust<=1) return 0; return Math.min(1, Math.log(mult)/Math.log(bust)); }
 function multFromT(t,bust){ const b=Math.max(1.000001,Number(bust||2)); return Math.pow(b, Math.max(0,Math.min(1,t))); }
 function damp(cur,tgt,rate,dt){ const k=Math.exp(-rate*Math.max(0,dt)); return cur*k + tgt*(1-k); }
 
-/* Diagonal, steady climb — plane stays LEVEL (no nose-up) */
-const DIAG_END = 0.36;  // horizontal coverage (~36% of width)
-function pathX(p, left, trackW){
+/* Diagonal, steady climb; plane stays LEVEL. Tail glued at (0, baseY). */
+const DIAG_END = 0.36;
+function baseX(p, left, trackW){
   const s = 1 - Math.exp(-2.4 * p);  // soft ease
   return left + trackW * DIAG_END * s;
 }
+function wobbleX(p, trackW){
+  // zero at start (p^1.2), smooth sinus wobble
+  const w = Math.pow(p, 1.2);
+  return w * NOISE.sx * trackW * Math.sin(NOISE.fx * Math.PI * p + NOISE.phx);
+}
+function wobbleY(p, height){
+  const w = Math.pow(p, 1.2);
+  return w * NOISE.sy * height * Math.sin(NOISE.fy * Math.PI * p + NOISE.phy);
+}
+function pathX(p, left, trackW){ return baseX(p,left,trackW) + wobbleX(p, trackW); }
 function pathY(p, baseY, bust){
   const steep = Math.log(Math.max(1.0001, Number(bust || 2)));
   const k   = 0.32 + 0.12 * steep;   // gentle ascent
   const pow = 1.12 + 0.12 * steep;   // gentle curvature
-  return baseY - Math.pow(p, pow) * (baseY * (0.90 * k));
+  return baseY - Math.pow(p, pow) * (baseY * (0.90 * k)) + wobbleY(p, baseY);
 }
 
 /* sky draw — vertical slide for “infinite” feel */
@@ -298,40 +317,40 @@ function draw(mult,phase,dt){
     return; // hide trail + plane
   }
 
-  const t = (phase==='flying') ? progressVis : STANDBY_T;
+  if (phase === 'betting'){
+    centerText.className='centerText multi';
+    centerText.textContent='Place your bets…';
+    return; // no trail/plane until takeoff
+  }
 
-  // very light camera zoom
-  const camScale = 1 + t*0.24;
+  // FLYING
+  const t = progressVis;
+
+  // slight camera zoom around the corner anchor (0, baseY)
+  const camScale = 1 + t*0.22;
   ctx.save(); ctx.translate(left, baseY); ctx.scale(camScale, camScale); ctx.translate(-left, -baseY);
 
-  // trail
+  // trail (starts EXACTLY at bottom-left)
   const steps=Math.max(2, Math.floor(320*t));
-  ctx.beginPath(); ctx.arc(left, baseY, 1.05, 0, Math.PI*2); ctx.fillStyle='#ff4d6d'; ctx.fill();
   ctx.beginPath(); ctx.moveTo(left, baseY);
-  for(let i=0;i<=steps;i++){ const p=i/320; const x=pathX(p, left, trackW); ctx.lineTo(x, pathY(p, baseY, bust)); }
+  for(let i=0;i<=steps;i++){ const p=i/320; ctx.lineTo(pathX(p,left,trackW), pathY(p,baseY,bust)); }
   ctx.strokeStyle='#ff4d6d'; ctx.lineWidth=2; ctx.stroke();
 
+  // fill under curve to the corner
   const tipX=pathX(t, left, trackW), tipY=pathY(t, baseY, bust);
   ctx.lineTo(tipX, baseY); ctx.lineTo(left, baseY); ctx.closePath();
   ctx.fillStyle='rgba(255,77,109,0.18)'; ctx.fill();
 
-  // plane — LEVEL (no nose-up)
+  // plane — LEVEL (no nose-up); tail glued to curve
   const SCALE=1.5, w=140*SCALE, h=60*SCALE;
-  const tailAx=4/140, tailAy=36/60;
-  ctx.save(); ctx.translate(tipX, tipY);
-  ctx.rotate(0); // <- keep level
+  const tailAx=4/140, tailAy=36/60; // approximate tail tip in SVG
+  ctx.save(); ctx.translate(tipX, tipY); ctx.rotate(0);
   ctx.drawImage(planeImg, -w*tailAx, -h*tailAy, w, h); ctx.restore();
 
   ctx.restore();
 
-  // HUD text
-  if (phase==='betting'){
-    centerText.className='centerText multi';
-    centerText.textContent='Place your bets…';
-  }else{
-    centerText.className='centerText multi';
-    centerText.textContent = mult?`${Number(mult).toFixed(2)}x`:``;
-  }
+  centerText.className='centerText multi';
+  centerText.textContent = mult?`${Number(mult).toFixed(2)}x`:``;
 }
 
 /* animation loop (time-synced) */
@@ -342,9 +361,7 @@ function tick(now){
   if (STATE.phase==='flying'){
     const elapsedSec = Math.max(0, (now - flightStartMs)/1000);
     target = Math.min(1, elapsedSec / flightDurSec);
-  } else if (STATE.phase==='betting'){
-    target = 0;
-  } else {
+  } else if (STATE.phase==='busted'){
     target = 1;
   }
 
@@ -357,7 +374,7 @@ function tick(now){
 
   draw(visualMult, STATE.phase, dt);
 
-  // auto-cashout toast detection (client-side)
+  // client-side auto-cashout acknowledgement
   maybeNotifyAutoWins(visualMult);
 
   requestAnimationFrame(tick);
@@ -383,7 +400,7 @@ function maybeNotifyAutoWins(currentMult){
   if (STATE.phase!=='flying') return;
   tickets.forEach(t=>{
     if (t.state==='LIVE' && t.autoCashOut && !t._autoAnnounced && currentMult >= t.autoCashOut){
-      const est = Math.min(t.stake * currentMult, 20000); // cap mirrors server MAX_PAYOUT
+      const est = Math.min(t.stake * currentMult, 20000); // MAX_PAYOUT mirror
       notify(`Auto cash-out: ${KES(est)} at ${currentMult.toFixed(2)}x`, 'success');
       t.state='CASHED'; t.payout=est; t.hit=currentMult; t._autoAnnounced=true;
       const statusEl=document.getElementById(`${t.playerId}-status`);
@@ -395,8 +412,8 @@ function maybeNotifyAutoWins(currentMult){
   });
 }
 
-/* polling (sync with backend) */
-let lastPhase='betting';
+/* polling (sync with backend + per-round noise) */
+let lastPhase='betting', lastRoundId='-';
 async function poll(){
   try{
     const r=await fetch(API.aviState(),{cache:'no-store'}); if(!r.ok) throw 0;
@@ -406,21 +423,23 @@ async function poll(){
     const history = Array.isArray(j.history)? j.history : [];
     const bust = Number(j.bust || j.bustAt || 2);
     const speed = Number(j.speed || 0.46);
+    const roundId = j.roundId || '-';
 
+    // new flight: sync timeline and seed wobble with this roundId
     if (lastPhase !== 'flying' && phase === 'flying'){
       const timeToBustSec = Math.log(Math.max(1.000001,bust)) / Math.max(0.01, speed);
       flightDurSec = Math.max(MIN_FLY_SEC_FRONT, timeToBustSec);
       const offsetSec = Math.min(flightDurSec, Math.log(Math.max(1.000001,m)) / Math.max(0.01, speed));
       flightStartMs = performance.now() - offsetSec*1000;
-      progressVis = 0; // gentle takeoff
+      progressVis = 0; // exact corner takeoff
+      if (roundId !== lastRoundId){ reseedNoise(roundId); lastRoundId=roundId; }
     }
     if (lastPhase !== 'busted' && phase === 'busted'){ markAllLiveAsLost(m); }
 
-    STATE={ phase, multiplier:m, history, bust, speed };
-    phasePill.textContent = phase.toUpperCase();
+    STATE={ phase, multiplier:m, history, bust, speed, roundId };
     paintChips(history);
     lastPhase = phase;
-  }catch{ phasePill.textContent='OFFLINE'; }
+  }catch{ /* offline chip left empty */ }
 }
 setInterval(poll, 220); poll();
 
