@@ -1,4 +1,4 @@
-// server.js — Mastermind Bet (Virtuals ++, hardened ticker)
+// server.js — Mastermind Bet (Virtuals ++, drive-by Aviator)
 // Node 18+, ESM. package.json MUST contain:  { "type": "module" }
 // Requires: express, cors, uuid, ejs, bwip-js
 // Optional: node-thermal-printer (guarded)
@@ -96,7 +96,7 @@ const STATE = {
   // ---- Aviator engine ----
   aviator: {
     phase: 'betting',
-    multiplier: 1.00,     // displayed multiplier (capped at bust)
+    multiplier: 1.00,     // displayed (capped at bust)
     history: [],
     t0: Date.now(),
     nextChangeAt: Date.now() + 5000,
@@ -109,21 +109,21 @@ const STATE = {
 
 // Tunable pacing (frontend references SPEED to sync visuals)
 const AVIATOR_CFG = {
-  SPEED: 0.64,          // eased (was 0.69/0.66)
-  EASE_POWER: 1.20,     // gentler early ramp (fairer feel)
+  SPEED: 0.64,          // eased (gentler than 0.69)
+  EASE_POWER: 1.20,     // smoother early ramp
   MIN_BET_MS: 4500,
   MIN_FLY_MS: 5500,
   BUST_HOLD_MS: 2000,
   MAX_BUST: 50
 };
 
-// Exposure-aware shaping (show rounds vs. exposure)
+// Exposure-aware shaping
 const EXPOSURE_CFG = {
-  hiTailChanceNoBets: 0.25, // 25% chance to show a big round when nobody bet
+  hiTailChanceNoBets: 0.25,
   hiTailMin: 8,
   hiTailMax: 30,
-  softCapBase: 6.5,         // soft cap when there are bets
-  softCapPerK: 1.2,         // + per KES 1000 of live stakes
+  softCapBase: 6.5,
+  softCapPerK: 1.2,
   minBelowBustForManual: 0.01
 };
 
@@ -443,95 +443,85 @@ function pickBustForRound(A){
   if (base <= softCap) return base;
 
   const over = base - softCap;
-  const squashed = softCap + over / (1 + over); // smooth compress
+  const squashed = softCap + over / (1 + over);
   return Math.min(squashed, AVIATOR_CFG.MAX_BUST);
 }
 
-// ----------------- Ticker (hardened) -----------------
-const TICK_MS = 100;
-function step(){
-  try{
-    const t = NOW();
+// --- Drive-by engine (called from timer AND /aviator/state) ---
+function startTakeoff(A, now){
+  A.phase = 'flying';
+  A.t0 = now;
+  A.seed = (A.seed + 1) >>> 0;
+  A.bustAt = pickBustForRound(A);
+  A.multiplier = 1.00;
+  A.lastCashable = 1.00;
+}
 
-    // Scheduled games
-    for (const ev of STATE.events.values()){
-      if (ev.status==='OPEN' && t >= ev.locksAt) ev.status='LOCKED';
-      if ((ev.status==='LOCKED'||ev.status==='OPEN') && t >= ev.runsAt) runEvent(ev.id);
+function advanceAviator(now){
+  const A = STATE.aviator;
+
+  // Safety: if betting window stale, rearm
+  if (A.phase==='betting' && now - A.nextChangeAt > 60000){
+    A.nextChangeAt = now + 800;
+  }
+
+  if (A.phase === 'betting'){
+    if (now >= A.nextChangeAt){
+      startTakeoff(A, now);
     }
+    return;
+  }
 
-    // Keep queues filled
-    ['dog','horse','colors','lotto49'].forEach(g=>{
-      const future = [...STATE.events.values()].filter(e=>e.game===g && (e.status==='OPEN'||e.status==='LOCKED'));
-      if (future.length < 1) scheduleEvent(g);
-    });
-    ['EPL','LALIGA','UCL'].forEach(L=>{
-      const future = [...STATE.events.values()].filter(e=>e.game==='football' && e.league===L && (e.status==='OPEN'||e.status==='LOCKED'));
-      if (future.length < 10) seedFootballBatch(L);
-    });
+  if (A.phase === 'flying'){
+    const dtMs   = now - A.t0;
+    const tSec   = dtMs / 1000;
+    const shaped = Math.pow(Math.max(0, tSec), AVIATOR_CFG.EASE_POWER);
+    const mLive  = Math.max(1.00, Math.exp(AVIATOR_CFG.SPEED * shaped)); // uncapped
 
-    // Aviator
-    const A = STATE.aviator;
+    A.multiplier   = Math.min(mLive, A.bustAt);
+    A.lastCashable = Math.max(1.00, Math.min(mLive, A.bustAt - EXPOSURE_CFG.minBelowBustForManual));
 
-    // Watchdog: if betting window is somehow in the past for >60s, re-arm it
-    if (A.phase === 'betting' && t - A.nextChangeAt > 60000){
-      A.nextChangeAt = t + 800; // start imminently
-    }
-
-    if (A.phase === 'betting'){
-      if (t >= A.nextChangeAt){
-        A.phase = 'flying';
-        A.t0 = t;
-        A.seed = (A.seed + 1) >>> 0;
-        A.bustAt = pickBustForRound(A);
-        A.multiplier = 1.00;
-        A.lastCashable  = 1.00;
+    // Auto-cashouts (exact target)
+    for (const [pid, bet] of A.bets){
+      if (!bet.live || bet.cashed || !bet.autoCashOut) continue;
+      if (A.multiplier >= bet.autoCashOut){
+        bet.cashed = true; bet.live=false;
+        bet.hit    = Number(bet.autoCashOut.toFixed(2));
+        bet.payout = Math.min(bet.stake * bet.hit, MAX_PAYOUT);
+        creditPlayer(pid, bet.payout);
       }
-    } else if (A.phase === 'flying'){
-      const dtMs   = t - A.t0;
-      const tSec   = dtMs / 1000;
-      const shaped = Math.pow(Math.max(0, tSec), AVIATOR_CFG.EASE_POWER);
-      const mLive  = Math.max(1.00, Math.exp(AVIATOR_CFG.SPEED * shaped)); // uncapped
+    }
 
-      A.multiplier   = Math.min(mLive, A.bustAt);
-      A.lastCashable = Math.max(1.00, Math.min(mLive, A.bustAt - EXPOSURE_CFG.minBelowBustForManual));
+    if (mLive >= A.bustAt && dtMs >= dynamicMinFlyMs(A.bustAt)){
+      A.phase = 'busted';
+      const m = Number(A.bustAt.toFixed(2));
+      STATE.results.aviator.unshift(m); if (STATE.results.aviator.length>120) STATE.results.aviator.length=120;
 
-      // Auto-cashouts: pay exact target
       for (const [pid, bet] of A.bets){
-        if (!bet.live || bet.cashed || !bet.autoCashOut) continue;
-        if (A.multiplier >= bet.autoCashOut){
-          bet.cashed = true; bet.live=false;
-          bet.hit    = Number(bet.autoCashOut.toFixed(2));
-          bet.payout = Math.min(bet.stake * bet.hit, MAX_PAYOUT);
-          creditPlayer(pid, bet.payout);
-        }
+        if (bet.live && !bet.cashed){ bet.live=false; bet.payout=0; bet.hit=m; }
       }
-
-      if (mLive >= A.bustAt && dtMs >= dynamicMinFlyMs(A.bustAt)){
-        A.phase = 'busted';
-        const m = Number(A.bustAt.toFixed(2));
-        STATE.results.aviator.unshift(m); if (STATE.results.aviator.length>120) STATE.results.aviator.length=120;
-
-        for (const [pid, bet] of A.bets){
-          if (bet.live && !bet.cashed){ bet.live=false; bet.payout=0; bet.hit=m; }
-        }
-        A.nextChangeAt = t + AVIATOR_CFG.BUST_HOLD_MS;
-        A.multiplier = A.bustAt; // show exact bust during hold
-      }
-    } else if (A.phase === 'busted'){
-      if (t >= A.nextChangeAt){
-        A.phase='betting';
-        A.multiplier=1.00;
-        A.bets.clear();
-        A.t0=t;
-        A.nextChangeAt = t + AVIATOR_CFG.MIN_BET_MS;
-      }
+      A.nextChangeAt = now + AVIATOR_CFG.BUST_HOLD_MS;
+      A.multiplier = A.bustAt;
     }
-  }catch(e){
-    console.error('Ticker error:', e);
+    return;
+  }
+
+  if (A.phase === 'busted'){
+    if (now >= A.nextChangeAt){
+      A.phase = 'betting';
+      A.multiplier = 1.00;
+      A.bets.clear();
+      A.t0 = now;
+      A.nextChangeAt = now + AVIATOR_CFG.MIN_BET_MS;
+    }
+    return;
   }
 }
-setInterval(step, TICK_MS);
-step(); // kick immediately on boot
+
+// ----------------- Ticker -----------------
+const TICK_MS = 100;
+setInterval(()=>{ try{ advanceAviator(NOW()); }catch(e){ console.error('Ticker error:', e); } }, TICK_MS);
+advanceAviator(NOW()); // immediate kick
 
 process.on('unhandledRejection', e => console.error('unhandledRejection', e));
 process.on('uncaughtException', e => console.error('uncaughtException', e));
@@ -602,13 +592,12 @@ app.get('/receipt/:id', async (req,res)=>{
 // ----------------- Aviator API -----------------
 app.get('/aviator', (_req,res)=> res.sendFile(path.join(__dirname, 'static', 'aviator.html')));
 app.get('/aviator/state', (_req,res)=>{
+  const now = NOW();
+  // Advance engine even if the ticker is throttled
+  advanceAviator(now);
+
   const A = STATE.aviator;
   const phaseMap = { betting:'BETTING', flying:'RUNNING', busted:'BUST' };
-
-  // light watchdog here as well
-  if (A.phase==='betting' && NOW() - A.nextChangeAt > 60000){
-    A.nextChangeAt = NOW() + 800;
-  }
 
   res.json({
     phase: A.phase,
@@ -618,7 +607,7 @@ app.get('/aviator/state', (_req,res)=>{
     status: phaseMap[A.phase],
     liveMultiplier: Number(A.multiplier.toFixed(2)),
     bust: Number(A.bustAt.toFixed(2)),
-    serverNow: Date.now(),
+    serverNow: now,
     speed: AVIATOR_CFG.SPEED,
     minBetMs: AVIATOR_CFG.MIN_BET_MS,
     minFlyMs: AVIATOR_CFG.MIN_FLY_MS,
@@ -667,7 +656,7 @@ app.post('/aviator/cashout', (req,res)=>{
   res.json({ ok:true, multiplier: hit, payout: Number(bet.payout.toFixed(2)), balance: ensurePlayer(playerId).balance });
 });
 
-// --- tiny admin nudges (optional) ---
+// --- small admin nudges (optional) ---
 app.post('/aviator/admin/nudge', (_req,res)=>{
   const A = STATE.aviator;
   if (A.phase==='betting') A.nextChangeAt = NOW() + 300;
