@@ -104,7 +104,9 @@ const STATE = {
     nextChangeAt: Date.now() + 5000,
     seed: Math.floor(Math.random()*2**31),
     bustAt: 5.0,
-    bets: new Map()
+    bets: new Map(),
+    cashoutLocked: false,   // NEW: disallow manual cashout once we touch bust curve
+    lastCashable: 1.00      // NEW: last fair live multiplier before lock
   }
 };
 
@@ -450,29 +452,42 @@ setInterval(()=>{
       A.seed = (A.seed + 1) >>> 0;
       A.bustAt = drawBust(A.seed);
       A.multiplier = 1.00;
+      A.cashoutLocked = false;   // NEW: reset at takeoff
+      A.lastCashable  = 1.00;    // NEW: reset at takeoff
     }
   } else if (A.phase === 'flying'){
-    const dtMs = t - A.t0;
-    const mCand = Math.max(1.00, Math.exp(AVIATOR_CFG.SPEED * (dtMs/1000)));
-    // Freeze at bust value if we reach it early, but keep flying until dynamic min passes
-    A.multiplier = Math.min(mCand, A.bustAt);
+    const dtMs  = t - A.t0;
+    const mLive = Math.max(1.00, Math.exp(AVIATOR_CFG.SPEED * (dtMs/1000))); // live, uncapped
+    A.multiplier = Math.min(mLive, A.bustAt);                                  // displayed (cap at bust)
 
-    // Auto-cashouts
+    // Track last fair, cashable multiplier while not locked
+    if (!A.cashoutLocked) {
+      A.lastCashable = A.multiplier; // equals mLive until we reach bust cap
+    }
+
+    // As soon as we reach the bust curve, close manual cashouts (pre-bust freeze)
+    if (mLive >= A.bustAt && !A.cashoutLocked) {
+      A.cashoutLocked = true;
+    }
+
+    // Auto-cashouts: pay exactly the user target (not the current/bust multiplier)
     for (const [pid, bet] of A.bets){
       if (!bet.live || bet.cashed || !bet.autoCashOut) continue;
       if (A.multiplier >= bet.autoCashOut){
-        bet.cashed = true; bet.live=false;
-        bet.hit = Number(A.multiplier.toFixed(2));
+        bet.cashed = true;
+        bet.live   = false;
+        bet.hit    = Number(bet.autoCashOut.toFixed(2));
         bet.payout = Math.min(bet.stake * bet.hit, MAX_PAYOUT);
         creditPlayer(pid, bet.payout);
       }
     }
 
     // Switch to BUST only after dynamic minimum flight time (instant for tiny busts)
-    if (mCand >= A.bustAt && dtMs >= dynamicMinFlyMs(A.bustAt)){
+    if (mLive >= A.bustAt && dtMs >= dynamicMinFlyMs(A.bustAt)){
       A.phase = 'busted';
       const m = Number(A.bustAt.toFixed(2));
       STATE.results.aviator.unshift(m); if (STATE.results.aviator.length>120) STATE.results.aviator.length=120;
+
       for (const [pid, bet] of A.bets){
         if (bet.live && !bet.cashed){ bet.live=false; bet.payout=0; bet.hit=m; }
       }
@@ -596,6 +611,7 @@ app.post('/aviator/bet', (req,res)=>{
   A.bets.set(playerId, bet);
   res.json({ ok:true, ticketId: bet.ticketId, stake: bet.stake, autoCashOut: bet.autoCashOut, balance: ensurePlayer(playerId).balance });
 });
+
 app.post('/aviator/cashout', (req,res)=>{
   const { playerId } = req.body || {};
   const A = STATE.aviator;
@@ -603,10 +619,20 @@ app.post('/aviator/cashout', (req,res)=>{
   if (!bet) return res.status(400).json({ ok:false, error:'No live bet' });
   if (A.phase !== 'flying') return res.status(400).json({ ok:false, error:'Not flying' });
   if (!bet.live || bet.cashed) return res.status(400).json({ ok:false, error:'Already settled' });
-  bet.cashed=true; bet.live=false; bet.hit=Number(A.multiplier.toFixed(2));
-  bet.payout = Math.min(bet.stake * bet.hit, MAX_PAYOUT);
+
+  // If we've already touched the bust curve (pre-bust freeze), disallow manual cashout
+  if (A.cashoutLocked) return res.status(400).json({ ok:false, error:'Cashout closed' });
+
+  bet.cashed = true;
+  bet.live   = false;
+
+  // Pay exactly the last fair live multiplier (never bust value)
+  const hit = Math.max(1, Number(A.lastCashable.toFixed(2)));
+  bet.hit    = hit;
+  bet.payout = Math.min(bet.stake * hit, MAX_PAYOUT);
   creditPlayer(playerId, bet.payout);
-  res.json({ ok:true, multiplier: bet.hit, payout: Number(bet.payout.toFixed(2)), balance: ensurePlayer(playerId).balance });
+
+  res.json({ ok:true, multiplier: hit, payout: Number(bet.payout.toFixed(2)), balance: ensurePlayer(playerId).balance });
 });
 
 // ----------------- Root -----------------
