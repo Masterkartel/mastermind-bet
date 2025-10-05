@@ -159,14 +159,28 @@
   </div>
 
   <script>
-  const api  = location.origin.replace(/:\\d+$/, ':4000');
+  // Same-origin API (works on https, Cloudflare, proxies)
+  const API = {
+    health: () => '/health',
+    aviState: () => '/aviator/state',
+    walletGet: (pid) => `/aviator/wallet/${pid}`,
+    walletLoad: () => '/aviator/wallet/load',
+    bet: () => '/aviator/bet',
+    cashout: () => '/aviator/cashout'
+  };
   const KES  = x => new Intl.NumberFormat('en-KE',{style:'currency',currency:'KES'}).format(Number(x||0));
   const clamp= (n,min,max)=> Math.max(min, Math.min(max,n));
+  const toast = (msg)=> alert(msg); // quick visible errors
 
   /* ===== Clock (sticky header) ===== */
   const clk = document.getElementById('clock'); let skew=0;
-  async function syncClock(){ try{ const r=await fetch(\`\${api}/health\`); const j=await r.json(); skew=j.ts-Date.now(); }catch(e){} }
-  setInterval(()=>{ const d=new Date(Date.now()+skew); clk.textContent=d.toLocaleString(); }, 500); syncClock();
+  async function syncClock(){
+    try{ const r=await fetch(API.health()); const j=await r.json(); skew=j.ts-Date.now(); }
+    catch(e){ clk.textContent='OFFLINE'; }
+  }
+  setInterval(()=>{ const d=new Date(Date.now()+skew); clk.textContent=d.toLocaleString(); }, 500);
+  // run after layout to avoid first 0-height canvas
+  requestAnimationFrame(syncClock);
 
   /* ===== Canvas + plane ===== */
   const cv = document.getElementById('area'); const ctx=cv.getContext('2d');
@@ -179,7 +193,7 @@
     cv.height = Math.floor(cv.parentElement.clientHeight * dpr);
     ctx.setTransform(dpr,0,0,dpr,0,0);
   }
-  fit(); addEventListener('resize',fit);
+  fit(); addEventListener('resize',()=>requestAnimationFrame(fit));
 
   /* Plane SVG */
   const planeImg = new Image();
@@ -221,11 +235,9 @@
 
   /* ===== Odds/plane pacing (sync) ===== */
   let STATE = { phase:'betting', multiplier:1, bust:2, history:[] };
-  let lastPhase = 'betting';
-
-  let progressVis = 0;          // 0..1 visual progress
-  const STANDBY_T = 0.002;      // tiny non-zero so the trail dot is visible
-  const HOVER_T   = 0.42;       // ~40% progress target (mid-air hover)
+  let progressVis = 0;                  // 0..1 visual progress
+  const STANDBY_T = 0.002;              // tiny non-zero so the trail dot is visible
+  const HOVER_T   = 0.42;               // ~40% progress target (mid-air hover)
 
   function progressFromBackend(mult, bust){
     if (!mult || mult<=1 || !bust || bust<=1) return 0;
@@ -313,21 +325,20 @@
     const bust=Number(STATE.bust||2);
     const backendT = progressFromBackend(backendMult, bust);
 
-    const visualPhase = STATE.phase;
-    const target = (visualPhase==='flying') ? Math.min(HOVER_T, backendT)
-                   : (visualPhase==='busted') ? Math.min(1, backendT)
+    const target = (STATE.phase==='flying') ? Math.min(HOVER_T, backendT)
+                   : (STATE.phase==='busted') ? Math.min(1, backendT)
                    : STANDBY_T;
 
-    const rate = (visualPhase==='flying' && progressVis < 0.15) ? 22 : 12; // fast lift then cruise
+    const rate = (STATE.phase==='flying' && progressVis < 0.15) ? 22 : 12; // fast lift then cruise
     progressVis = damp(progressVis, target, rate, dt);
 
     // Show odds from visual progress (no jump)
     let visualMult = 1.00;
-    if (visualPhase === 'flying') visualMult = Math.max(1, multFromProgress(progressVis, bust));
-    else if (visualPhase === 'busted') visualMult = Math.max(1, backendMult);
+    if (STATE.phase === 'flying') visualMult = Math.max(1, multFromProgress(progressVis, bust));
+    else if (STATE.phase === 'busted') visualMult = Math.max(1, backendMult);
     else visualMult = 1.00;
 
-    draw(visualMult, visualPhase);
+    draw(visualMult, STATE.phase);
     requestAnimationFrame(animate);
   }
   requestAnimationFrame(animate);
@@ -348,15 +359,16 @@
   }
   function markAllLiveAsLost(mult){ tickets.forEach(t=>{ if(t.state==='LIVE'){ t.state='LOST'; t.hit=mult; t.payout=0; } }); renderT(); }
 
-  /* Poll backend */
+  /* Poll backend (with visible errors) */
   async function poll(){
     try{
-      const r=await fetch(`${api}/aviator/state`,{cache:'no-store'}); if(!r.ok) throw 0;
+      const r=await fetch(API.aviState(),{cache:'no-store'});
+      if(!r.ok) throw new Error('State fetch failed');
       const j=await r.json();
-      const phase = j.phase ? j.phase :
-                    (j.status==='RUNNING'?'flying': j.status==='BUST'?'busted': 'betting');
+
+      const phase = j.phase || (j.status==='RUNNING'?'flying': j.status==='BUST'?'busted': 'betting');
       const backendMult = j.multiplier!=null ? Number(j.multiplier) :
-                         (j.liveMultiplier!=null? Number(j.liveMultiplier):1);
+                          (j.liveMultiplier!=null? Number(j.liveMultiplier):1);
       const history = Array.isArray(j.history)? j.history : [];
       const bust = Number(j.bust || j.bustAt || 2);
 
@@ -367,15 +379,30 @@
       STATE = { phase, multiplier: backendMult, history, bust };
       phasePill.textContent = phase.toUpperCase();
       paintChips(history);
-    }catch(e){ phasePill.textContent='OFFLINE'; }
+    }catch(e){
+      phasePill.textContent='OFFLINE';
+      // show it only once in a while
+      if (!poll._warned){ toast('Cannot reach server. Check that Node is running and /aviator/state is accessible.'); poll._warned=true; }
+    }
   }
-  setInterval(poll, 180); poll();
+  setInterval(poll, 250); poll();
 
-  /* Wallet + controls */
+  /* Wallet + controls (with demo auto-fund) */
   async function refreshBal(pid){
-    try{ const r=await fetch(`${api}/aviator/wallet/${pid}`); const j=await r.json();
-         if(j && j.ok!==false){ const el=document.getElementById(`${pid}-bal`); if(el) el.textContent=j.balance||0; }
+    try{
+      const r=await fetch(API.walletGet(pid)); const j=await r.json();
+      if(j && j.ok!==false){ const el=document.getElementById(`${pid}-bal`); if(el) el.textContent=j.balance||0; return j.balance||0; }
     }catch(e){}
+    return 0;
+  }
+  async function ensureMinBalance(pid, min=100){
+    const bal = await refreshBal(pid);
+    if (bal < min){
+      try{
+        await fetch(API.walletLoad(), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, amount:2000})});
+        await refreshBal(pid);
+      }catch(e){}
+    }
   }
   function wireCard(pid){
     const card=document.querySelector(`.card[data-player="${pid}"]`);
@@ -389,32 +416,33 @@
     betBtn.onclick = async ()=>{
       const stake=clamp(Number(stakeEl.value||0),20,1000);
       try{
-        const r=await fetch(`${api}/aviator/bet`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, stake})});
-        const j=await r.json(); if(!j.ok) return alert(j.error||'Bet failed');
+        const r=await fetch(API.bet(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, stake})});
+        const j=await r.json(); if(!j.ok) return toast(j.error||'Bet failed');
         status.textContent='LIVE'; tEl.textContent=j.ticketId; pEl.textContent='—';
-        addT({playerId:pid,ticketId:j.ticketId,stake,state:'LIVE'}); refreshBal(pid);
-      }catch(e){}
+        addT({playerId:pid,ticketId:j.ticketId,stake,state:'LIVE'}); await refreshBal(pid);
+      }catch(e){ toast('Network error placing bet'); }
     };
     cashBtn.onclick = async ()=>{
       try{
-        const r=await fetch(`${api}/aviator/cashout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid})});
-        const j=await r.json(); if(!j.ok) return alert(j.error||'Cashout failed');
+        const r=await fetch(API.cashout(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid})});
+        const j=await r.json(); if(!j.ok) return toast(j.error||'Cashout failed');
         status.textContent='CASHED'; pEl.textContent=KES(j.payout);
         const t=tickets.find(x=>x.playerId===pid && x.state==='LIVE'); if(t){ t.state='CASHED'; t.payout=j.payout; t.hit=j.multiplier; } renderT();
-        refreshBal(pid);
-      }catch(e){}
+        await refreshBal(pid);
+      }catch(e){ toast('Network error during cashout'); }
     };
     aBtn.onclick = async ()=>{
       const stake=clamp(Number(aStake.value||0),20,1000), x=clamp(Number(aX.value||0),1.05,1000);
       try{
-        const r=await fetch(`${api}/aviator/bet`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, stake, autoCashOut:x})});
-        const j=await r.json(); if(!j.ok) return alert(j.error||'Auto bet failed');
+        const r=await fetch(API.bet(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, stake, autoCashOut:x})});
+        const j=await r.json(); if(!j.ok) return toast(j.error||'Auto bet failed');
         status.textContent='LIVE'; tEl.textContent=j.ticketId; pEl.textContent='—';
-        addT({playerId:pid,ticketId:j.ticketId,stake,autoCashOut:x,state:'LIVE'}); refreshBal(pid);
-      }catch(e){}
+        addT({playerId:pid,ticketId:j.ticketId,stake,autoCashOut:x,state:'LIVE'}); await refreshBal(pid);
+      }catch(e){ toast('Network error placing auto bet'); }
     };
 
-    refreshBal(pid);
+    // ensure demo funds so Bet/Auto work out of the box
+    ensureMinBalance(pid, 100);
   }
   ['pA','pB','pC'].forEach(wireCard);
   </script>
