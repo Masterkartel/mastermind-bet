@@ -1,4 +1,4 @@
-// server.js — Mastermind Bet (Virtuals ++, drive-by Aviator)
+// server.js — Mastermind Bet (Virtuals ++, hardened manual cashout + randomization)
 // Node 18+, ESM. package.json MUST contain:  { "type": "module" }
 // Requires: express, cors, uuid, ejs, bwip-js
 // Optional: node-thermal-printer (guarded)
@@ -52,6 +52,10 @@ function mulberry32(a) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+// numeric helpers to avoid rounding up to bust
+function floorDp(x, dp=2){ const k=10**dp; return Math.floor((x+1e-9)*k)/k; }
+function belowDp(x, dp=2){ const k=10**dp; return Math.floor((x-1e-9)*k)/k; } // largest dp-decimal < x
+
 const softmax = (arr) => {
   const m = Math.max(...arr);
   const exps = arr.map((v) => Math.exp(v - m));
@@ -103,13 +107,14 @@ const STATE = {
     seed: Math.floor(Math.random()*2**31),
     bustAt: 5.0,
     bets: new Map(),
-    lastCashable: 1.00     // last fair live multiplier strictly below bust
+    lastCashable: 1.00,    // last fair live multiplier strictly below bust (2dp)
+    rateJitter: 1.0        // per-round speed jitter
   }
 };
 
 // Tunable pacing (frontend references SPEED to sync visuals)
 const AVIATOR_CFG = {
-  SPEED: 0.64,          // eased (gentler than 0.69)
+  SPEED: 0.64,          // gentler than 0.69
   EASE_POWER: 1.20,     // smoother early ramp
   MIN_BET_MS: 4500,
   MIN_FLY_MS: 5500,
@@ -117,14 +122,14 @@ const AVIATOR_CFG = {
   MAX_BUST: 50
 };
 
-// Exposure-aware shaping
+// Exposure-aware shaping (house edge preserved)
 const EXPOSURE_CFG = {
-  hiTailChanceNoBets: 0.25,
+  hiTailChanceNoBets: 0.30, // more big rounds when nobody bet
   hiTailMin: 8,
   hiTailMax: 30,
   softCapBase: 6.5,
   softCapPerK: 1.2,
-  minBelowBustForManual: 0.01
+  minBelowBustForManual: 0.01 // keep manual payouts strictly < bust
 };
 
 // === Dynamic min-flight (instant bust for tiny multipliers) ===
@@ -424,26 +429,27 @@ function liveExposureSummary(A){
 }
 function pickBustForRound(A){
   const { liveCount, stakeTotal } = liveExposureSummary(A);
+  const alphaJitter = 2.7 + mulberry32(A.seed ^ 0x3434)()*1.4; // 2.7–4.1
 
   if (liveCount === 0){
-    const show = mulberry32(A.seed ^ 0x5a5a)() < EXPOSURE_CFG.hiTailChanceNoBets;
-    if (show){
+    const hi = mulberry32(A.seed ^ 0x5a5a)() < EXPOSURE_CFG.hiTailChanceNoBets;
+    if (hi){
       return Math.max(
         EXPOSURE_CFG.hiTailMin,
-        Math.min(drawBustCore(A.seed ^ 0x7777, 2.2, 1.00, EXPOSURE_CFG.hiTailMax), EXPOSURE_CFG.hiTailMax)
+        Math.min(drawBustCore(A.seed ^ 0x7777, alphaJitter, 1.00, EXPOSURE_CFG.hiTailMax), EXPOSURE_CFG.hiTailMax)
       );
     }
-    return drawBust(A.seed);
+    return drawBustCore(A.seed, alphaJitter, 1.00, AVIATOR_CFG.MAX_BUST);
   }
 
   const perK = Math.max(0, stakeTotal/1000);
   const softCap = Math.max(2.0, EXPOSURE_CFG.softCapBase + perK * EXPOSURE_CFG.softCapPerK);
 
-  const base = drawBust(A.seed);
+  const base = drawBustCore(A.seed, alphaJitter, 1.00, AVIATOR_CFG.MAX_BUST);
   if (base <= softCap) return base;
 
   const over = base - softCap;
-  const squashed = softCap + over / (1 + over);
+  const squashed = softCap + over / (1 + over); // smooth squashing above softCap
   return Math.min(squashed, AVIATOR_CFG.MAX_BUST);
 }
 
@@ -452,6 +458,7 @@ function startTakeoff(A, now){
   A.phase = 'flying';
   A.t0 = now;
   A.seed = (A.seed + 1) >>> 0;
+  A.rateJitter = 0.92 + mulberry32(A.seed ^ 0xaaaa)()*0.22; // 0.92–1.14
   A.bustAt = pickBustForRound(A);
   A.multiplier = 1.00;
   A.lastCashable = 1.00;
@@ -460,7 +467,7 @@ function startTakeoff(A, now){
 function advanceAviator(now){
   const A = STATE.aviator;
 
-  // Safety: if betting window stale, rearm
+  // safety against stale timers
   if (A.phase==='betting' && now - A.nextChangeAt > 60000){
     A.nextChangeAt = now + 800;
   }
@@ -476,12 +483,15 @@ function advanceAviator(now){
     const dtMs   = now - A.t0;
     const tSec   = dtMs / 1000;
     const shaped = Math.pow(Math.max(0, tSec), AVIATOR_CFG.EASE_POWER);
-    const mLive  = Math.max(1.00, Math.exp(AVIATOR_CFG.SPEED * shaped)); // uncapped
+    const speed  = AVIATOR_CFG.SPEED * (A.rateJitter || 1.0);
+    const mLive  = Math.max(1.00, Math.exp(speed * shaped)); // uncapped live multiplier
 
-    A.multiplier   = Math.min(mLive, A.bustAt);
-    A.lastCashable = Math.max(1.00, Math.min(mLive, A.bustAt - EXPOSURE_CFG.minBelowBustForManual));
+    A.multiplier   = Math.min(mLive, A.bustAt); // display (cap at bust)
+    // lastCashable is floored to 2dp and strictly < bust (also 2dp)
+    const nextUnderBust = belowDp(A.bustAt, 2);
+    A.lastCashable = Math.max(1.00, Math.min(floorDp(mLive,2), nextUnderBust));
 
-    // Auto-cashouts (exact target)
+    // Auto-cashouts: pay EXACT user's target
     for (const [pid, bet] of A.bets){
       if (!bet.live || bet.cashed || !bet.autoCashOut) continue;
       if (A.multiplier >= bet.autoCashOut){
@@ -501,7 +511,7 @@ function advanceAviator(now){
         if (bet.live && !bet.cashed){ bet.live=false; bet.payout=0; bet.hit=m; }
       }
       A.nextChangeAt = now + AVIATOR_CFG.BUST_HOLD_MS;
-      A.multiplier = A.bustAt;
+      A.multiplier = A.bustAt; // show exact bust value during hold
     }
     return;
   }
@@ -593,7 +603,7 @@ app.get('/receipt/:id', async (req,res)=>{
 app.get('/aviator', (_req,res)=> res.sendFile(path.join(__dirname, 'static', 'aviator.html')));
 app.get('/aviator/state', (_req,res)=>{
   const now = NOW();
-  // Advance engine even if the ticker is throttled
+  // Drive the engine even if intervals are throttled
   advanceAviator(now);
 
   const A = STATE.aviator;
@@ -638,7 +648,7 @@ app.post('/aviator/bet', (req,res)=>{
   res.json({ ok:true, ticketId: bet.ticketId, stake: bet.stake, autoCashOut: bet.autoCashOut, balance: ensurePlayer(playerId).balance });
 });
 
-// Manual cashout: always pay the last fair, pre-bust multiplier
+// Manual cashout: always pay the last *floored* pre-bust multiplier (2dp), never bust
 app.post('/aviator/cashout', (req,res)=>{
   const { playerId } = req.body || {};
   const A = STATE.aviator;
@@ -648,7 +658,9 @@ app.post('/aviator/cashout', (req,res)=>{
   if (!bet.live || bet.cashed) return res.status(400).json({ ok:false, error:'Already settled' });
 
   bet.cashed = true; bet.live = false;
-  const hit = Math.max(1.00, Number(A.lastCashable.toFixed(2)));
+
+  const snap = Math.min(A.multiplier, A.lastCashable);
+  const hit  = Math.max(1.00, floorDp(snap, 2)); // floor, never rounds up to bust
   bet.hit    = hit;
   bet.payout = Math.min(bet.stake * hit, MAX_PAYOUT);
   creditPlayer(playerId, bet.payout);
@@ -656,7 +668,7 @@ app.post('/aviator/cashout', (req,res)=>{
   res.json({ ok:true, multiplier: hit, payout: Number(bet.payout.toFixed(2)), balance: ensurePlayer(playerId).balance });
 });
 
-// --- small admin nudges (optional) ---
+// --- admin nudges (optional) ---
 app.post('/aviator/admin/nudge', (_req,res)=>{
   const A = STATE.aviator;
   if (A.phase==='betting') A.nextChangeAt = NOW() + 300;
