@@ -357,9 +357,9 @@ function runEvent(eventId){
   if (ev.game==='dog' || ev.game==='horse'){
     const mIds = STATE.marketsByEvent.get(ev.id) || [];
     const winM = mIds.map(id=>STATE.markets.get(id)).find(x=>x.type==='MAIN_WIN');
-    const ids = winM.selections.map(s=>s.id);
-    const fair = ids.map(id => 1/winM.odds[id]);
-    const s = fair.reduce((a,b)=>a+b,0); for(let i=0;i<fair.length;i++) fair[i]/=s;
+    const ids = winM?.selections?.map(s=>s.id) || [];
+    const fair = ids.map(id => 1/(winM.odds[id]||1));
+    const s = fair.reduce((a,b)=>a+b,0)||1; for(let i=0;i<fair.length;i++) fair[i]/=s;
     const pool = ids.map((id,i)=>({id,w:fair[i]}));
     const positions=[]; let tmp=pool.slice();
     while(tmp.length){
@@ -483,8 +483,8 @@ setInterval(()=>{
 }, 100);
 
 // ----------------- API: Common -----------------
-app.get('/health', (req,res)=> res.json({ ok:true, ts:Date.now(), sha:BUILD_SHA }));
-app.get('/games',  (req,res)=> res.json(STATE.games));
+app.get('/health', (_req,res)=> res.json({ ok:true, ts:Date.now(), sha:BUILD_SHA }));
+app.get('/games',  (_req,res)=> res.json(STATE.games));
 app.get('/events', (req,res)=> {
   const { game } = req.query;
   let arr = [...STATE.events.values()];
@@ -548,7 +548,7 @@ app.get('/receipt/:id', async (req,res)=>{
 
 // ----------------- Aviator API -----------------
 app.get('/aviator', (_req,res)=> res.sendFile(path.join(__dirname, 'static', 'aviator.html')));
-app.get('/aviator/state', (req,res)=>{
+app.get('/aviator/state', (_req,res)=>{
   const A = STATE.aviator;
   const phaseMap = { betting:'BETTING', flying:'RUNNING', busted:'BUST' };
   res.json({
@@ -559,7 +559,11 @@ app.get('/aviator/state', (req,res)=>{
     status: phaseMap[A.phase],
     liveMultiplier: Number(A.multiplier.toFixed(2)),
     bust: Number(A.bustAt.toFixed(2)),
-    speed: AVIATOR_CFG.SPEED     // expose for frontend sync
+    // expose config for frontend sync/UX
+    speed: AVIATOR_CFG.SPEED,
+    minBetMs: AVIATOR_CFG.MIN_BET_MS,
+    minFlyMs: AVIATOR_CFG.MIN_FLY_MS,
+    bustHoldMs: AVIATOR_CFG.BUST_HOLD_MS
   });
 });
 app.post('/aviator/wallet/load', (req,res)=>{
