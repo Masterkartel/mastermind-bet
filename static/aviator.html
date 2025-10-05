@@ -9,19 +9,17 @@
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--bg);color:var(--text);}
-  /* sticky clock like other pages */
   .header{display:flex;align-items:center;justify-content:flex-end;padding:8px 14px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(10,14,26,.85);backdrop-filter:blur(6px);z-index:20}
   .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0e172f;color:#cfe1ff}
   .clock{min-width:220px;text-align:right}
 
   .wrap{max-width:100vw;margin:0 auto;padding:0;display:grid;gap:14px}
 
-  /* Stage: deeper “endless” sky look (center above the top edge) */
+  /* Endless sky feel */
   .stage{
     position:relative;width:100%;height:min(62vh,620px);min-height:360px;border:1px solid var(--line);
     border-radius:18px;overflow:hidden;
-    background:
-      radial-gradient(120% 95% at 50% -20%, #163660 0 38%, #0f2748 39% 62%, #0b1426 63% 100%);
+    background: radial-gradient(120% 95% at 50% -20%, #163660 0 38%, #0f2748 39% 62%, #0b1426 63% 100%);
   }
   canvas#area{position:absolute;inset:0;z-index:1}
   .centerText{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
@@ -176,42 +174,19 @@ function fit(){
 }
 fit(); addEventListener('resize',()=>requestAnimationFrame(fit));
 
-/* Parallax “endless” sky (cheap + smooth) */
-const SKY = { streaks:[], clouds:[], inited:false };
-function initSky(){
+/* Parallax sky */
+const SKY = { streaks:[], clouds:[] };
+(function initSky(){
   SKY.streaks.length=0; SKY.clouds.length=0;
-  // 3 layers of diagonal streaks
+  const rnd=(a,b)=> a + Math.random()*(b-a);
   const LAYERS = [
     {n:28, sp:  16, len:[20,60], th:[1,2], a:0.10},
     {n:22, sp:  28, len:[30,90], th:[1,2], a:0.16},
     {n:16, sp:  42, len:[40,120],th:[1,2], a:0.22},
   ];
-  const rnd=(a,b)=> a + Math.random()*(b-a);
-  LAYERS.forEach((L,li)=>{
-    for(let i=0;i<L.n;i++){
-      SKY.streaks.push({
-        x: Math.random()*cssW, y: Math.random()*cssH,
-        len: rnd(L.len[0], L.len[1]),
-        th: rnd(L.th[0], L.th[1]),
-        sp: L.sp*(0.7+Math.random()*0.6),
-        a: L.a*(0.6+Math.random()*0.8),
-        layer: li
-      });
-    }
-  });
-  // soft clouds (big blurred spots drifting)
-  for(let i=0;i<7;i++){
-    SKY.clouds.push({
-      x: Math.random()*cssW, y: Math.random()*cssH*0.7,
-      r: 120+Math.random()*220,
-      a: 0.05+Math.random()*0.08,
-      spx: 2+Math.random()*3,
-      spy: -4 - Math.random()*4
-    });
-  }
-  SKY.inited=true;
-}
-initSky();
+  LAYERS.forEach(L=>{ for(let i=0;i<L.n;i++){ SKY.streaks.push({ x:Math.random()*cssW, y:Math.random()*cssH, len:rnd(L.len[0],L.len[1]), th:rnd(L.th[0],L.th[1]), sp:L.sp*(0.7+Math.random()*0.6), a:L.a*(0.6+Math.random()*0.8) }); }});
+  for(let i=0;i<7;i++){ SKY.clouds.push({ x:Math.random()*cssW, y:Math.random()*cssH*0.7, r:120+Math.random()*220, a:0.05+Math.random()*0.08, spx:2+Math.random()*3, spy:-4 - Math.random()*4 }); }
+})();
 
 /* plane sprite */
 const planeImg=new Image();
@@ -236,143 +211,112 @@ function paintChips(list){
 }
 const phasePill=document.getElementById('phasePill'); const centerText=document.getElementById('centerText');
 
-/* ===== Flight model ===== */
-let STATE={ phase:'betting', multiplier:1, bust:2, history:[] };
-let progressVis=0;                // 0..1 normalized by bust
-const STANDBY_T=0.002;           // tiny dot at origin
+/* ===== Flight model (SYNC TO BACKEND TIME) ===== */
+let STATE={ phase:'betting', multiplier:1, bust:2, history:[], speed:0.46 };
+
+const STANDBY_T=0.002;            // tiny dot at origin
+const MIN_FLY_SEC_FRONT = 5.5;    // matches server MIN_FLY_MS≈5500
+
+let flightStartMs = 0;            // client clock when this flight began
+let flightDurSec  = 6.0;          // expected duration this round (sec)
+let progressVis   = 0;            // 0..1, visual progress
+
 function tFromMult(mult,bust){ if(!mult||mult<=1||!bust||bust<=1) return 0; return Math.min(1, Math.log(mult)/Math.log(bust)); }
 function multFromT(t,bust){ const b=Math.max(1.000001,Number(bust||2)); return Math.pow(b, Math.max(0,Math.min(1,t))); }
 function damp(cur,tgt,rate,dt){ const k=Math.exp(-rate*Math.max(0,dt)); return cur*k + tgt*(1-k); }
 
-/* path tuned to “soar” — faster vertical rise with smooth x */
+/* Upward path: very small horizontal travel, strong vertical climb */
+const HORIZ_FRACTION = 0.18;      // ≤ 18% of width by the tip
 function pathX(p, left, trackW){
-  // x eases out slightly so vertical climb feels faster
   const ease = 1 - Math.exp(-3.4*p);
-  return left + trackW * ease;
+  return left + trackW * HORIZ_FRACTION * ease;
 }
 function pathY(p, baseY, bust){
-  // stronger ascent curve than quadratic; scales with bust steepness
   const steep = Math.log(Math.max(1.0001, Number(bust||2)));
-  const k = 0.36 + 0.18*steep;         // ascent gain
-  const pow = 1.22 + 0.18*steep;       // curvature
-  const y = baseY - (Math.pow(p, pow)) * (baseY * (0.92*k)); // can go well above top
-  return y;
+  const k = 0.42 + 0.18*steep;          // ascent gain
+  const pow = 1.28 + 0.18*steep;        // curvature
+  return baseY - (Math.pow(p, pow)) * (baseY * (0.90*k));
 }
 
-/* draw background parallax (no transforms) */
+/* sky draw */
 function drawSky(dt, tNorm){
-  // clouds
   SKY.clouds.forEach(c=>{
     c.x += c.spx*dt; c.y += c.spy*dt*(1+0.6*tNorm);
     if (c.x - c.r > cssW) c.x = -c.r;
     if (c.y + c.r < -40) { c.y = cssH + c.r*0.5; c.x = Math.random()*cssW*0.5; }
     const g=ctx.createRadialGradient(c.x, c.y, c.r*0.1, c.x, c.y, c.r);
-    g.addColorStop(0, `rgba(170,200,255,${c.a})`);
-    g.addColorStop(1, `rgba(20,40,80,0)`);
+    g.addColorStop(0, `rgba(170,200,255,${c.a})`); g.addColorStop(1, `rgba(20,40,80,0)`);
     ctx.fillStyle=g; ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI*2); ctx.fill();
   });
-
-  // streaks (diagonal up-right, wrap from left/bottom)
-  ctx.globalAlpha=1;
   SKY.streaks.forEach(s=>{
-    s.x += s.sp*dt*(0.7+0.9*tNorm);
-    s.y -= s.sp*dt*(0.9+0.9*tNorm);
-    if (s.x - s.len > cssW || s.y + s.len < 0){
-      s.x = -20 - Math.random()*80; s.y = cssH + Math.random()*120;
-    }
-    ctx.strokeStyle = `rgba(200,220,255,${s.a})`;
-    ctx.lineWidth = s.th;
-    ctx.beginPath();
-    ctx.moveTo(s.x, s.y);
-    ctx.lineTo(s.x - s.len, s.y + s.len);
-    ctx.stroke();
+    s.x += s.sp*dt*(0.7+0.9*tNorm); s.y -= s.sp*dt*(0.9+0.9*tNorm);
+    if (s.x - s.len > cssW || s.y + s.len < 0){ s.x = -20 - Math.random()*80; s.y = cssH + Math.random()*120; }
+    ctx.strokeStyle = `rgba(200,220,255,${s.a})`; ctx.lineWidth = s.th;
+    ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x - s.len, s.y + s.len); ctx.stroke();
   });
 }
 
-/* drawing — uses CSS px; adds “camera” scale from bottom-left as t grows */
-let lastAngle=-Math.PI/4;
-function draw(mult,phase){
+/* draw everything */
+let lastAngle=-Math.PI/4, lastTs=performance.now();
+function draw(mult,phase,dt){
   ctx.clearRect(0,0,cssW,cssH);
 
-  const left=0, baseY=cssH-1, right=cssW-1, trackW=Math.max(0,right-left), bust=STATE.bust||2;
+  const left=0, baseY=cssH-1, trackW=cssW-1, bust=STATE.bust||2;
   const t = (phase==='flying') ? progressVis : (phase==='busted' ? tFromMult(mult,bust) : STANDBY_T);
 
-  // 1) Endless sky behind everything
-  // dt provided by the animation loop; reuse last dt via closure variable sky_dt
-  drawSky(window.__sky_dt||0.016, t);
+  drawSky(dt, t);
 
-  // 2) Camera: zoom from tail corner (bottom-left)
-  const camScale = 1 + t*0.55; // subtle but noticeable
-  ctx.save();
-  ctx.translate(left, baseY);
-  ctx.scale(camScale, camScale);
-  ctx.translate(-left, -baseY);
+  // slight camera zoom from the corner (kept subtle)
+  const camScale = 1 + t*0.45;
+  ctx.save(); ctx.translate(left, baseY); ctx.scale(camScale, camScale); ctx.translate(-left, -baseY);
 
-  // build the trail path
   const steps=Math.max(2, Math.floor(320*t));
-  // origin pin (keeps trail glued)
   ctx.beginPath(); ctx.arc(left, baseY, 1.15, 0, Math.PI*2); ctx.fillStyle='#ff4d6d'; ctx.fill();
-
-  ctx.beginPath();
-  ctx.moveTo(left, baseY);
-  for(let i=0;i<=steps;i++){
-    const p=i/320;
-    const x=pathX(p, left, trackW);
-    ctx.lineTo(x, pathY(p, baseY, bust));
-  }
+  ctx.beginPath(); ctx.moveTo(left, baseY);
+  for(let i=0;i<=steps;i++){ const p=i/320; const x=pathX(p, left, trackW); ctx.lineTo(x, pathY(p, baseY, bust)); }
   ctx.strokeStyle='#ff4d6d'; ctx.lineWidth=2; ctx.stroke();
 
-  // soft area under trail
   const tipX=pathX(t, left, trackW), tipY=pathY(t, baseY, bust);
   ctx.lineTo(tipX, baseY); ctx.lineTo(left, baseY); ctx.closePath();
   ctx.fillStyle='rgba(255,77,109,0.20)'; ctx.fill();
 
-  // plane (anchored by precise tail)
   if (phase!=='busted'){
     const t2=Math.max(0,t-0.012);
-    const px = tipX, py = tipY;
-    const px2=pathX(t2, left, trackW), py2=pathY(t2, baseY, bust);
-    lastAngle = Math.atan2(py - py2, px - px2) - 0.05; // slight nose-up bias
-
+    const px2=pathX(t2,left,trackW), py2=pathY(t2,baseY,bust);
+    lastAngle = Math.atan2(tipY - py2, tipX - px2) - 0.05; // nose-up
     const SCALE=1.5, w=140*SCALE, h=60*SCALE;
     const tailAx=4/140, tailAy=36/60;
-    ctx.save();
-    ctx.translate(px, py);
-    ctx.rotate(lastAngle);
-    ctx.drawImage(planeImg, -w*tailAx, -h*tailAy, w, h);
-    ctx.restore();
+    ctx.save(); ctx.translate(tipX, tipY); ctx.rotate(lastAngle);
+    ctx.drawImage(planeImg, -w*tailAx, -h*tailAy, w, h); ctx.restore();
   }
+  ctx.restore();
 
-  ctx.restore(); // end camera
-
-  // HUD text
   centerText.className='centerText '+(phase==='busted'?'flew':'multi');
   if (phase==='betting') centerText.textContent='Place your bets…';
   else if (phase==='busted') centerText.textContent='FLEW AWAY!\n'+(mult?`${Number(mult).toFixed(2)}x`:``);
   else centerText.textContent = mult?`${Number(mult).toFixed(2)}x`:``;
 }
 
-/* animation — chase server smoothly all the way to bust */
-let lastTs=performance.now();
+/* animation: target progress is **time-based**, not multiplier-based */
 function tick(now){
   const dt=(now-lastTs)/1000; lastTs=now;
-  window.__sky_dt = dt;              // share with drawSky()
-  const bust=Number(STATE.bust||2);
-  const backendT=tFromMult(Number(STATE.multiplier||1), bust);
 
-  const phase=STATE.phase;
-  const target = (phase==='flying') ? backendT
-               : (phase==='busted') ? backendT
-               : STANDBY_T;
-
-  const rate = (phase==='flying' && progressVis<0.12) ? 18 : 9; // snappy liftoff, then glide
+  // progress by expected timeline
+  let target = STANDBY_T;
+  if (STATE.phase==='flying'){
+    const elapsedSec = Math.max(0, (now - flightStartMs)/1000);
+    target = Math.min(1, elapsedSec / flightDurSec);
+  } else if (STATE.phase==='busted'){
+    target = 1;
+  }
+  const rate = (STATE.phase==='flying' && progressVis<0.12) ? 18 : 9;
   progressVis = damp(progressVis, target, rate, dt);
 
-  // read odds from our visual progress (no jump)
-  const visualMult = (phase==='busted') ? Math.max(1, Number(STATE.multiplier||1))
+  const bust=Number(STATE.bust||2);
+  const visualMult = (STATE.phase==='busted') ? Math.max(1, Number(STATE.multiplier||1))
                     : Math.max(1, multFromT(progressVis, bust));
 
-  draw(visualMult, phase);
+  draw(visualMult, STATE.phase, dt);
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
@@ -391,7 +335,8 @@ function renderT(){
 }
 function markAllLiveAsLost(mult){ tickets.forEach(t=>{ if(t.state==='LIVE'){ t.state='LOST'; t.hit=mult; t.payout=0; } }); renderT(); }
 
-/* polling */
+/* polling (captures speed + computes flight timing) */
+let lastPhase='betting';
 async function poll(){
   try{
     const r=await fetch(API.aviState(),{cache:'no-store'}); if(!r.ok) throw 0;
@@ -400,16 +345,23 @@ async function poll(){
     const m = j.multiplier!=null ? Number(j.multiplier) : (j.liveMultiplier!=null? Number(j.liveMultiplier):1);
     const history = Array.isArray(j.history)? j.history : [];
     const bust = Number(j.bust || j.bustAt || 2);
+    const speed = Number(j.speed || 0.46);
 
-    if (STATE.phase!=='flying' && phase==='flying') progressVis=STANDBY_T;
-    if (STATE.phase!=='busted' && phase==='busted') markAllLiveAsLost(m);
+    // on flight start or first detection, align client time with server state
+    if (lastPhase !== 'flying' && phase === 'flying'){
+      const timeToBustSec = Math.log(Math.max(1.000001,bust)) / Math.max(0.01, speed);
+      flightDurSec = Math.max(MIN_FLY_SEC_FRONT, timeToBustSec);    // server waits at least MIN_FLY
+      const offsetSec = Math.min(flightDurSec, Math.log(Math.max(1.000001,m)) / Math.max(0.01, speed));
+      flightStartMs = performance.now() - offsetSec*1000;           // backfill start so we sync mid-round
+      progressVis = STANDBY_T;                                      // lift off from the dot
+    }
+    if (lastPhase !== 'busted' && phase === 'busted'){ markAllLiveAsLost(m); }
 
-    STATE={ phase, multiplier:m, history, bust };
-    document.getElementById('phasePill').textContent=phase.toUpperCase();
+    STATE={ phase, multiplier:m, history, bust, speed };
+    phasePill.textContent = phase.toUpperCase();
     paintChips(history);
-  }catch(e){
-    document.getElementById('phasePill').textContent='OFFLINE';
-  }
+    lastPhase = phase;
+  }catch(e){ phasePill.textContent='OFFLINE'; }
 }
 setInterval(poll, 220); poll();
 
