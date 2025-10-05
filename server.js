@@ -110,9 +110,9 @@ const STATE = {
 
 // Tunable pacing (frontend references SPEED to sync visuals)
 const AVIATOR_CFG = {
-  SPEED: 0.46,          // exponential growth rate (Spribe-like feel)
+  SPEED: 0.69,          // 1.5x faster than previous 0.46 (Spribe-like feel)
   MIN_BET_MS: 4500,     // waiting window ("Place your bets…")
-  MIN_FLY_MS: 5500,     // default minimum time airborne before we can show bust
+  MIN_FLY_MS: 5500,     // default minimum time airborne before bust can appear
   BUST_HOLD_MS: 2000,   // keep "FLEW AWAY" on screen before next betting
   MAX_BUST: 50
 };
@@ -414,9 +414,9 @@ function seedFootballBatch(leagueKey){
 // ----------------- Aviator Helpers -----------------
 function drawBust(seed){
   const r = mulberry32(seed)();
-  const alpha = 3.2, min=1.02;
+  const alpha = 3.2, min=1.00; // allow 1.00–1.01x cases
   const bust = min / Math.pow(1-r, 1/alpha);
-  return Math.max(1.01, Math.min(bust, AVIATOR_CFG.MAX_BUST));
+  return Math.max(1.00, Math.min(bust, AVIATOR_CFG.MAX_BUST));
 }
 function roundRef(){ return 'R-' + String(STATE.results.aviator.length+1).padStart(5,'0'); }
 
