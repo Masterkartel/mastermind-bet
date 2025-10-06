@@ -221,16 +221,35 @@ function buildMarketsForEvent(ev){
       if (gh>=2) H15++; if (ga>=2) A15++;
     }
     const pH=H/trials, pD=D/trials, pA=A/trials;
+
+    // Poisson helpers
     function poissCdf(k,lam){ let p=Math.exp(-lam); if(k===0) return p; let acc=p; for(let i=1;i<=k;i++){ p=p*lam/i; acc+=p; } return acc; }
     const lamT = lamH + lamA;
+
+    // --- Over/Under probabilities (0.5 / 1.5 / 2.5 / 3.5) ---
+    const pOver05 = 1 - poissCdf(0, lamT); // >0 goals
     const pOver15 = 1 - poissCdf(1, lamT);
     const pOver25 = 1 - poissCdf(2, lamT);
-    const odds1x2 = addMargin([pH,pD,pA], 0.07).map(x=>Number(x.toFixed(2)));
-    const oddsOU15= addMargin([pOver15,1-pOver15],0.05).map(x=>Number(x.toFixed(2)));
-    const oddsOU25= addMargin([pOver25,1-pOver25],0.05).map(x=>Number(x.toFixed(2)));
-    const oddsBTTS= addMargin([BTTSy/trials,1-BTTSy/trials],0.05).map(x=>Number(x.toFixed(2)));
+    const pOver35 = 1 - poissCdf(3, lamT);
+
+    // --- Convert to odds with small market margins ---
+    const odds1x2  = addMargin([pH,pD,pA], 0.07).map(x=>Number(x.toFixed(2)));
+    const oddsOU05 = addMargin([pOver05,1-pOver05],0.05).map(x=>Number(x.toFixed(2)));
+    const oddsOU15 = addMargin([pOver15,1-pOver15],0.05).map(x=>Number(x.toFixed(2)));
+    const oddsOU25 = addMargin([pOver25,1-pOver25],0.05).map(x=>Number(x.toFixed(2)));
+    const oddsOU35 = addMargin([pOver35,1-pOver35],0.05).map(x=>Number(x.toFixed(2)));
+    const oddsBTTS = addMargin([BTTSy/trials,1-BTTSy/trials],0.05).map(x=>Number(x.toFixed(2)));
     const oddsHomeOU15 = addMargin([H15/trials, 1-H15/trials],0.06).map(x=>Number(x.toFixed(2)));
     const oddsAwayOU15 = addMargin([A15/trials, 1-A15/trials],0.06).map(x=>Number(x.toFixed(2)));
+
+    // Double Chance & DNB
+    const dcProbs  = [pH+pD, pH+pA, pD+pA]; // 1X, 12, X2
+    const oddsDC   = addMargin(dcProbs, 0.06).map(x=>Number(x.toFixed(2)));
+
+    // DNB uses conditional win probability given no draw
+    const pH_cond = pH / Math.max(1e-9, 1 - pD);
+    const pA_cond = pA / Math.max(1e-9, 1 - pD);
+    const oddsDNB = addMargin([pH_cond, pA_cond], 0.06).map(x=>Number(x.toFixed(2)));
 
     function comboOdds(sel, overProb){ const base = (sel==='H'?pH: sel==='D'?pD:pA) * overProb; return Number((1/(base*0.90)).toFixed(2)); }
     const oddsCombo15 = { 'H&OV15': comboOdds('H',pOver15), 'D&OV15': comboOdds('D',pOver15), 'A&OV15': comboOdds('A',pOver15),
@@ -238,26 +257,52 @@ function buildMarketsForEvent(ev){
     const oddsCombo25 = { 'H&OV25': comboOdds('H',pOver25), 'D&OV25': comboOdds('D',pOver25), 'A&OV25': comboOdds('A',pOver25),
                           'H&UN25': comboOdds('H',1-pOver25), 'D&UN25': comboOdds('D',1-pOver25), 'A&UN25': comboOdds('A',1-pOver25) };
 
+    // --- Create markets (including new ones the UI expects) ---
     putMarket({ id:uuidv4(), eventId:ev.id, type:`MAIN_1X2_${league}`, status:'OPEN',
       selections:[{id:'H',name:`${home.abbr} (1)`},{id:'D',name:'Draw (X)'},{id:'A',name:`${away.abbr} (2)`}],
       odds:{H:odds1x2[0],D:odds1x2[1],A:odds1x2[2]} });
+
+    putMarket({ id:uuidv4(), eventId:ev.id, type:`OU_0_5_${league}`, status:'OPEN',
+      selections:[{id:'OVER',name:'Over 0.5'},{id:'UNDER',name:'Under 0.5'}],
+      odds:{OVER:oddsOU05[0],UNDER:oddsOU05[1]} });
+
     putMarket({ id:uuidv4(), eventId:ev.id, type:`OU_1_5_${league}`, status:'OPEN',
       selections:[{id:'OVER',name:'Over 1.5'},{id:'UNDER',name:'Under 1.5'}],
       odds:{OVER:oddsOU15[0],UNDER:oddsOU15[1]} });
+
     putMarket({ id:uuidv4(), eventId:ev.id, type:`OU_2_5_${league}`, status:'OPEN',
       selections:[{id:'OVER',name:'Over 2.5'},{id:'UNDER',name:'Under 2.5'}],
       odds:{OVER:oddsOU25[0],UNDER:oddsOU25[1]} });
+
+    putMarket({ id:uuidv4(), eventId:ev.id, type:`OU_3_5_${league}`, status:'OPEN',
+      selections:[{id:'OVER',name:'Over 3.5'},{id:'UNDER',name:'Under 3.5'}],
+      odds:{OVER:oddsOU35[0],UNDER:oddsOU35[1]} });
+
     putMarket({ id:uuidv4(), eventId:ev.id, type:`BTTS_${league}`, status:'OPEN',
       selections:[{id:'YES',name:'BTTS Yes'},{id:'NO',name:'BTTS No'}],
       odds:{YES:oddsBTTS[0],NO:oddsBTTS[1]} });
+
     putMarket({ id:uuidv4(), eventId:ev.id, type:`HOME_OU_1_5_${league}`, status:'OPEN',
       selections:[{id:'H_OVER',name:`${home.abbr} Over 1.5`},{id:'H_UNDER',name:`${home.abbr} Under 1.5`}],
       odds:{H_OVER:oddsHomeOU15[0], H_UNDER:oddsHomeOU15[1]} });
+
     putMarket({ id:uuidv4(), eventId:ev.id, type:`AWAY_OU_1_5_${league}`, status:'OPEN',
       selections:[{id:'A_OVER',name:`${away.abbr} Over 1.5`},{id:'A_UNDER',name:`${away.abbr} Under 1.5`}],
       odds:{A_OVER:oddsAwayOU15[0], A_UNDER:oddsAwayOU15[1]} });
+
+    // Double Chance (1X, 12, X2)
+    putMarket({ id:uuidv4(), eventId:ev.id, type:`DC_${league}`, status:'OPEN',
+      selections:[{id:'1X',name:'1X'},{id:'12',name:'12'},{id:'X2',name:'X2'}],
+      odds:{ '1X':oddsDC[0], '12':oddsDC[1], 'X2':oddsDC[2] } });
+
+    // Draw No Bet (H, A)
+    putMarket({ id:uuidv4(), eventId:ev.id, type:`DNB_${league}`, status:'OPEN',
+      selections:[{id:'H',name:`${home.abbr} DNB`},{id:'A',name:`${away.abbr} DNB`}],
+      odds:{ H:oddsDNB[0], A:oddsDNB[1] } });
+
     putMarket({ id:uuidv4(), eventId:ev.id, type:`COMBO_1X2_OU_1_5_${league}`, status:'OPEN',
       selections:Object.keys(oddsCombo15).map(k=>({id:k,name:k})), odds: oddsCombo15 });
+
     putMarket({ id:uuidv4(), eventId:ev.id, type:`COMBO_1X2_OU_2_5_${league}`, status:'OPEN',
       selections:Object.keys(oddsCombo25).map(k=>({id:k,name:k})), odds: oddsCombo25 });
   }
@@ -327,18 +372,40 @@ function settleBetsForEvent(ev){
     const m = STATE.markets.get(bet.marketId); if (!m){ bet.status='LOST'; bet.payout=0; continue; }
 
     let won = false;
+    let payoutOverride = null; // used for DNB push
     if (ev.game==='football'){
       const total = ev.result.homeGoals + ev.result.awayGoals;
       const outcome = ev.result.homeGoals>ev.result.awayGoals?'H': ev.result.homeGoals<ev.result.awayGoals?'A':'D';
+
       if (m.type.startsWith('MAIN_1X2')) won = (bet.selectionId===outcome);
+
+      if (m.type.startsWith('OU_0_5')) won = (bet.selectionId==='OVER'? total>0 : total<=0);
       if (m.type.startsWith('OU_1_5')) won = (bet.selectionId==='OVER'? total>1 : total<=1);
       if (m.type.startsWith('OU_2_5')) won = (bet.selectionId==='OVER'? total>2 : total<=2);
+      if (m.type.startsWith('OU_3_5')) won = (bet.selectionId==='OVER'? total>3 : total<=3);
+
       if (m.type.startsWith('BTTS')){
         const y = (ev.result.homeGoals>0 && ev.result.awayGoals>0)?'YES':'NO';
         won = (bet.selectionId===y);
       }
+
       if (m.type.startsWith('HOME_OU_1_5')){ const over = ev.result.homeGoals>=2; won = (bet.selectionId==='H_OVER'? over : !over); }
       if (m.type.startsWith('AWAY_OU_1_5')){ const over = ev.result.awayGoals>=2; won = (bet.selectionId==='A_OVER'? over : !over); }
+
+      // Double Chance
+      if (m.type.startsWith('DC_')){
+        if (bet.selectionId==='1X') won = (outcome==='H' || outcome==='D');
+        if (bet.selectionId==='12') won = (outcome==='H' || outcome==='A');
+        if (bet.selectionId==='X2') won = (outcome==='D' || outcome==='A');
+      }
+
+      // Draw No Bet (push on draw -> return stake)
+      if (m.type.startsWith('DNB_')){
+        if (outcome==='D'){ won = true; payoutOverride = bet.stake; }
+        else if (bet.selectionId==='H') won = (outcome==='H');
+        else if (bet.selectionId==='A') won = (outcome==='A');
+      }
+
       if (m.type.startsWith('COMBO_1X2_OU_1_5')){
         const map = { 'H&OV15': outcome==='H' && total>1, 'D&OV15': outcome==='D' && total>1, 'A&OV15': outcome==='A' && total>1,
                       'H&UN15': outcome==='H' && total<=1, 'D&UN15': outcome==='D' && total<=1, 'A&UN15': outcome==='A' && total<=1 };
@@ -350,6 +417,7 @@ function settleBetsForEvent(ev){
         won = !!map[bet.selectionId];
       }
     }
+
     if ((ev.game==='dog'||ev.game==='horse')){
       if (m.type==='MAIN_WIN') won = (bet.selectionId===ev.result.positions[0].id);
       if (m.type==='FORECAST'){ const [a,b] = bet.selectionId.split('>').map(s=>s.trim()); won = (ev.result.positions[0].id===a && ev.result.positions[1].id===b); }
@@ -359,8 +427,13 @@ function settleBetsForEvent(ev){
     if (ev.game==='colors' && m.type==='MAIN_COLOR'){ won = (bet.selectionId===ev.result.color); }
     if (ev.game==='lotto49' && m.type==='PICK1'){ won = (String(ev.result.ball)===String(bet.selectionId)); }
 
-    const payout = won ? Math.min(Number((bet.stake * bet.odds).toFixed(2)), MAX_PAYOUT) : 0;
-    bet.payout = payout; bet.status = won ? 'WON' : 'LOST';
+    let payout = 0;
+    if (won){
+      if (payoutOverride!=null) payout = payoutOverride; // DNB push
+      else payout = Math.min(Number((bet.stake * bet.odds).toFixed(2)), MAX_PAYOUT);
+    }
+    bet.payout = payout;
+    bet.status = won ? 'WON' : 'LOST';
     if (won) creditCashier(bet.cashierId, payout);
   }
 }
