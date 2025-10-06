@@ -217,8 +217,8 @@ const SFX = {
 };
 sndBtn.onclick = ()=>{ try{ SFX.toggle(); if(SOUND_ON&&ACTX.state==='suspended') ACTX.resume(); }catch{} };
 
-/* ===== Clock & Skews ===== */
-const clk=document.getElementById('clock'); let healthSkew=0, gameSkew=0;
+/* ===== Clock & skew ===== */
+const clk=document.getElementById('clock'); let healthSkew=0; /* (FIX) no duplicate gameSkew here */
 async function syncClock(){ try{ const r=await fetch(API.health()); const j=await r.json(); healthSkew=j.ts-Date.now(); }catch{ clk.textContent='OFFLINE'; } }
 setInterval(()=>{ const d=new Date(Date.now()+healthSkew); clk.textContent=d.toLocaleString(); }, 500); syncClock();
 
@@ -228,7 +228,6 @@ let cssW=0, cssH=0;
 
 let tAccum = 0;
 
-/* Sun glow */
 function drawSun(){
   const cx = cssW*0.5, cy = -cssH*0.12, r = cssH*0.85;
   const g = ctx.createRadialGradient(cx,cy, r*0.05, cx,cy, r);
@@ -292,7 +291,7 @@ const SKY = { streaks:[], clouds:[] };
   for(let i=0;i<7;i++){ SKY.clouds.push({ x:Math.random()*cssW, y:Math.random()*cssH*0.7, r:120+Math.random()*220, a:0.05+Math.random()*0.08, spx:2+Math.random()*3, spy:-4 - Math.random()*4 }); }
 })();
 
-/* contrail particles */
+/* contrail particles — kept in world coords and drawn inside transform */
 const PARTICLES=[];
 function spawnParticles(px,py,dt){
   const count = Math.min(30, Math.round(18 * dt * (0.6 + 1.1*progressVis)));
@@ -318,13 +317,11 @@ function updateParticles(dt){
   }
 }
 function drawParticles(){
-  ctx.save();
   for(const p of PARTICLES){
     const a = Math.max(0, 1 - p.age/p.life) * 0.5;
     ctx.fillStyle = `rgba(255,180,210,${a})`;
     ctx.beginPath(); ctx.arc(p.x, p.y, p.r*(0.7+0.6*(1-p.age/p.life)), 0, Math.PI*2); ctx.fill();
   }
-  ctx.restore();
 }
 
 /* plane sprite */
@@ -339,20 +336,28 @@ planeImg.src='data:image/svg+xml;utf8,'+encodeURIComponent(`
   </g>
 </svg>`);
 
-/* UI */
+/* UI chips */
 function chipClass(v){ return v>=2?'good':(v>=1.3?'avg':'bad'); }
 const chipsBox=document.getElementById('chips'); const drawerGrid=document.getElementById('drawerGrid');
 const expander=document.getElementById('expander'); const moreBtn=document.getElementById('moreBtn');
 let expanded=false; moreBtn.onclick=()=>{ expanded=!expanded; expander.style.display=expanded?'block':'none'; };
 function paintChips(list){
-  chipsBox.innerHTML=''; (list||[]).slice(0,6).forEach(v=>{ const c=document.createElement('div'); c.className='chip '+chipClass(v); c.textContent=Number(v).toFixed(2)+'x'; c.title=c.textContent; chipsBox.appendChild(c); });
-  drawerGrid.innerHTML=''; (list||[]).slice(0,96).forEach(v=>{ const d=document.createElement('div'); d.className='chip '+chipClass(v); d.textContent=Number(v).toFixed(2)+'x'; d.title=d.textContent; drawerGrid.appendChild(d); });
+  chipsBox.innerHTML='';
+  (list||[]).slice(0,6).forEach(v=>{
+    const c=document.createElement('div'); c.className='chip '+chipClass(v);
+    c.textContent=Number(v).toFixed(2)+'x'; c.title=c.textContent; chipsBox.appendChild(c);
+  });
+  drawerGrid.innerHTML='';
+  (list||[]).slice(0,96).forEach(v=>{
+    const d=document.createElement('div'); d.className='chip '+chipClass(v);
+    d.textContent=Number(v).toFixed(2)+'x'; d.title=d.textContent; drawerGrid.appendChild(d);
+  });
 }
 const centerText=document.getElementById('centerText');
 
-/* ===== Flight model (time-synced) ===== */
+/* ===== Flight model ===== */
 let STATE={ phase:'betting', multiplier:1, bust:2, history:[], speed:0.46, roundId:'-' };
-let gameSkew = 0; // serverNow - Date.now()
+let gameSkew = 0;  // (FIX) declare only here, used for precise cashout timestamps
 
 function minFrontSeconds(bust){
   if (!bust || bust <= 1.02) return 0.10;
@@ -364,9 +369,8 @@ function minFrontSeconds(bust){
 let flightStartMs = 0;
 let flightDurSec  = 6.0;
 let progressVis   = 0;
-let LAST_DRAW_MULT = 1.00; // <-- export current displayed mult for cashout accuracy
+let LAST_DRAW_MULT = 1.00;
 
-/* per-round wobble seed */
 const NOISE = { sx:0, sy:0, fx:0, fy:0, phx:0, phy:0 };
 function mulberry32(a){ return function(){ let t=(a+=0x6D2B79F5); t=Math.imul(t^t>>>15,t|1); t^=t+Math.imul(t^t>>>7,t|61); return ((t^t>>>14)>>>0)/4294967296; } }
 function seedFromString(s){ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return h>>>0; }
@@ -384,66 +388,34 @@ function tFromMult(mult,bust){ if(!mult||mult<=1||!bust||bust<=1) return 0; retu
 function multFromT(t,bust){ const b=Math.max(1.000001,Number(bust||2)); return Math.pow(b, Math.max(0,Math.min(1,t))); }
 function damp(cur,tgt,rate,dt){ const k=Math.exp(-rate*Math.max(0,dt)); return cur*k + tgt*(1-k); }
 
-/* Diagonal path */
+/* Path helpers */
 const DIAG_END = 0.30;
-function baseX(p, left, trackW){
-  const s = 1 - Math.exp(-2.4 * p);
-  return left + trackW * DIAG_END * s;
-}
-function wobbleX(p, trackW){
-  const w = Math.pow(p, 1.2);
-  return w * NOISE.sx * trackW * Math.sin(NOISE.fx * Math.PI * p + NOISE.phx);
-}
-function wobbleY(p, height){
-  const w = Math.pow(p, 1.2);
-  return w * NOISE.sy * height * Math.sin(NOISE.fy * Math.PI * p + NOISE.phy);
-}
-function pathX(p, left, trackW){ return baseX(p,left,trackW) + wobbleX(p, trackW); }
+function pathX(p, left, trackW){ const s = 1 - Math.exp(-2.4 * p); const base = left + trackW * DIAG_END * s; const wob = Math.pow(p,1.2)*(0.0011*trackW)*Math.sin(1.2*Math.PI*p); return base + wob; }
 function pathY(p, baseY, bust){
   const steep = Math.log(Math.max(1.0001, Number(bust || 2)));
   const k   = 0.44 + 0.16 * steep;
   const pow = 1.05 + 0.10 * steep;
-  return baseY - Math.pow(p, pow) * (baseY * (0.95 * k)) + wobbleY(p, baseY);
+  return baseY - Math.pow(p, pow) * (baseY * (0.95 * k));
 }
 
-/* sky draw */
-function drawSky(dt, tNorm){
-  const slideY = tNorm * cssH * 0.42;
-  drawSun();
-  drawStars(slideY);
-
-  SKY.clouds.forEach(c=>{
-    c.x += c.spx*dt; c.y += c.spy*dt*(1+0.6*tNorm);
-    let y = c.y - slideY, x=c.x;
-    if (x - c.r > cssW) x = c.x = -c.r;
-    if (y + c.r < -40) { c.y = cssH + c.r*0.5 + slideY; x = c.x = Math.random()*cssW*0.5; y = c.y - slideY; }
-    const g=ctx.createRadialGradient(x, y, c.r*0.1, x, y, c.r);
-    g.addColorStop(0, `rgba(170,200,255,${c.a})`); g.addColorStop(1, `rgba(20,40,80,0)`);
-    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x, y, c.r, 0, Math.PI*2); ctx.fill();
-  });
-  SKY.streaks.forEach(s=>{
-    s.x += s.sp*dt*(0.7+0.9*tNorm); s.y -= s.sp*dt*(0.9+0.9*tNorm);
-    let x = s.x, y = s.y - slideY;
-    if (x - s.len > cssW || y + s.len < 0){ s.x = -20 - Math.random()*80; s.y = cssH + Math.random()*120 + slideY; x=s.x; y=s.y - slideY; }
-    ctx.strokeStyle = `rgba(200,220,255,${s.a})`; ctx.lineWidth = s.th;
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - s.len, y + s.len); ctx.stroke();
-  });
-}
-
-/* draw everything */
+/* draw */
 let lastTs=performance.now();
 function draw(mult,phase,dt){
   ctx.clearRect(0,0,cssW,cssH);
 
   const left=0, baseY=cssH-1, trackW=cssW-1, bust=STATE.bust||2;
 
+  // background
   const tSky = (phase==='flying') ? progressVis : (phase==='busted' ? 1 : 0);
-  drawSky(dt, tSky);
+  const slideY = tSky * cssH * 0.42;
+  drawSun();
+  drawStars(slideY);
 
   if (phase === 'busted') {
     centerText.className='centerText flew';
     centerText.textContent='FLEW AWAY!\n'+(mult?`${Number(mult).toFixed(2)}x`:``);
     LAST_DRAW_MULT = Number(mult||1);
+    PARTICLES.length=0;
     return;
   }
 
@@ -451,22 +423,29 @@ function draw(mult,phase,dt){
     centerText.className='centerText multi';
     centerText.textContent='Place your bets…';
     LAST_DRAW_MULT = 1.00;
+    PARTICLES.length=0;
     return;
   }
 
   // FLYING
   const t = progressVis;
 
-  // tip (for camera follow)
+  // plane tip world coords
   const tipX=pathX(t, left, trackW), tipY=pathY(t, baseY, bust);
 
-  // Keep plane visible: follow-cam
-  const marginTop = cssH * 0.28;
+  // Follow-cam so plane never disappears; smaller margins on phones
+  const isPhone = cssW < 640;
+  const marginTop = cssH * (isPhone ? 0.40 : 0.28);
   const camDY = (tipY < marginTop) ? (marginTop - tipY) : 0;
+  const camScale = (isPhone ? (1 + t*0.14) : (1 + t*0.18));
 
-  const camScale = 1 + t*0.18;
-  ctx.save(); ctx.translate(0, camDY); ctx.translate(left, baseY); ctx.scale(camScale, camScale); ctx.translate(-left, -baseY);
+  ctx.save();
+  ctx.translate(0, camDY);
+  ctx.translate(left, baseY);
+  ctx.scale(camScale, camScale);
+  ctx.translate(-left, -baseY);
 
+  // trail polygon
   const steps=Math.max(2, Math.floor(340*t));
   ctx.beginPath(); ctx.moveTo(left, baseY);
   for(let i=0;i<=steps;i++){ const p=i/340; ctx.lineTo(pathX(p,left,trackW), pathY(p,baseY,bust)); }
@@ -475,16 +454,18 @@ function draw(mult,phase,dt){
   ctx.lineTo(tipX, baseY); ctx.lineTo(left, baseY); ctx.closePath();
   ctx.fillStyle='rgba(255,77,109,0.18)'; ctx.fill();
 
+  // particles (draw inside transform so positioning always matches plane)
   const p2 = Math.max(0, t - 0.010);
-  const px2 = pathX(p2, left, trackW), py2 = pathY(p2, baseY, bust)+camDY/(camScale||1);
+  const px2 = pathX(p2, left, trackW), py2 = pathY(p2, baseY, bust);
   spawnParticles(px2, py2, dt);
   updateParticles(dt);
   drawParticles();
 
-  const SCALE=1.5, w=140*SCALE, h=60*SCALE;
+  // plane sprite — half-size on phones
+  const BASE_PLANE_SCALE = isPhone ? 0.75 : 1.5;   // (FIX) phone = half-size
+  const w=140*BASE_PLANE_SCALE, h=60*BASE_PLANE_SCALE;
   const tailAx=4/140, tailAy=36/60;
-  ctx.save(); ctx.translate(tipX, tipY); ctx.rotate(0);
-  ctx.drawImage(planeImg, -w*tailAx, -h*tailAy, w, h); ctx.restore();
+  ctx.save(); ctx.translate(tipX, tipY); ctx.drawImage(planeImg, -w*tailAx, -h*tailAy, w, h); ctx.restore();
 
   ctx.restore();
 
@@ -502,9 +483,7 @@ function tick(now){
     const elapsedSec = Math.max(0, (now - flightStartMs)/1000);
     target = Math.min(1, elapsedSec / flightDurSec);
   } else if (STATE.phase==='busted'){
-    target = 1; PARTICLES.length = 0;
-  } else {
-    PARTICLES.length = 0;
+    target = 1;
   }
 
   const rate = (STATE.phase==='flying') ? 7.0 : 9.0;
@@ -553,13 +532,6 @@ function maybeNotifyAutoWins(currentMult){
   });
 }
 
-/* chips/history */
-const chipsBox=document.getElementById('chips'); const drawerGrid=document.getElementById('drawerGrid');
-function paintChips(list){
-  chipsBox.innerHTML=''; (list||[]).slice(0,6).forEach(v=>{ const c=document.createElement('div'); c.className='chip '+chipClass(v); c.textContent=Number(v).toFixed(2)+'x'; c.title=c.textContent; chipsBox.appendChild(c); });
-  drawerGrid.innerHTML=''; (list||[]).slice(0,96).forEach(v=>{ const d=document.createElement('div'); d.className='chip '+chipClass(v); d.textContent=Number(v).toFixed(2)+'x'; d.title=d.textContent; drawerGrid.appendChild(d); });
-}
-
 /* polling */
 let lastPhase='betting', lastRoundId='-';
 async function poll(){
@@ -588,7 +560,7 @@ async function poll(){
     STATE={ phase, multiplier:m, history, bust, speed, roundId };
     paintChips(history);
     lastPhase = phase;
-  }catch{ /* keep prior visuals */ }
+  }catch{}
 }
 setInterval(poll, 220); poll();
 
@@ -625,7 +597,6 @@ function wireCard(pid){
     }catch{ notify('Network error placing bet','error'); }
   };
   cashBtn.onclick=async ()=>{
-    // Send server-time timestamp + the current displayed multiplier (for perfect UX match)
     const serverClickTs = Math.round(Date.now() + gameSkew);
     const uiMult = Number(LAST_DRAW_MULT||1);
     try{
@@ -660,9 +631,6 @@ function wireCard(pid){
   ensureMinBalance(pid, 100);
 }
 ['pA','pB','pC'].forEach(wireCard);
-
-/* history chips box */
-function chipClass(v){ return v>=2?'good':(v>=1.3?'avg':'bad'); }
 </script>
 </body>
 </html>
