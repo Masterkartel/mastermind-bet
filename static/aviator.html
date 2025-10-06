@@ -4,6 +4,10 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Aviator (Shop Mode)</title>
+
+<!-- Favicon (your PNG) -->
+<link rel="icon" type="image/png" href="/static/img/aviator-icon.png"/>
+
 <style>
   :root{ --bg:#0a0e1a; --panel:#0e162b; --line:#24304f; --text:#e6edf3; --muted:#9aa4b2; }
   *{box-sizing:border-box}
@@ -14,6 +18,11 @@
   .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0e172f;color:#cfe1ff}
   .pill.click{cursor:pointer;user-select:none}
   .clock{min-width:220px;text-align:right}
+
+  /* Brand (logo + label) */
+  .brand{display:flex;flex-direction:column;align-items:center;gap:2px;margin-right:auto}
+  .brand img{width:24px;height:24px;display:block}
+  .brand small{font-size:10px;line-height:1;color:#cfe1ff;letter-spacing:.6px;text-transform:uppercase;opacity:.9}
 
   .wrap{max-width:100vw;margin:0 auto;padding:0;display:grid;gap:14px}
 
@@ -67,6 +76,12 @@
 </head>
 <body>
   <div class="header">
+    <!-- Brand block added (left side) -->
+    <div class="brand">
+      <img src="/static/img/aviator-icon.png" alt="Aviator logo"/>
+      <small>Aviator</small>
+    </div>
+
     <div class="pill click" id="soundBtn" title="Sound">🔇</div>
     <div class="pill clock" id="clock">—</div>
   </div>
@@ -249,13 +264,11 @@ function initStars(){
   }
 }
 function drawStars(){
-  ctx.save();
   for(const s of STARS){
     const tw = 0.6 + 0.4*Math.sin(s.w*tAccum + s.ph);
     ctx.fillStyle = `rgba(220,235,255,${s.a*tw})`;
     ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI*2); ctx.fill();
   }
-  ctx.restore();
 }
 
 /* sizing */
@@ -489,6 +502,15 @@ function maybeNotifyAutoWins(currentMult){
   });
 }
 
+/* ===== Stake validation (client-side warnings) ===== */
+function validateStake(raw){
+  const stake = Number(raw);
+  if (!Number.isFinite(stake) || stake<=0){ notify('Enter a valid stake amount.', 'error'); return null; }
+  if (stake < 20){ notify('Minimum stake is KES 20.', 'error'); return null; }
+  if (stake > 1000){ notify('Maximum stake is KES 1000.', 'error'); return null; }
+  return stake;
+}
+
 /* polling */
 let lastPhase='betting';
 async function poll(){
@@ -540,7 +562,9 @@ function wireCard(pid){
   const aStake=card.querySelector(`#${pid}-auto-stake`), aX=card.querySelector(`#${pid}-auto-x`), aBtn=card.querySelector(`#${pid}-auto-on`);
 
   betBtn.onclick=async ()=>{
-    const stake=clamp(Number(stakeEl.value||0),20,1000);
+    const entered = Number(stakeEl.value||0);
+    const stake = validateStake(entered);
+    if (stake==null) return; // warn + block
     try{
       const r=await fetch(API.bet(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, stake})});
       const j=await r.json(); if(!j.ok) return notify(j.error||'Bet failed','error');
@@ -571,7 +595,10 @@ function wireCard(pid){
     }catch{ notify('Network error during cashout','error'); }
   };
   aBtn.onclick=async ()=>{
-    const stake=clamp(Number(aStake.value||0),20,1000), x=clamp(Number(aX.value||0),1.05,1000);
+    const enteredStake = Number(aStake.value||0);
+    const stake = validateStake(enteredStake);
+    if (stake==null) return; // warn + block
+    const x=clamp(Number(aX.value||0),1.05,1000);
     try{
       const r=await fetch(API.bet(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, stake, autoCashOut:x})});
       const j=await r.json(); if(!j.ok) return notify(j.error||'Auto bet failed','error');
