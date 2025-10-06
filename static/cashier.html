@@ -12,20 +12,21 @@
     }
     *{box-sizing:border-box}
     html,body{height:100%}
-    body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:
-      radial-gradient(140% 120% at 50% -20%, var(--sky1) 0 45%, var(--sky2) 46% 100%); color:var(--text)}
+    body{
+      margin:0;font-family:Inter,system-ui,Arial,sans-serif;
+      background:radial-gradient(140% 120% at 50% -20%, var(--sky1) 0 45%, var(--sky2) 46% 100%);
+      color:var(--text)
+    }
     a{color:#7dd3fc}
 
     /* Header */
     header{
-      position:sticky; top:0; z-index:50;
-      display:flex; align-items:center; gap:12px;
+      position:sticky; top:0; z-index:50; display:flex; align-items:center; gap:12px;
       padding:10px 16px; border-bottom:1px solid var(--line);
       background:rgba(8,12,24,.85); backdrop-filter:blur(6px)
     }
     .brand{font-weight:900;letter-spacing:.3px;font-size:16px}
     .grow{flex:1}
-    .kpi{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0e172f;font-size:12px}
     .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0d1428;font-size:12px}
     .clock{min-width:220px;text-align:right}
 
@@ -64,9 +65,10 @@
     .teams{display:flex; align-items:center; gap:10px; font-weight:800}
     .club{display:flex; align-items:center; gap:6px}
     .logo{width:26px;height:26px;border-radius:50%;background:#0b1324;border:1px solid #1c2741;object-fit:cover}
+    .ph{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#10203c;color:#9fb3d4;font-weight:900}
 
     /* Racing lanes (dogs/horses) */
-    .track{position:relative;height:180px;border:1px dashed var(--line);border-radius:14px;margin-bottom:8px;
+    .track{position:relative;height:180px;border:1px dashed var(--line);border-radius:14px;margin:10px 0 6px;
       background:
         linear-gradient(90deg,#0b1324 0 10px, #12203f 10px 12px, transparent 12px),
         repeating-linear-gradient(to bottom, #0f1629 0, #0f1629 26px, #0b1324 26px, #0b1324 28px);
@@ -74,6 +76,29 @@
     .runner{position:absolute;left:8px;width:42px;height:20px;background:#e5e7eb;border-radius:3px 10px 10px 3px;
       box-shadow:0 0 6px #fff2, inset 0 -2px 3px #0003}
     .runner:after{content:"";position:absolute;right:-6px;top:6px;width:8px;height:8px;border-radius:50%;background:#e5e7eb;box-shadow:0 0 5px #fff4}
+
+    /* Balls (Colors & Numbers) */
+    .balls{display:grid;gap:10px}
+    .balls.colors{grid-template-columns:repeat(6,1fr)}
+    .balls.numbers{grid-template-columns:repeat(7,1fr)}
+    .ball{
+      height:48px;width:48px;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;
+      font-weight:900;color:#fff;border:2px solid #00000040;
+      position:relative;box-shadow:inset -6px -8px 14px #00000055, inset 6px 6px 14px #ffffff1a, 0 2px 6px #00000066;
+      cursor:pointer;user-select:none
+    }
+    .ball::after{
+      content:""; position:absolute; top:6px; left:8px; width:18px; height:10px;
+      background:radial-gradient(circle at 10px 5px, #ffffffcc, #ffffff22 60%, #ffffff00 100%);
+      border-radius:50%; filter:blur(0.3px);
+    }
+    .RED{background:#ef4444}
+    .BLUE{background:#3b82f6}
+    .GREEN{background:#10b981}
+    .YELLOW{background:#f59e0b}
+    .PURPLE{background:#a855f7}
+    .BLACK{background:#111827;color:#e5e7eb;border-color:#000}
 
     /* Betslip & tickets */
     .betslip{display:grid;gap:8px}
@@ -88,9 +113,13 @@
     .wm.WON{color:#22c55e22}
     .wm.LOST{color:#ef444422}
 
-    /* Lively accents */
-    .shine{background:linear-gradient(120deg, transparent, #ffffff08 30%, transparent 60%); background-size:200% 100%; animation:shine 3.2s linear infinite}
-    @keyframes shine{0%{background-position:-120% 0}100%{background-position:120% 0}}
+    /* Toasts */
+    .toaster{position:fixed;top:16px;right:16px;display:flex;flex-direction:column;gap:10px;z-index:9999}
+    .toast{background:#0f1933;border:1px solid #2a3b63;color:#e6edf3;padding:10px 12px;border-radius:12px;
+      box-shadow:0 8px 24px rgba(0,0,0,.35);opacity:0;transform:translateY(-6px);transition:opacity .18s ease, transform .18s ease}
+    .toast.show{opacity:1;transform:none}
+    .toast.success{border-color:#1d3f2a;background:#0e2217}
+    .toast.error{border-color:#4d1a1a;background:#2a0e0e}
   </style>
 </head>
 <body>
@@ -105,31 +134,29 @@
 </header>
 
 <div class="container">
-  <!-- LEFT: Home / Leagues / Racing / Colors+Numbers -->
-  <div class="panel shine">
+  <!-- LEFT -->
+  <div class="panel">
     <div class="tabs">
-      <div class="tab active" data-tab="home">Home</div>
-      <div class="tab" data-tab="football">Football</div>
+      <div class="tab active" data-tab="football">Football</div>
       <div class="tab" data-tab="dogs">Dogs</div>
       <div class="tab" data-tab="horses">Horses</div>
       <div class="tab" data-tab="colors">Colors & Numbers</div>
     </div>
 
-    <div id="homeWrap">
-      <div class="title">Leagues — Weekly Fixtures</div>
-      <div class="chips" id="leagueWeekChips"></div>
-      <div class="divider"></div>
-      <div id="homeGrid" class="grid"></div>
-    </div>
+    <div id="stageWrap">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <div class="title" id="title">—</div>
+        <div class="pill" id="roundTimer">Next round in —</div>
+      </div>
 
-    <div id="stageWrap" style="display:none">
-      <div class="title" id="title">—</div>
-      <div class="chips" id="leagueChips" style="display:none"></div>
+      <!-- Football league chips -->
+      <div class="chips" id="leagueChips" style="display:flex"></div>
+
       <div id="stage" class="grid"></div>
     </div>
   </div>
 
-  <!-- RIGHT: Controls / Aviator wallets / Up Next / History / Betslip -->
+  <!-- RIGHT -->
   <div class="panel">
     <div class="title">Controls</div>
     <div class="row">
@@ -186,7 +213,20 @@
   </div>
 </div>
 
+<!-- Toaster -->
+<div id="toaster" class="toaster"></div>
+
 <script>
+/* -------- Toasts -------- */
+const toaster=document.getElementById('toaster');
+function notify(msg,type='info',ms=2200){
+  const t=document.createElement('div');
+  t.className='toast'+(type==='success'?' success':type==='error'?' error':'');
+  t.textContent=msg; toaster.appendChild(t);
+  requestAnimationFrame(()=>t.classList.add('show'));
+  setTimeout(()=>{ t.classList.remove('show'); setTimeout(()=>t.remove(),180); }, ms);
+}
+
 /* -------- Basics -------- */
 const api = location.origin.replace(/:\\d+$/, ':4000');
 const KES = (x)=> new Intl.NumberFormat('en-KE',{style:'currency',currency:'KES'}).format(Number(x||0));
@@ -220,10 +260,12 @@ async function aviView(){
 }
 async function aviLoad(){
   const pid=el('aviPlayer').value; const amt=Number(el('aviAmount').value||0)||0;
+  if (amt===0) return notify('Enter amount to load.', 'error');
   try{
     const r=await fetch(`${api}/aviator/wallet/load`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, amount:amt})});
     const j=await r.json(); el('aviBal').textContent = `Bal: ${KES(j.balance||0)}`;
-  }catch{}
+    notify('Wallet updated','success');
+  }catch{ notify('Wallet update failed','error'); }
 }
 async function aviClear(){
   const pid=el('aviPlayer').value;
@@ -232,130 +274,185 @@ async function aviClear(){
     const bal=j.balance||0; if (bal>0){
       await fetch(`${api}/aviator/wallet/load`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, amount:-bal})});
       el('aviBal').textContent = `Bal: ${KES(0)}`;
-    }
-  }catch{}
+      notify('Paid & cleared','success');
+    } else notify('Nothing to clear','info');
+  }catch{ notify('Clear failed','error'); }
+}
+
+/* Logo loader with fallbacks: .png -> .jpg -> .svg -> placeholder */
+function logoHTML(leagueFolder, abbr){
+  const code = (abbr||'???').toUpperCase();
+  const base = `/static/logos/${leagueFolder}/${code}`;
+  const id = `lg_${leagueFolder}_${code}_${Math.random().toString(36).slice(2,7)}`;
+  const img = `<img id="${id}" class="logo" src="${base}.png" alt="${code}">`;
+  const ph  = `<span class="ph" id="${id}_ph" style="display:none">${code}</span>`;
+  setTimeout(()=>{
+    const tag = document.getElementById(id);
+    const phTag = document.getElementById(id+'_ph');
+    if(!tag) return;
+    tag.onerror = ()=>{
+      if (tag.src.endsWith('.png')) tag.src = `${base}.jpg`;
+      else if (tag.src.endsWith('.jpg')) tag.src = `${base}.svg`;
+      else {
+        tag.style.display='none';
+        if (phTag) phTag.style.display='inline-flex';
+      }
+    };
+  },0);
+  return img+ph;
 }
 
 /* Global view state */
 let CURRENT = null; // {event, market, selection}
-let CURRENT_TAB = 'home';
+let CURRENT_TAB = 'football';
 let CURRENT_LEAGUE = 'EPL';
 let CURRENT_MARKET = 'MAIN';
 const MARKET_TABS = ['MAIN','OU15','OU25','BTTS','H15','A15','CMB15','CMB25'];
 
-/* Fixtures per week: simple rolling buckets by runsAt */
-function groupByWeek(events){
-  const weeks = {};
-  events.forEach(ev=>{
-    const d = new Date(ev.runsAt + healthSkew);
-    const start = new Date(d); start.setDate(d.getDate() - d.getDay()); start.setHours(0,0,0,0);
-    const key = start.toISOString().slice(0,10);
-    if(!weeks[key]) weeks[key]=[];
-    weeks[key].push(ev);
-  });
-  return weeks;
-}
-
-/* ---------- HOME (weeks per league) ---------- */
-async function loadHome(){
-  el('homeWrap').style.display='block';
-  el('stageWrap').style.display='none';
-  el('leagueWeekChips').innerHTML='';
-  el('homeGrid').innerHTML='';
-
-  const leagues=['EPL','LALIGA','UCL'];
-  for (const L of leagues){
-    const all = (await (await fetch(`${api}/events?game=football`)).json()).filter(e=>e.league===L);
-    const weeks = groupByWeek(all);
-    const wrap = document.createElement('div'); wrap.className='list';
-
-    const head = document.createElement('div'); head.className='row';
-    head.innerHTML = `<div class="title">${L} — Weekly</div>`;
-    wrap.appendChild(head);
-
-    Object.entries(weeks).slice(0,2).forEach(([wk, arr])=>{
-      const lab = document.createElement('div'); lab.className='muted';
-      lab.textContent = `Week of ${wk} — ${arr.length} fixtures`;
-      wrap.appendChild(lab);
-
-      arr.slice(0,6).forEach(ev=>{
-        const fx = document.createElement('div'); fx.className='fx';
-        const tbar = document.createElement('div'); tbar.className='fx-head';
-        const left = document.createElement('div'); left.className='teams';
-
-        const h = ev.home?.abbr||'?', a = ev.away?.abbr||'?';
-        const Lpath = L.toLowerCase()==='epl'?'epl':(L.toLowerCase()==='laliga'?'laliga':'ucl');
-        left.innerHTML = `
-          <span class="club"><img class="logo" src="/static/logos/${Lpath}/${h}.png" onerror="this.style.visibility='hidden'"> ${h}</span>
-          <span style="opacity:.6">vs</span>
-          <span class="club"><img class="logo" src="/static/logos/${Lpath}/${a}.png" onerror="this.style.visibility='hidden'"> ${a}</span>`;
-        const tm = document.createElement('div');
-        tm.className='pill'; tm.textContent = new Date(ev.runsAt+healthSkew).toLocaleTimeString();
-        tbar.appendChild(left); tbar.appendChild(tm);
-        fx.appendChild(tbar);
-        wrap.appendChild(fx);
-      });
-      const div=document.createElement('div'); div.className='divider'; wrap.appendChild(div);
-    });
-
-    el('homeGrid').appendChild(wrap);
+/* Round countdown */
+let nextRoundAt = null;
+let lastRoundKey = '';
+function startRoundTimer(){
+  clearInterval(startRoundTimer._t);
+  function tick(){
+    if (!nextRoundAt){ el('roundTimer').textContent = 'Next round —'; return; }
+    const now = Date.now()+healthSkew;
+    const ms = Math.max(0, nextRoundAt - now);
+    const s = Math.floor(ms/1000);
+    el('roundTimer').textContent = `Next round in ${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+    if (ms===0){
+      notify('New round loaded','success',1400);
+    }
   }
+  tick();
+  startRoundTimer._t = setInterval(tick, 500);
 }
 
-/* ---------- Leagues page ---------- */
+/* Betslip */
+function showSlip(show){ el('betslip').style.display=show?'block':'none'; el('noSlip').style.display=show?'none':'block'; }
+function validateStake(stakeRaw){
+  const stake = Number(stakeRaw);
+  if (!Number.isFinite(stake) || stake<=0){ notify('Enter a valid stake.', 'error'); return null; }
+  if (stake < 20){ notify('Minimum stake is 20 KES.', 'error'); return null; }
+  if (stake > 1000){ notify('Maximum stake is 1000 KES.', 'error'); return null; }
+  return stake;
+}
+function updatePotential(){
+  if (!CURRENT){ el('payout').textContent='—'; return; }
+  const stake = Number(el('stake').value || 0);
+  const odds = Number(CURRENT.market.odds[CURRENT.selection.id]);
+  const pot = stake ? Math.min(stake*odds, 20000) : 0;
+  el('payout').textContent = stake ? KES(pot) : '—';
+}
+function choose(ev, m, sel){
+  CURRENT = {event:ev, market:m, selection:sel};
+  el('currentSel').textContent = `${ev.game.toUpperCase()} — ${m.type} — ${sel.name}`;
+  el('odds').textContent = m.odds[sel.id];
+  updatePotential();
+  showSlip(true);
+}
+el('stake').addEventListener('input', updatePotential);
+async function placeBet(){
+  if (!CURRENT) return notify('Pick a selection first','error');
+  const stake = validateStake(el('stake').value);
+  if (stake==null) return;
+  const payload = { eventId: CURRENT.event.id, marketId: CURRENT.market.id, selectionId: CURRENT.selection.id, stake, cashierId: CASHIER_ID };
+  const r = await fetch(`${api}/bets`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const j = await r.json();
+  if (!j.ok){ notify(j.error||'Bet failed','error'); return; }
+  await refreshCashier();
+  await loadTickets();
+  const w = window.open(`/receipt/${j.bet.id}`,'_blank','width=380,height=560');
+  try{ w.focus(); }catch{}
+  notify('Bet placed','success');
+}
+
+/* History + search */
+async function loadTickets(){
+  const r = await fetch(`${api}/bets?cashierId=${encodeURIComponent(CASHIER_ID)}`); const list = await r.json();
+  renderTickets(list);
+  const input = el('historySearch');
+  input.oninput = ()=>{
+    const q = input.value.trim().toUpperCase();
+    if(!q) return renderTickets(list);
+    const filtered = list.filter(t=>{
+      const code = (t.id||'').slice(0,8).toUpperCase();
+      const ref = (t.ref||`T-${code}`).toUpperCase();
+      return ref.includes(q) || code.includes(q);
+    });
+    renderTickets(filtered);
+  };
+}
+function renderTickets(list){
+  const box = el('tickets'); box.innerHTML = '';
+  list.slice(0,14).forEach(t=>{
+    const d = document.createElement('div'); d.className='ticket';
+    const ref = t.ref || `T-${(t.id||'').slice(0,8).toUpperCase()}`;
+    d.innerHTML = `
+      <div class="wm ${t.status||'OPEN'}">${t.status||'OPEN'}</div>
+      <div><b>${ref}</b> — ${t.game?.toUpperCase()||''} — ${t.status}</div>
+      <div class="muted">${KES(t.stake)} • ${t.odds} → ${t.payout?KES(t.payout):'—'}</div>`;
+    box.appendChild(d);
+  });
+}
+
+/* ---------- FOOTBALL (no endless scroll; single market view) ---------- */
 async function loadFootball(){
-  el('homeWrap').style.display='none';
-  el('stageWrap').style.display='block';
-  el('leagueChips').style.display='flex';
+  el('title').textContent = `Football — ${CURRENT_LEAGUE}`;
+  el('stage').innerHTML='';
+
   // league chips
   const head = el('leagueChips'); head.innerHTML='';
   ['EPL','LALIGA','UCL'].forEach(L=>{
     const c=document.createElement('div'); c.className='chip'; if(L===CURRENT_LEAGUE) c.classList.add('active');
-    c.textContent=L; c.onclick=()=>{ CURRENT_LEAGUE=L; el('stage').innerHTML=''; loadFootball(); };
+    c.textContent=L; c.onclick=()=>{ CURRENT_LEAGUE=L; loadFootball(); };
     head.appendChild(c);
   });
 
-  const all = (await (await fetch(`${api}/events?game=football`)).json()).filter(e=>e.league===CURRENT_LEAGUE);
-  el('title').textContent = `Football (${CURRENT_LEAGUE}) — ${all.length} fixtures`;
-
-  if (!all.length){ el('stage').innerHTML='<div class="muted">No fixtures.</div>'; return; }
-
-  /* market tabs row */
+  // market tabs row (single view only)
   const mrow = document.createElement('div'); mrow.className='markets';
+  const MLAB = {MAIN:'MAIN', OU15:'OU 1.5', OU25:'OU 2.5', BTTS:'BTTS', H15:'HOME 1.5', A15:'AWAY 1.5', CMB15:'1X2+OU1.5', CMB25:'1X2+OU2.5'};
   MARKET_TABS.forEach(m=>{
-    const b=document.createElement('div'); b.className='mkt'; b.textContent = ({
-      MAIN:'MAIN', OU15:'OU 1.5', OU25:'OU 2.5', BTTS:'BTTS', H15:'HOME 1.5', A15:'AWAY 1.5', CMB15:'1X2+OU1.5', CMB25:'1X2+OU2.5'
-    })[m];
+    const b=document.createElement('div'); b.className='mkt'; b.textContent = MLAB[m];
     if(m===CURRENT_MARKET) b.classList.add('active');
     b.onclick=()=>{ CURRENT_MARKET=m; loadFootball(); };
     mrow.appendChild(b);
   });
   el('stage').appendChild(mrow);
 
-  for (const ev of all.slice(0,10)){
+  const all = (await (await fetch(`${api}/events?game=football`)).json()).filter(e=>e.league===CURRENT_LEAGUE);
+  if (!all.length){ el('stage').innerHTML+='<div class="muted">No fixtures.</div>'; return; }
+
+  // Next round countdown: use earliest runsAt
+  const soon = all.reduce((a,b)=> (a && a.runsAt < b.runsAt) ? a : (!a?b:b), null);
+  if (soon){ nextRoundAt = soon.runsAt; startRoundTimer(); }
+
+  // Build one compact card per fixture for the SELECTED market only
+  for (const ev of all.slice(0, 12)){
     const markets = await (await fetch(`${api}/markets/${ev.id}`)).json();
     const byType={}; markets.forEach(m=>byType[m.type]=m);
 
     const box = document.createElement('div'); box.className='list';
 
-    // header with circular logos
+    // header with circular logos & time
     const hbar = document.createElement('div'); hbar.className='fx-head';
     const clubs = document.createElement('div'); clubs.className='teams';
-    const L = CURRENT_LEAGUE.toLowerCase()==='epl'?'epl':(CURRENT_LEAGUE.toLowerCase()==='laliga'?'laliga':'ucl');
+    const folder = CURRENT_LEAGUE.toLowerCase()==='epl'?'epl':(CURRENT_LEAGUE.toLowerCase()==='laliga'?'laliga':'ucl');
     const H = ev.home.abbr, A = ev.away.abbr;
     clubs.innerHTML = `
-      <span class="club"><img class="logo" src="/static/logos/${L}/${H}.png" onerror="this.style.visibility='hidden'"> ${H}</span>
+      <span class="club">${logoHTML(folder,H)} ${H}</span>
       <span style="opacity:.6">vs</span>
-      <span class="club"><img class="logo" src="/static/logos/${L}/${A}.png" onerror="this.style.visibility='hidden'"> ${A}</span>`;
+      <span class="club">${logoHTML(folder,A)} ${A}</span>`;
     const tm = document.createElement('div'); tm.className='pill'; tm.textContent=new Date(ev.runsAt+healthSkew).toLocaleTimeString();
     hbar.appendChild(clubs); hbar.appendChild(tm);
     box.appendChild(hbar);
 
+    // chosen market only (no "@", compact grid)
     function rowFor(mdef, cols=3){
       if(!mdef) return;
       const row=document.createElement('div'); row.style.display='grid'; row.style.gridTemplateColumns=`repeat(${cols}, 1fr)`; row.style.gap='8px';
       mdef.selections.forEach(s=>{
-        const txt = `${s.name.replace(/\s*\(.*?\)\s*/g,'')} ${mdef.odds[s.id]}`; // no "@"
+        const txt = `${s.name.replace(/\s*\(.*?\)\s*/g,'')} ${mdef.odds[s.id]}`;
         const b=document.createElement('div'); b.className='sel'; b.textContent=txt;
         b.onclick=()=>choose(ev,mdef,s);
         row.appendChild(b);
@@ -363,7 +460,6 @@ async function loadFootball(){
       box.appendChild(row);
     }
 
-    // switch by CURRENT_MARKET
     if (CURRENT_MARKET==='MAIN') rowFor(byType[`MAIN_1X2_${CURRENT_LEAGUE}`], 3);
     if (CURRENT_MARKET==='OU15') rowFor(byType[`OU_1_5_${CURRENT_LEAGUE}`], 2);
     if (CURRENT_MARKET==='OU25') rowFor(byType[`OU_2_5_${CURRENT_LEAGUE}`], 2);
@@ -376,29 +472,27 @@ async function loadFootball(){
     el('stage').appendChild(box);
   }
 
-  // side panels
+  // Up next (right column)
   el('next').innerHTML='';
-  all.slice(10,13).forEach(n=>{
+  all.slice(0,5).forEach(n=>{
     const d=document.createElement('div'); d.className='sel';
     d.textContent=`${new Date(n.runsAt+healthSkew).toLocaleTimeString()} — ${n.home.abbr} vs ${n.away.abbr}`;
     el('next').appendChild(d);
   });
-  loadTickets();
 }
 
-/* -------- Racing (Dogs/Horses) with realistic lanes -------- */
+/* -------- Racing (Dogs/Horses) -------- */
 async function loadRacing(game){
-  el('homeWrap').style.display='none';
-  el('stageWrap').style.display='block';
   el('leagueChips').style.display='none';
   el('title').textContent = game==='dog'?'Dogs — WIN / FORECAST / QUINELLA / TRICAST':'Horses — WIN / FORECAST / QUINELLA / TRICAST';
   el('stage').innerHTML='';
 
-  // market toggles like others (MAIN default)
+  // market toggles like others (MAIN default), lanes sit BELOW this row
+  if (!window.racingMkt) window.racingMkt = {dog:'MAIN', horse:'MAIN'};
   const mrow = document.createElement('div'); mrow.className='markets';
   ['MAIN','FORECAST','QUINELLA','TRICAST'].forEach(m=>{
-    const b=document.createElement('div'); b.className='mkt'; if((game+'_mkt' in window?window[game+'_mkt']:'MAIN')===m) b.classList.add('active');
-    b.textContent=m; b.onclick=()=>{ window[game+'_mkt']=m; loadRacing(game); };
+    const b=document.createElement('div'); b.className='mkt'; if((window.racingMkt[game])===m) b.classList.add('active');
+    b.textContent=m; b.onclick=()=>{ window.racingMkt[game]=m; loadRacing(game); };
     mrow.appendChild(b);
   });
   el('stage').appendChild(mrow);
@@ -406,29 +500,24 @@ async function loadRacing(game){
   const events = (await (await fetch(`${api}/events?game=${game}`)).json()).slice(0,3);
   if (!events.length){ el('stage').innerHTML+='<div class="muted">No events.</div>'; return; }
 
+  // countdown from earliest
+  const soon = events.reduce((a,b)=> (a && a.runsAt < b.runsAt) ? a : (!a?b:b), null);
+  if (soon){ nextRoundAt = soon.runsAt; startRoundTimer(); }
+
   for (const ev of events){
     const markets = await (await fetch(`${api}/markets/${ev.id}`)).json();
     const byType={}; markets.forEach(m=>byType[m.type]=m);
 
     const box = document.createElement('div'); box.className='list';
-    const h = document.createElement('div'); h.className='fx-head';
+
+    const head = document.createElement('div'); head.className='fx-head';
     const lab = document.createElement('div'); lab.className='title'; lab.textContent=`${new Date(ev.runsAt+healthSkew).toLocaleTimeString()} — ${game.toUpperCase()}`;
     const tm = document.createElement('div'); tm.className='pill'; tm.textContent = 'Round';
-    h.appendChild(lab); h.appendChild(tm); box.appendChild(h);
+    head.appendChild(lab); head.appendChild(tm); box.appendChild(head);
 
-    // lanes
+    // lanes BELOW markets row, with extra spacing
     const main = byType['MAIN_WIN'];
-    if (main){
-      const lanes = document.createElement('div'); lanes.className='track';
-      for (let i=0;i<main.selections.length;i++){
-        const r=document.createElement('div'); r.className='runner'; r.style.top=(12 + i*28)+'px';
-        // subtle animation
-        r.animate([{transform:'translateX(0)'},{transform:'translateX(6px)'},{transform:'translateX(0)'}],
-          {duration:2000+Math.random()*1200,iterations:Infinity});
-        r.title = main.selections[i].name; lanes.appendChild(r);
-      }
-      box.appendChild(lanes);
-    }
+    const want = window.racingMkt[game];
 
     function addGrid(title, m, cols){
       if(!m) return;
@@ -441,25 +530,40 @@ async function loadRacing(game){
       box.appendChild(row);
     }
 
-    const want = (window[game+'_mkt']||'MAIN');
     if (want==='MAIN') addGrid('MAIN — WIN', byType['MAIN_WIN'], 3);
     if (want==='FORECAST') addGrid('FORECAST (Exacta)', byType['FORECAST'], 3);
     if (want==='QUINELLA') addGrid('QUINELLA', byType['QUINELLA'], 3);
     if (want==='TRICAST') addGrid('TRICAST', byType['TRICAST'], 3);
 
+    // spacing so lanes never overlap the markets row
+    const spacer = document.createElement('div'); spacer.style.height='6px'; box.appendChild(spacer);
+
+    if (main){
+      const lanes = document.createElement('div'); lanes.className='track';
+      const count = game==='horse' ? 8 : main.selections.length; // horses: fixed 8 lanes
+      for (let i=0;i<Math.min(count, main.selections.length);i++){
+        const r=document.createElement('div'); r.className='runner'; r.style.top=(12 + i*28)+'px';
+        r.animate([{transform:'translateX(0)'},{transform:'translateX(6px)'},{transform:'translateX(0)'}],
+          {duration:2000+Math.random()*1200,iterations:Infinity});
+        r.title = main.selections[i].name; lanes.appendChild(r);
+      }
+      box.appendChild(lanes);
+    }
+
     el('stage').appendChild(box);
   }
 
-  // previous
-  const res = await (await fetch(`${api}/results?game=${game}&limit=8`)).json();
+  // “Up next”
   el('next').innerHTML='';
-  el('tickets'); // keep
+  events.slice(0,5).forEach(n=>{
+    const d=document.createElement('div'); d.className='sel';
+    d.textContent=`${new Date(n.runsAt+healthSkew).toLocaleTimeString()} — ${game.toUpperCase()}`;
+    el('next').appendChild(d);
+  });
 }
 
-/* -------- Colors & Numbers (merged) -------- */
+/* -------- Colors & Numbers (merged, colored balls present) -------- */
 async function loadColorsNumbers(){
-  el('homeWrap').style.display='none';
-  el('stageWrap').style.display='block';
   el('leagueChips').style.display='none';
   el('title').textContent = 'Colors & Numbers — glossy balls';
   el('stage').innerHTML='';
@@ -470,9 +574,10 @@ async function loadColorsNumbers(){
 
   const boxC=document.createElement('div'); boxC.className='list';
   boxC.innerHTML = `<div class="muted">Colors</div>`;
-  const gridC=document.createElement('div'); gridC.style.display='grid'; gridC.style.gridTemplateColumns='repeat(6,1fr)'; gridC.style.gap='8px';
+  const gridC=document.createElement('div'); gridC.className='balls colors';
   mC.selections.forEach(s=>{
-    const b=document.createElement('div'); b.className='sel'; b.textContent=`${s.name} ${mC.odds[s.id]}`; // include odds
+    const b=document.createElement('div'); b.className=`ball ${s.id}`; b.textContent=s.id[0];
+    b.title = `${s.name} ${mC.odds[s.id]}`;
     b.onclick=()=>choose(evC,mC,s);
     gridC.appendChild(b);
   });
@@ -485,76 +590,19 @@ async function loadColorsNumbers(){
 
   const boxN=document.createElement('div'); boxN.className='list';
   boxN.innerHTML = `<div class="muted">Numbers 1–49</div>`;
-  const gridN=document.createElement('div'); gridN.style.display='grid'; gridN.style.gridTemplateColumns='repeat(7,1fr)'; gridN.style.gap='8px';
+  const gridN=document.createElement('div'); gridN.className='balls numbers';
   mN.selections.forEach(s=>{
-    const b=document.createElement('div'); b.className='sel'; b.textContent=`#${s.id} ${mN.odds[s.id]}`;
+    const b=document.createElement('div'); b.className='ball BLACK'; b.textContent=s.id;
+    b.title = `#${s.id} ${mN.odds[s.id]}`;
     b.onclick=()=>choose(evN,mN,s);
     gridN.appendChild(b);
   });
   boxN.appendChild(gridN);
   el('stage').appendChild(boxN);
-}
 
-/* -------- Betslip / Place bet / Auto print -------- */
-function showSlip(show){ el('betslip').style.display=show?'block':'none'; el('noSlip').style.display=show?'none':'block'; }
-function choose(ev, m, sel){
-  CURRENT = {event:ev, market:m, selection:sel};
-  el('currentSel').textContent = `${ev.game.toUpperCase()} — ${m.type} — ${sel.name}`;
-  el('odds').textContent = m.odds[sel.id];
-  const stake = Number(el('stake').value || 0);
-  el('payout').textContent = stake ? KES(Math.min(stake * Number(m.odds[sel.id]), 20000)) : '—';
-  showSlip(true);
-}
-el('stake').addEventListener('input',()=>{
-  if (!CURRENT){ el('payout').textContent='—'; return; }
-  const stake = Number(el('stake').value || 0);
-  el('payout').textContent = stake ? KES(Math.min(stake * Number(CURRENT.market.odds[CURRENT.selection.id]), 20000)) : '—';
-});
-async function placeBet(){
-  if (!CURRENT) return alert('Pick a market/selection first');
-  const stake = Number(el('stake').value || 0);
-  if (stake<20) return alert('Minimum stake is 20');
-  if (stake>1000) return alert('Maximum stake is 1000');
-  const payload = { eventId: CURRENT.event.id, marketId: CURRENT.market.id, selectionId: CURRENT.selection.id, stake, cashierId: CASHIER_ID };
-  const r = await fetch(`${api}/bets`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-  const j = await r.json();
-  if (!j.ok) return alert(j.error || JSON.stringify(j));
-  await refreshCashier();
-  await loadTickets();
-  // Auto open receipt in a small print window (server will render EJS; thermal prints if enabled)
-  const w = window.open(`/receipt/${j.bet.id}`,'_blank','width=380,height=560');
-  try{ w.focus(); }catch{}
-}
-
-/* -------- History + search (barcode-friendly) -------- */
-async function loadTickets(){
-  const r = await fetch(`${api}/bets?cashierId=${encodeURIComponent(CASHIER_ID)}`); const list = await r.json();
-  renderTickets(list);
-  // Scan/search handler
-  const input = el('historySearch');
-  input.oninput = ()=>{
-    const q = input.value.trim().toUpperCase();
-    if(!q) return renderTickets(list);
-    const filtered = list.filter(t=>{
-      // match by ref (T-XXXX) or id start (barcode 8 chars on receipt)
-      const code = (t.id||'').slice(0,8).toUpperCase();
-      const ref = (t.ref||`T-${code}`).toUpperCase();
-      return ref.includes(q) || code.includes(q);
-    });
-    renderTickets(filtered);
-  };
-}
-function renderTickets(list){
-  const box = el('tickets'); box.innerHTML = '';
-  list.slice(0,12).forEach(t=>{
-    const d = document.createElement('div'); d.className='ticket';
-    const ref = t.ref || `T-${(t.id||'').slice(0,8).toUpperCase()}`;
-    d.innerHTML = `
-      <div class="wm ${t.status||'OPEN'}">${t.status||'OPEN'}</div>
-      <div><b>${ref}</b> — ${t.game?.toUpperCase()||''} — ${t.status}</div>
-      <div class="muted">${KES(t.stake)} • ${t.odds} → ${t.payout?KES(t.payout):'—'}</div>`;
-    box.appendChild(d);
-  });
+  // countdown: pick the earlier of the two
+  const soon = Math.min(evC?.runsAt||Infinity, evN?.runsAt||Infinity);
+  if (isFinite(soon)){ nextRoundAt = soon; startRoundTimer(); }
 }
 
 /* -------- Tabs router -------- */
@@ -564,8 +612,6 @@ document.querySelectorAll('.tab[data-tab]').forEach(t=>{
     t.classList.add('active');
     CURRENT_TAB = t.dataset.tab;
     CURRENT = null; showSlip(false);
-
-    if (CURRENT_TAB==='home') loadHome();
     if (CURRENT_TAB==='football') loadFootball();
     if (CURRENT_TAB==='dogs') loadRacing('dog');
     if (CURRENT_TAB==='horses') loadRacing('horse');
@@ -573,20 +619,19 @@ document.querySelectorAll('.tab[data-tab]').forEach(t=>{
   });
 });
 
-/* -------- Boot & refresh loop -------- */
+/* -------- Up next / Tickets periodic refresh -------- */
 async function boot(){
   await refreshCashier();
-  await loadHome();
+  await loadFootball();
   await loadTickets();
-  // periodic refresh to keep lively/synced
+
   setInterval(async ()=>{
-    if (CURRENT_TAB==='home') await loadHome();
     if (CURRENT_TAB==='football') await loadFootball();
     if (CURRENT_TAB==='dogs') await loadRacing('dog');
     if (CURRENT_TAB==='horses') await loadRacing('horse');
     if (CURRENT_TAB==='colors') await loadColorsNumbers();
     await loadTickets();
-  }, 8000);
+  }, 9000);
 }
 boot();
 </script>
