@@ -33,23 +33,28 @@
     .brand{font-weight:800;letter-spacing:.3px;font-size:18px;display:flex;align-items:center;gap:8px}
     .grow{flex:1}
 
-    /* Unified glossy pill system */
-    .pill, .mkt, .seg .segbtn, .oddbtn, input[type="number"], input[type="text"], .btn{
+    /* Unified glossy control system (pills/tiles/buttons/odds/inputs) */
+    .pill, .mkt, .seg .segbtn, .oddbtn, input[type="number"], input[type="text"], .btn, .cardbtn{
       background:var(--glass1);
       border:1px solid #2b3c62;
       box-shadow:var(--ring);
       border-radius:14px;
+      transition:filter .15s ease, transform .15s ease;
     }
+    .pill:hover, .mkt:hover, .seg .segbtn:hover, .oddbtn:hover, .cardbtn:hover{filter:brightness(1.08)}
+    .pill:active, .mkt:active, .seg .segbtn:active, .oddbtn:active, .cardbtn:active{transform:translateY(1px)}
+
     .pill{padding:10px 14px;font-size:12px}
-    .pill.badge{display:inline-flex;gap:8px;align-items:center}
+    .pill.badge{display:inline-flex;gap:10px;align-items:center}
     .pill.solid{background:var(--glass2);}
 
-    .clock{min-width:260px;text-align:right;font-weight:900;letter-spacing:.2px;font-size:14px}
+    .clock{min-width:280px;text-align:right;font-weight:900;letter-spacing:.2px;font-size:14px}
 
-    /* Aviator CTA: larger + glossy */
+    /* Aviator CTA: bigger + shows live time inline */
     .aviator-link{display:inline-flex;align-items:center;gap:12px;padding:12px 16px;border-radius:18px;transform:translateZ(0)}
     .aviator-link img{width:32px;height:32px;border-radius:8px}
     .aviator-link b{font-size:16px}
+    .avi-time{font-weight:800;opacity:.9;font-size:12px}
 
     .roundbar{display:flex;align-items:center;gap:10px}
     .dial{
@@ -66,11 +71,6 @@
     .roundtxt b{font-size:12px}
     .roundtxt small{font-size:11px;color:var(--muted)}
 
-    .sched{display:flex;gap:8px;flex-wrap:wrap}
-    .slot{display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;min-width:96px;padding:8px;cursor:pointer}
-    .slot.active{outline:2px solid var(--accent)}
-    .slot small{font-size:11px;color:var(--muted)}
-
     .container{max-width:var(--maxw);margin:0 auto;padding:10px 10px 14px;display:grid;grid-template-columns:minmax(0,2.1fr) minmax(0,.9fr);gap:14px}
     @media (max-width:1100px){ .container{grid-template-columns:1fr} }
 
@@ -79,23 +79,24 @@
     .muted{color:var(--muted);font-size:12px}
     .divider{height:1px;background:var(--line);margin:10px 0}
 
-    /* Segmented tabs */
+    /* Segmented tabs (glossy) */
     .seg{display:inline-flex;border-radius:14px;overflow:hidden;border:1px solid #2b3c62;background:var(--glass2)}
     .seg .segbtn{padding:10px 16px;font-weight:800;cursor:pointer;border-right:1px solid #2b3c62;user-select:none}
     .seg .segbtn:last-child{border-right:none}
     .seg .segbtn[aria-pressed="true"]{background:#133262;outline:2px solid var(--accent)}
 
+    .row-flex{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
     .tiles-wrap{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
 
     /* Markets strip */
     .markets{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px}
     .mkt{padding:8px 12px;cursor:pointer;font-size:12px;font-weight:800}
-    .mkt.active{outline:2px solid #22c55e}
+    .mkt.active{outline:2px solid var(--accent)}
 
     /* Glossy card fixtures */
     .fxrow{
-      display:grid; grid-template-columns:30px 1fr auto; gap:10px; align-items:center;
-      padding:10px;border-radius:16px;margin-bottom:10px;
+      display:grid; grid-template-columns:34px 1fr auto; gap:10px; align-items:center;
+      padding:12px;border-radius:16px;margin-bottom:10px;
       background:linear-gradient(180deg,#0f1d3d,#0b152b); border:1px solid #2a3e6a; box-shadow:var(--ring)
     }
     .fxrow:hover{transform:translateY(-1px); filter:brightness(1.02)}
@@ -105,8 +106,20 @@
     .vs{opacity:.7;margin:0 6px}
     .oddsbar{display:flex;gap:8px;flex-wrap:wrap}
     .oddbtn{min-width:56px;padding:10px 12px;text-align:center;cursor:pointer;font-weight:800}
-    .oddbtn:hover{filter:brightness(1.14)}
     .idx{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:10px;background:#0b1324;border:1px solid var(--line);font-weight:800;font-size:12px}
+
+    /* Racing lanes + labels */
+    .track{position:relative;border:1px dashed var(--line);border-radius:14px;margin:10px 0 6px;overflow:hidden;
+      background:
+        linear-gradient(90deg,#0b1324 0 12px, #12203f 12px 14px, transparent 14px),
+        repeating-linear-gradient(to bottom, #0f1629 0, #0f1629 26px, #0b1324 26px, #0b1324 28px);
+      height: calc(var(--lanes,8) * 24px + 24px);
+    }
+    .lane-label{position:absolute;left:6px;display:flex;align-items:center;gap:6px}
+    .lane-badge{width:22px;height:18px;border-radius:6px;background:#0b1324;border:1px solid #2a3e6a;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900}
+    .lane-name{font-size:12px;color:#c8d1e1}
+    .runner{position:absolute;left:86px;width:44px;height:20px;background:#e5e7eb;border-radius:3px 10px 10px 3px;box-shadow:0 0 6px #fff2, inset 0 -2px 3px #0003}
+    .runner:after{content:"";position:absolute;right:-6px;top:6px;width:8px;height:8px;border-radius:50%;background:#e5e7eb;box-shadow:0 0 5px #fff4}
 
     /* Balls (colors & numbers) */
     .balls{display:grid;gap:10px}
@@ -145,7 +158,10 @@
   <div class="pill clock" id="clock">—</div>
   <a href="/aviator" class="aviator-link pill solid badge">
     <img src="/static/img/aviator-icon.png" alt="Aviator"/>
-    <b>Aviator</b>
+    <div style="display:flex;flex-direction:column;line-height:1.1">
+      <b>Aviator</b>
+      <small class="avi-time" id="aviTime">—</small>
+    </div>
   </a>
 </header>
 
@@ -161,8 +177,8 @@
       </div>
     </div>
 
-    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px;display:flex">
-      <div style="display:flex;gap:12px;align-items:center">
+    <div class="row-flex" style="justify-content:space-between;margin-bottom:6px">
+      <div class="row-flex">
         <div class="roundbar">
           <div id="dial" class="dial" title="Next switch"></div>
           <div class="roundtxt">
@@ -172,17 +188,20 @@
         </div>
         <div class="pill" id="roundTimer">Next in —</div>
       </div>
-      <!-- Football = weeks; Others = time slots -->
-      <div class="sched" id="schedule"></div>
+      <!-- Football = 2 weeks; Others = time slots -->
+      <div class="row-flex" id="schedule"></div>
     </div>
 
-    <div class="chips" id="leagueChips" style="display:flex"></div>
+    <!-- League chips (glossy cards) -->
+    <div class="row-flex" id="leagueChips"></div>
+
+    <!-- Stage -->
     <div id="stage"></div>
   </div>
 
   <div class="panel">
     <div class="title">Controls</div>
-    <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <div class="row-flex">
       <div class="pill badge" id="cashierIdShow">
         <svg class="ico" viewBox="0 0 24 24"><path fill="#a7f3d0" d="M4 4h16v4H4zM4 10h10v10H4zM16 10h4v6h-4z"/></svg>
         Cashier: <b id="cashierId">shop-1</b>
@@ -196,7 +215,7 @@
 
     <div>
       <div class="title">Aviator Players — Wallets</div>
-      <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <div class="row-flex">
         <select id="aviPlayer">
           <option value="pA">Player A</option>
           <option value="pB">Player B</option>
@@ -225,7 +244,7 @@
       <div class="betslip" id="betslip" style="display:none">
         <div class="muted" id="currentSel">No selection</div>
         <input id="stake" type="number" min="20" max="1000" value="100" placeholder="Stake (KES)"/>
-        <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
+        <div class="row-flex">
           <div class="pill">Odds: <b id="odds">—</b></div>
           <div class="pill">Potential: <b id="payout">—</b></div>
         </div>
@@ -233,19 +252,19 @@
           <input id="autoPrint" type="checkbox" style="accent-color:#22c55e"> Auto-print receipt after placing bet
         </label>
         <div class="muted">Min 20, Max 1000, Max Payout 20,000</div>
-        <button class="btn primary" onclick="placeBet()">Place Bet</button>
+        <button class="btn primary" id="placeBtn" onclick="placeBet()">Place Bet</button>
       </div>
       <div id="noSlip" class="muted">Click a market to build a betslip.</div>
 
       <div class="divider"></div>
 
       <div class="title">Printer Settings</div>
-      <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <div class="row-flex">
         <input id="printerName" placeholder="Printer name / device (optional)" style="max-width:260px"/>
         <button class="btn" onclick="savePrinter()">Save</button>
         <button class="btn" onclick="testPrint()">Test Print</button>
       </div>
-      <div class="muted">Browser print will be used. A thermal bridge/service can be integrated later.</div>
+      <div class="muted">Browser print is used now; you can hook a thermal bridge later.</div>
     </div>
   </div>
 </div>
@@ -255,7 +274,7 @@
 <script>
 /* ---------- Toasts ---------- */
 const toaster=document.getElementById('toaster');
-function notify(msg,type='info',ms=2200){
+function notify(msg,type='info',ms=2600){
   const t=document.createElement('div');
   t.className='toast'+(type==='success'?' success':type==='error'?' error':'');
   t.textContent=msg; toaster.appendChild(t);
@@ -285,7 +304,12 @@ let healthSkew=0;
 async function syncClock(){
   try{ const r=await API.get('/health'); const j=await r.json(); healthSkew=j.ts-Date.now(); }catch{ healthSkew=0; }
 }
-setInterval(()=>{ const d=new Date(Date.now()+healthSkew); el('clock').textContent=d.toLocaleString(); }, 500);
+function drawClocks(){
+  const d=new Date(Date.now()+healthSkew);
+  el('clock').textContent=d.toLocaleString();
+  el('aviTime').textContent=d.toLocaleTimeString();
+}
+setInterval(drawClocks, 500);
 syncClock();
 
 /* ---------- Cashier ---------- */
@@ -340,44 +364,47 @@ let CURRENT_TAB='football', CURRENT=null, CURRENT_LEAGUE='EPL', CURRENT_MARKET='
 let nextBoundaryTs=null, boundarySpanMs=0, selectedSlot=0, weekPointer=0;
 
 function ceilToStep(ms, min){ const step=min*60*1000; return Math.ceil(ms/step)*step; }
-function buildTimeSchedule(stepMin){
-  scheduleBox.className='sched';
-  scheduleBox.innerHTML='';
-  const base = nextBoundaryTs - boundarySpanMs;
-  for(let i=0;i<4;i++){
-    const ts = base + i*boundarySpanMs;
-    const label = new Date(ts).toLocaleTimeString();
-    const slot=document.createElement('div'); slot.className='slot pill'; if(i===selectedSlot) slot.classList.add('active');
-    slot.innerHTML = `<b>${label}</b><small>${stepMin} min</small>`;
-    slot.onclick=()=>{ selectedSlot=i; document.querySelectorAll('.slot').forEach(x=>x.classList.remove('active')); slot.classList.add('active'); refreshByTab(true); };
-    scheduleBox.appendChild(slot);
-  }
-}
-function buildWeekSchedule(totalWeeks){
-  scheduleBox.className='seg';
-  scheduleBox.innerHTML='';
-  for(let i=0;i<totalWeeks;i++){
-    const btn=document.createElement('button'); btn.className='segbtn'; btn.textContent=`Week ${i+1}`; btn.setAttribute('aria-pressed', i===weekPointer?'true':'false');
-    btn.onclick=()=>{ weekPointer=i; renderFootball(); };
-    scheduleBox.appendChild(btn);
-  }
-}
 function setTiming(){
   const now = Date.now()+healthSkew;
   if (CURRENT_TAB==='football'){
     nextBoundaryTs = ceilToStep(now, 7);
     boundarySpanMs = 7*60*1000;
-    roundLabel.textContent = `WEEK VIEW`;
-    // weeks are built in renderFootball() once we know total
+    roundLabel.textContent = `FOOTBALL • 2 Weeks`;
   }else{
     nextBoundaryTs = ceilToStep(now, 3);
     boundarySpanMs = 3*60*1000;
     roundLabel.textContent = `NEXT START • ${new Date(nextBoundaryTs).toLocaleTimeString()}`;
-    buildTimeSchedule(boundarySpanMs/60000);
+    buildTimeCards(boundarySpanMs/60000);
   }
+}
+function buildTimeCards(stepMin){
+  scheduleBox.innerHTML='';
+  for(let i=0;i<4;i++){
+    const ts=(nextBoundaryTs-boundarySpanMs) + i*boundarySpanMs;
+    const btn=document.createElement('button');
+    btn.className='segbtn cardbtn';
+    btn.textContent=new Date(ts).toLocaleTimeString();
+    btn.setAttribute('aria-pressed', i===selectedSlot ? 'true':'false');
+    btn.onclick=()=>{ selectedSlot=i; Array.from(scheduleBox.children).forEach(x=>x.setAttribute('aria-pressed','false')); btn.setAttribute('aria-pressed','true'); refreshByTab(true); };
+    scheduleBox.appendChild(btn);
+  }
+  scheduleBox.className='seg';
+}
+function buildWeekCards(){
+  scheduleBox.innerHTML='';
+  for(let i=0;i<2;i++){
+    const btn=document.createElement('button');
+    btn.className='segbtn cardbtn';
+    btn.textContent=`Week ${i+1}`;
+    btn.setAttribute('aria-pressed', i===weekPointer ? 'true':'false');
+    btn.onclick=()=>{ weekPointer=i; Array.from(scheduleBox.children).forEach(x=>x.setAttribute('aria-pressed','false')); btn.setAttribute('aria-pressed','true'); renderFootball(); };
+    scheduleBox.appendChild(btn);
+  }
+  scheduleBox.className='seg';
 }
 function tickDial(){
   const now = Date.now()+healthSkew;
+  if(!nextBoundaryTs){ setTiming(); }
   const remain = Math.max(0, (nextBoundaryTs||now) - now);
   const ratio = boundarySpanMs ? 1 - remain / boundarySpanMs : 0;
   const deg = Math.max(0, Math.min(360, ratio*360));
@@ -386,8 +413,7 @@ function tickDial(){
   roundTimer.textContent = `Next in ${String(mm).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
   if (remain<=0){
     nextBoundaryTs += boundarySpanMs;
-    if (CURRENT_TAB==='football'){ weekPointer++; }
-    if (CURRENT_TAB!=='football') buildTimeSchedule(boundarySpanMs/60000);
+    if (CURRENT_TAB!=='football') buildTimeCards(boundarySpanMs/60000);
     refreshByTab(false, true);
   }
 }
@@ -403,12 +429,13 @@ function validateStake(raw){
 }
 function fmtDate(ts){ const d=new Date(ts+healthSkew); return d.toLocaleString(); }
 function updatePotential(){
-  if(!CURRENT){ el('payout').textContent='—'; return; }
+  if(!CURRENT){ el('payout').textContent='—'; el('placeBtn').disabled=true; return; }
   const stake=Number(el('stake').value||0), odds=Number(CURRENT.market.odds[CURRENT.selection.id]);
   el('payout').textContent = stake? KES(Math.min(stake*odds,20000)) : '—';
+  el('placeBtn').disabled=false;
 }
 function choose(ev,m,sel){
-  const tag = CURRENT_TAB==='football' ? `Week ${computeWeekIndex(ev) + 1}` : new Date(ev.runsAt+healthSkew).toLocaleTimeString();
+  const tag = CURRENT_TAB==='football' ? `Week ${computeWeekIndexFrom2(ev)+1}` : new Date(ev.runsAt+healthSkew).toLocaleTimeString();
   CURRENT={event:ev,market:m,selection:sel};
   el('currentSel').innerHTML=`<b>${ev.game.toUpperCase()}</b> • ${tag} • ${fmtDate(ev.runsAt)}<br>${m.type} — ${sel.name}`;
   el('odds').textContent=m.odds[sel.id];
@@ -417,24 +444,37 @@ function choose(ev,m,sel){
 el('stake').addEventListener('input',updatePotential);
 
 async function placeBet(){
-  if(!CURRENT) return notify('Pick a selection first','error');
+  if(!CURRENT){ notify('Pick a selection first','error'); return; }
   const stake=validateStake(el('stake').value); if(stake==null) return;
-  const wkIndex = CURRENT_TAB==='football' ? computeWeekIndex(CURRENT.event) + 1 : null;
-  const payload={
-    eventId:CURRENT.event.id, marketId:CURRENT.market.id, selectionId:CURRENT.selection.id,
-    stake, cashierId:CASHIER_ID, slot:selectedSlot,
-    meta:{ label: CURRENT_TAB==='football'?`Week ${wkIndex}`: new Date(CURRENT.event.runsAt+healthSkew).toLocaleTimeString(),
-           datetime: fmtDate(CURRENT.event.runsAt), week: wkIndex }
-  };
-  const r=await API.post(`/bets`,payload); const j=await r.json();
-  if(!j.ok){ notify(j.error||'Bet failed','error'); return; }
-  await refreshCashier(); await loadTickets();
 
-  // Open receipt and optionally auto-print
-  const auto = el('autoPrint').checked || localStorage.getItem('mm_auto_print')==='1';
-  const w=window.open(`/receipt/${j.bet.id}`,'_blank','width=400,height=620');
-  try{ if (auto && w) w.addEventListener('load',()=>{ try{ w.focus(); w.print(); }catch{} }); }catch{}
-  notify('Bet placed','success');
+  const wkIndex = CURRENT_TAB==='football' ? computeWeekIndexFrom2(CURRENT.event) + 1 : null;
+  const payload={
+    eventId:CURRENT.event.id,
+    marketId:CURRENT.market.id,
+    selectionId:CURRENT.selection.id,
+    stake,
+    cashierId:CASHIER_ID,
+    slot:selectedSlot,
+    meta:{
+      label: CURRENT_TAB==='football'?`Week ${wkIndex}`: new Date(CURRENT.event.runsAt+healthSkew).toLocaleTimeString(),
+      datetime: fmtDate(CURRENT.event.runsAt),
+      week: wkIndex
+    }
+  };
+
+  try{
+    const r=await API.post(`/bets`,payload);
+    const j=await r.json();
+    if(!j || j.ok===false){ throw new Error(j?.error || 'Server rejected bet'); }
+    await refreshCashier(); await loadTickets();
+    const auto = el('autoPrint').checked || localStorage.getItem('mm_auto_print')==='1';
+    const w=window.open(`/receipt/${j.bet.id}`,'_blank','width=400,height=620');
+    if (auto && w) w.addEventListener('load',()=>{ try{ w.focus(); w.print(); }catch{} });
+    notify('Bet placed','success');
+  }catch(err){
+    console.error(err);
+    notify('Bet failed. Check network/API.', 'error', 3200);
+  }
 }
 
 /* ---------- Printer Settings ---------- */
@@ -460,7 +500,7 @@ function testPrint(){
 async function loadTickets(){
   const r = await API.get(`/bets?cashierId=${encodeURIComponent(CASHIER_ID)}`); const list = await r.json();
   const box = el('tickets'); box.innerHTML='';
-  list.slice(0,16).forEach(t=>{
+  (list||[]).slice(0,16).forEach(t=>{
     const d=document.createElement('div'); d.className='ticket';
     const ref=t.ref||`T-${(t.id||'').slice(0,8).toUpperCase()}`;
     d.innerHTML=`<div class="wm ${t.status||'OPEN'}">${t.status||'OPEN'}</div>
@@ -471,7 +511,7 @@ async function loadTickets(){
   const input = el('historySearch');
   input.oninput=()=>{
     const q=input.value.trim().toUpperCase(); if(!q) return loadTickets();
-    const filtered=list.filter(t=> (t.ref||'').toUpperCase().includes(q) || (t.id||'').toUpperCase().includes(q) );
+    const filtered=(list||[]).filter(t=> (t.ref||'').toUpperCase().includes(q) || (t.id||'').toUpperCase().includes(q) );
     const box2=el('tickets'); box2.innerHTML='';
     filtered.slice(0,16).forEach(t=>{
       const d=document.createElement('div'); d.className='ticket';
@@ -493,7 +533,7 @@ async function getEvents(game){
 }
 async function getMarkets(eventId){
   if (!CACHE.markets[eventId]){
-    try{ const r=await API.get(`/markets/${eventId}`); const arr=await r.json(); const map={}; arr.forEach(m=>map[m.type]=m); CACHE.markets[eventId]=map; }
+    try{ const r=await API.get(`/markets/${eventId}`); const arr=await r.json(); const map={}; (arr||[]).forEach(m=>map[m.type]=m); CACHE.markets[eventId]=map; }
     catch{ CACHE.markets[eventId]={}; }
   }
   return CACHE.markets[eventId];
@@ -509,56 +549,63 @@ function pickMarket(byType, candidates){
   return null;
 }
 
-/* ---------- FOOTBALL (weeks of 10 fixtures) ---------- */
+/* ---------- FOOTBALL (exactly 2 weeks; 10 fixtures each) ---------- */
 const MARKET_TABS = ['MAIN','OU05','OU15','OU25','OU35','BTTS','H15','A15','DC','DNB','CMB15','CMB25'];
 const MLAB={MAIN:'MAIN',OU05:'OU 0.5',OU15:'OU 1.5',OU25:'OU 2.5',OU35:'OU 3.5',BTTS:'BTTS',H15:'HOME 1.5',A15:'AWAY 1.5',DC:'DOUBLE CHANCE',DNB:'DRAW NO BET',CMB15:'1X2+OU1.5',CMB25:'1X2+OU2.5'};
 
-function computeWeekIndex(ev){
-  // recompute based on current filtered list order
-  if(!window._football_all) return 0;
-  const idx = window._football_all.findIndex(x=>x.id===ev.id);
-  return Math.floor(Math.max(0, idx)/10); // 10 fixtures per week
+function computeWeekIndexFrom2(ev){
+  // Use the 2-week list we render from
+  if(!window._wk_events) return 0;
+  const w0 = window._wk_events[0].map(x=>x.id);
+  const w1 = window._wk_events[1].map(x=>x.id);
+  if (w0.includes(ev.id)) return 0;
+  if (w1.includes(ev.id)) return 1;
+  return 0;
 }
 
 async function renderFootball(){
   const stage=el('stage'); stage.innerHTML='';
 
-  // League chips
-  el('leagueChips').style.display='flex';
+  // League cards (glossy)
   const head=el('leagueChips'); head.innerHTML='';
   ['EPL','LALIGA','UCL'].forEach(L=>{
-    const c=document.createElement('div'); c.className='pill'; c.style.cursor='pointer'; if(L===CURRENT_LEAGUE) c.style.outline='2px solid var(--accent)';
-    c.innerHTML=`<b>${L}</b>`; c.onclick=()=>{ CURRENT_LEAGUE=L; weekPointer=0; CURRENT_MARKET='MAIN'; renderFootball(); };
-    head.appendChild(c);
+    const btn=document.createElement('button'); btn.className='segbtn cardbtn'; btn.textContent=L;
+    btn.setAttribute('aria-pressed', L===CURRENT_LEAGUE ? 'true':'false');
+    btn.onclick=()=>{ CURRENT_LEAGUE=L; weekPointer=0; CURRENT_MARKET='MAIN'; renderFootball(); };
+    head.appendChild(btn);
   });
+  head.className='seg';
 
-  // Markets tabs
+  // Market chips (glossy)
   const mrow=document.createElement('div'); mrow.className='markets';
-  MARKET_TABS.forEach(m=>{ const b=document.createElement('div'); b.className='mkt'; if(m===CURRENT_MARKET) b.classList.add('active'); b.textContent=MLAB[m]; b.onclick=()=>{CURRENT_MARKET=m; renderFootball();}; mrow.appendChild(b);});
+  MARKET_TABS.forEach(m=>{
+    const b=document.createElement('div'); b.className='mkt'; if(m===CURRENT_MARKET) b.classList.add('active');
+    b.textContent=MLAB[m]; b.onclick=()=>{CURRENT_MARKET=m; renderFootball();}; mrow.appendChild(b);
+  });
   stage.appendChild(mrow);
 
-  // Fixtures
+  // Fetch fixtures
   let all = await getEvents('football');
   all=(all||[]).filter(e=>e.league===CURRENT_LEAGUE).sort((a,b)=>a.runsAt-b.runsAt);
-  window._football_all = all.slice(); // for computeWeekIndex
-  if(!all.length){ stage.innerHTML+='<div class="muted">No fixtures.</div>'; return; }
 
-  // Build weeks (10 per)
-  const weeks=[]; for(let i=0;i<all.length;i+=10) weeks.push(all.slice(i,i+10));
-  const totalWeeks = weeks.length;
-  if (weekPointer>=totalWeeks) weekPointer=totalWeeks-1;
-  if (weekPointer<0) weekPointer=0;
+  // Force exactly 2 weeks (10 each). If fewer than 20, split evenly.
+  const first20 = all.slice(0,20);
+  let weekA = first20.slice(0,10);
+  let weekB = first20.slice(10,20);
+  if (first20.length<=10){ weekA = first20.slice(0, Math.ceil(first20.length/2)); weekB = first20.slice(Math.ceil(first20.length/2)); }
+  if (weekB.length<10 && all.length>20){
+    weekB = all.slice(10,20); // try to fill second week if available later
+  }
+  window._wk_events = [weekA, weekB];
 
-  // Build week segmented buttons
-  buildWeekSchedule(totalWeeks);
-
-  const blk = weeks[weekPointer];
+  // Build Week cards (always 2)
+  buildWeekCards();
+  const blk = window._wk_events[weekPointer] || [];
 
   let rowIndex=0;
   for(const ev of blk){
     rowIndex++;
     const byType = await getMarkets(ev.id);
-
     const folder = CURRENT_LEAGUE.toLowerCase()==='epl'?'epl':(CURRENT_LEAGUE.toLowerCase()==='laliga'?'laliga':'ucl');
     const H=ev.home.abbr, A=ev.away.abbr;
 
@@ -576,12 +623,10 @@ async function renderFootball(){
     const mCMB25 = pickMarket(byType,[`COMBO_1X2_OU_2_5_${CURRENT_LEAGUE}`,/COMBO.*1X2.*OU.*2[_-]?5.*${CURRENT_LEAGUE}/]);
 
     const mMap={MAIN:mMain,OU05:mOU05,OU15:mOU15,OU25:mOU25,OU35:mOU35,BTTS:mBTTS,H15:mH15,A15:mA15,DC:mDC,DNB:mDNB,CMB15:mCMB15,CMB25:mCMB25};
-    const mdef=mMap[CURRENT_MARKET] || mMain;
-    if(!mdef) continue;
+    const mdef=mMap[CURRENT_MARKET] || mMain; if(!mdef) continue;
 
     const row=document.createElement('div'); row.className='fxrow';
     const idx=document.createElement('div'); idx.className='idx'; idx.textContent=String(rowIndex); row.appendChild(idx);
-
     const t=document.createElement('div'); t.className='fxteams';
     t.innerHTML = `${logoHTML(folder,H,true)} <span>${H}</span> <span class="vs">vs</span> ${logoHTML(folder,A,true)} <span>${A}</span>`;
     row.appendChild(t);
@@ -592,55 +637,68 @@ async function renderFootball(){
       b.title = `${s.name}`; b.onclick=()=>choose(ev,mdef,s); od.appendChild(b);
     });
     row.appendChild(od);
-
     stage.appendChild(row);
   }
 }
 
-/* ---------- Racing ---------- */
-async function renderRacing(game){
-  el('leagueChips').style.display='none';
-  const stage=el('stage'); stage.innerHTML='';
+/* ---------- Racing (dogs/horses) ---------- */
+if (!window.racingMkt) window.racingMkt = {dog:'MAIN', horse:'MAIN'};
 
-  if (!window.racingMkt) window.racingMkt = {dog:'MAIN', horse:'MAIN'};
+async function renderRacing(game){
+  const stage=el('stage'); stage.innerHTML='';
+  el('leagueChips').innerHTML=''; // not used for racing
+
+  // Markets (uniform)
   const mrow=document.createElement('div'); mrow.className='markets';
-  ['MAIN','FORECAST','QUINELLA','TRICAST'].forEach(m=>{
+  ;['MAIN','FORECAST','QUINELLA','TRICAST'].forEach(m=>{
     const b=document.createElement('div'); b.className='mkt'; if(window.racingMkt[game]===m) b.classList.add('active');
     b.textContent=m; b.onclick=()=>{window.racingMkt[game]=m; renderRacing(game);}; mrow.appendChild(b);
   });
   stage.appendChild(mrow);
 
+  // Time cards (uniform)
+  buildTimeCards(boundarySpanMs/60000);
+
+  // Events
   let events=[]; try{ const r=await API.get(`/events?game=${game}`); events=(await r.json()).slice(0,3);}catch{}
-  if(!events.length){ stage.innerHTML+='<div class="muted">No events.</div>'; return; }
+  if(!events || !events.length){ stage.innerHTML+='<div class="muted">No events.</div>'; return; }
 
   for(const ev of events){
     const byType = await getMarkets(ev.id);
     const main=byType['MAIN_WIN'];
 
-    const box=document.createElement('div'); box.className='panel'; box.style.background='#0e172f'; box.style.borderColor='#26385f';
-
+    // Lanes with labels
     if(main){
       const lanes=document.createElement('div'); lanes.className='track';
       const count = game==='horse' ? 8 : Math.min(12, main.selections.length);
-      for(let i=0;i<Math.min(count, main.selections.length);i++){
-        const r=document.createElement('div'); r.className='runner'; r.style.top=(14 + i*22)+'px';
+      lanes.style.setProperty('--lanes', String(count));
+      for(let i=0;i<count;i++){
+        const top=14 + i*24;
+        // label
+        const lab=document.createElement('div'); lab.className='lane-label'; lab.style.top=top+'px';
+        lab.innerHTML=`<span class="lane-badge">${i+1}</span><span class="lane-name">${(main.selections[i]?.name||'')}</span>`;
+        lanes.appendChild(lab);
+        // runner
+        const r=document.createElement('div'); r.className='runner'; r.style.top=top+'px';
         r.animate([{transform:'translateX(0)'},{transform:'translateX(8px)'},{transform:'translateX(0)'}],
           {duration:2200+Math.random()*1200,iterations:Infinity});
-        r.title=main.selections[i].name; lanes.appendChild(r);
+        lanes.appendChild(r);
       }
-      box.appendChild(lanes);
+      stage.appendChild(lanes);
     }
 
+    // Odds grid based on selected market
     function addGrid(title, m, cols){
       if(!m) return;
-      const lbl=document.createElement('div'); lbl.className='muted'; lbl.textContent=title; box.appendChild(lbl);
-      const row=document.createElement('div'); row.style.display='grid'; row.style.gridTemplateColumns=`repeat(${cols},1fr)`; row.style.gap='8px';
+      const card=document.createElement('div'); card.className='fxrow'; card.style.gridTemplateColumns='1fr';
+      card.innerHTML=`<div class="title" style="margin:0 0 6px">${title} • ${new Date(ev.runsAt+healthSkew).toLocaleTimeString()}</div>`;
+      const row=document.createElement('div'); row.style.display='grid'; row.style.gridTemplateColumns=`repeat(${cols},minmax(0,1fr))`; row.style.gap='8px';
       m.selections.forEach(s=>{
         const b=document.createElement('div'); b.className='oddbtn'; b.textContent=m.odds[s.id];
         b.title=s.name.replace(/DOG|HORSE/gi,'').trim();
         b.onclick=()=>choose(ev,m,s); row.appendChild(b);
       });
-      box.appendChild(row);
+      card.appendChild(row); stage.appendChild(card);
     }
 
     const want=window.racingMkt[game];
@@ -648,19 +706,19 @@ async function renderRacing(game){
     if(want==='FORECAST') addGrid('FORECAST (Exacta)', byType['FORECAST'], 3);
     if(want==='QUINELLA') addGrid('QUINELLA', byType['QUINELLA'], 3);
     if(want==='TRICAST') addGrid('TRICAST', byType['TRICAST'], 3);
-
-    el('stage').appendChild(box);
   }
 }
 
 /* ---------- Colors & Numbers ---------- */
 async function renderColorsNumbers(){
-  el('leagueChips').style.display='none';
   const stage=el('stage'); stage.innerHTML='';
+  el('leagueChips').innerHTML=''; // not used here
+  buildTimeCards(boundarySpanMs/60000);
 
+  // Colors
   let evC,marketsC,mC; try{ evC=(await (await API.get(`/events?game=colors`)).json())[0]; marketsC=await (await API.get(`/markets/${evC.id}`)).json(); mC=marketsC.find(x=>x.type==='MAIN_COLOR'); }catch{}
-  const boxC=document.createElement('div'); boxC.className='panel'; boxC.style.background='#0e172f'; boxC.style.borderColor='#26385f';
-  boxC.innerHTML='<div class="title">Colors</div>';
+  const boxC=document.createElement('div'); boxC.className='fxrow'; boxC.style.gridTemplateColumns='1fr';
+  boxC.innerHTML='<div class="title" style="margin:0 0 6px">Colors</div>';
   const gridC=document.createElement('div'); gridC.className='balls colors';
   mC?.selections?.forEach(s=>{
     const w=document.createElement('div'); w.className='ballwrap';
@@ -670,10 +728,11 @@ async function renderColorsNumbers(){
   });
   boxC.appendChild(gridC); stage.appendChild(boxC);
 
+  // Numbers
   let evN,marketsN,mN; try{ evN=(await (await API.get(`/events?game=lotto49`)).json())[0]; marketsN=await (await API.get(`/markets/${evN.id}`)).json(); mN=marketsN.find(x=>x.type==='PICK1'); }catch{}
   const colors=['RED','BLUE','GREEN','YELLOW','PURPLE','BLACK'];
-  const boxN=document.createElement('div'); boxN.className='panel'; boxN.style.background='#0e172f'; boxN.style.borderColor='#26385f';
-  boxN.innerHTML='<div class="title">Numbers 1–49</div>';
+  const boxN=document.createElement('div'); boxN.className='fxrow'; boxN.style.gridTemplateColumns='1fr';
+  boxN.innerHTML='<div class="title" style="margin:0 0 6px">Numbers 1–49</div>';
   const gridN=document.createElement('div'); gridN.className='balls numbers';
   mN?.selections?.forEach(s=>{
     const idx=(Number(s.id)-1)%colors.length;
@@ -685,7 +744,7 @@ async function renderColorsNumbers(){
   boxN.appendChild(gridN); stage.appendChild(boxN);
 }
 
-/* ---------- Router & Boot ---------- */
+/* ---------- Router ---------- */
 function setCategory(tab){
   document.querySelectorAll('.segbtn[data-tab]').forEach(b=>{
     const active = b.dataset.tab===tab; b.setAttribute('aria-pressed', active? 'true':'false');
@@ -697,22 +756,24 @@ function setCategory(tab){
   if (tab==='horses'){ renderRacing('horse'); }
   if (tab==='colors'){ renderColorsNumbers(); }
 }
-document.querySelectorAll('.segbtn[data-tab]').forEach(b=>{
-  b.addEventListener('click', ()=> setCategory(b.dataset.tab));
-});
+document.querySelectorAll('.segbtn[data-tab]').forEach(b=> b.addEventListener('click', ()=> setCategory(b.dataset.tab)));
+
 function refreshByTab(forceReloadEvents=false, timed=false){
-  if (CURRENT_TAB==='football') { if(forceReloadEvents||timed) { CACHE.loadedAt.football=0; } renderFootball(); }
+  if(forceReloadEvents||timed){ if(CURRENT_TAB==='football') CACHE.loadedAt.football=0; if(CURRENT_TAB==='dogs') CACHE.loadedAt.dog=0; if(CURRENT_TAB==='horses') CACHE.loadedAt.horse=0; if(CURRENT_TAB==='colors') CACHE.loadedAt.colors=0; }
+  if (CURRENT_TAB==='football') renderFootball();
   if (CURRENT_TAB==='dogs') renderRacing('dog');
   if (CURRENT_TAB==='horses') renderRacing('horse');
   if (CURRENT_TAB==='colors') renderColorsNumbers();
 }
 
+/* ---------- Boot ---------- */
 async function boot(){
+  drawClocks();
   await refreshCashier();
   setTiming();
-  setCategory('football'); // default; ensures MAIN market
+  setCategory('football');
   await loadTickets();
-  setInterval(async ()=>{ await refreshCashier(); refreshByTab(false,true); await loadTickets(); }, 9000);
+  setInterval(async ()=>{ drawClocks(); await refreshCashier(); refreshByTab(false,true); await loadTickets(); }, 9000);
 }
 boot();
 </script>
