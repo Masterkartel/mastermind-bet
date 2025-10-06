@@ -118,6 +118,8 @@
             <div style="flex:1"><label>Auto Cash-Out at (x)</label><input id="pA-auto-x" type="number" step="0.01" min="1.05" value="1.10"/></div>
           </div>
           <button class="btn green" id="pA-auto-on">Place Auto</button>
+          <!-- Auto Play toggle (added) -->
+          <div class="row"><button class="btn" id="pA-auto-toggle">Auto Play: OFF</button></div>
         </div>
         <div class="row"><div class="pill">Ticket: <b id="pA-ticket">—</b></div><div class="pill">Payout: <b id="pA-payout">—</b></div></div>
       </div>
@@ -137,6 +139,8 @@
             <div style="flex:1"><label>Auto Cash-Out at (x)</label><input id="pB-auto-x" type="number" step="0.01" min="1.05" value="1.20"/></div>
           </div>
           <button class="btn green" id="pB-auto-on">Place Auto</button>
+          <!-- Auto Play toggle (added) -->
+          <div class="row"><button class="btn" id="pB-auto-toggle">Auto Play: OFF</button></div>
         </div>
         <div class="row"><div class="pill">Ticket: <b id="pB-ticket">—</b></div><div class="pill">Payout: <b id="pB-payout">—</b></div></div>
       </div>
@@ -156,6 +160,8 @@
             <div style="flex:1"><label>Auto Cash-Out at (x)</label><input id="pC-auto-x" type="number" step="0.01" min="1.05" value="1.50"/></div>
           </div>
           <button class="btn green" id="pC-auto-on">Place Auto</button>
+          <!-- Auto Play toggle (added) -->
+          <div class="row"><button class="btn" id="pC-auto-toggle">Auto Play: OFF</button></div>
         </div>
         <div class="row"><div class="pill">Ticket: <b id="pC-ticket">—</b></div><div class="pill">Payout: <b id="pC-payout">—</b></div></div>
       </div>
@@ -169,7 +175,7 @@
 
   <div id="toaster" class="toaster"></div>
 
-  <!-- Spribe-like SFX (drop files in /static/sfx/); silent if not found -->
+  <!-- Spribe-like SFX (drop files in /static/sfx/); silent if not found) -->
   <audio id="sfx-bet"     src="/static/sfx/bet.wav"     preload="auto"></audio>
   <audio id="sfx-cash"    src="/static/sfx/cash.wav"    preload="auto"></audio>
   <audio id="sfx-takeoff" src="/static/sfx/takeoff.wav" preload="auto"></audio>
@@ -355,6 +361,9 @@ const centerText=document.getElementById('centerText');
 let STATE={ phase:'betting', multiplier:1, bust:2, history:[], speed:0.46, roundId:'-' };
 let gameSkew = 0;
 
+// Auto Play state (added)
+const AUTO_PLAY = { pA:false, pB:false, pC:false };
+
 function minFrontSeconds(bust){
   if (!bust || bust <= 1.02) return 0.10;
   if (bust <= 1.10) return 0.9;
@@ -484,22 +493,50 @@ function renderT(){
 }
 function markAllLiveAsLost(mult){ tickets.forEach(t=>{ if(t.state==='LIVE'){ t.state='LOST'; t.hit=mult; t.payout=0; } }); renderT(); }
 
-/* Notify auto-cashout */
-function maybeNotifyAutoWins(currentMult){
+/* ====== Auto cashout (server-side credit) — REPLACED ====== */
+async function maybeNotifyAutoWins(currentMult){
   if (STATE.phase!=='flying') return;
-  tickets.forEach(t=>{
-    if (t.state==='LIVE' && t.autoCashOut && !t._autoAnnounced && currentMult >= t.autoCashOut){
-      const est = Math.min(t.stake * currentMult, 20000);
-      notify(`Auto cash-out: ${KES(est)} at ${currentMult.toFixed(2)}x`, 'success');
+
+  for (const t of tickets) {
+    if (t.state!=='LIVE' || !t.autoCashOut || t._autoCashing) continue;
+    if (currentMult < t.autoCashOut) continue;
+
+    t._autoCashing = true; // ensure single fire
+    const serverClickTs = Math.round(Date.now() + gameSkew);
+    const uiMult = Number(currentMult);
+
+    try{
+      const r = await fetch(API.cashout(), {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ playerId:t.playerId, clientTs:serverClickTs, uiMult })
+      });
+      const j = await r.json();
+      if(!j.ok){
+        t._autoCashing = false;
+        notify(j.error || 'Auto cashout failed', 'error');
+        continue;
+      }
+
+      // success — reflect payout and balance
+      t.state   = 'CASHED';
+      t.payout  = j.payout;
+      t.hit     = j.multiplier;
+
+      notify(`Auto cash-out: ${KES(j.payout)} at ${Number(j.multiplier).toFixed(2)}x`, 'success');
       SFX.play('cash');
-      t.state='CASHED'; t.payout=est; t.hit=currentMult; t._autoAnnounced=true;
+
       const statusEl=document.getElementById(`${t.playerId}-status`);
       const pEl=document.getElementById(`${t.playerId}-payout`);
       if(statusEl) statusEl.textContent='CASHED (auto)';
-      if(pEl) pEl.textContent=KES(est);
+      if(pEl) pEl.textContent=KES(j.payout);
       renderT();
+      await refreshBal(t.playerId);
+    }catch{
+      t._autoCashing = false;
+      notify('Network error during auto cashout','error');
     }
-  });
+  }
 }
 
 /* ===== Stake validation (client-side warnings) ===== */
@@ -509,6 +546,41 @@ function validateStake(raw){
   if (stake < 20){ notify('Minimum stake is KES 20.', 'error'); return null; }
   if (stake > 1000){ notify('Maximum stake is KES 1000.', 'error'); return null; }
   return stake;
+}
+
+/* ===== Auto Play helper (place auto bet for a player) ===== */
+async function placeAutoFor(pid){
+  // don't place if already live
+  const hasLive = tickets.some(x => x.playerId===pid && x.state==='LIVE');
+  if (hasLive) return;
+
+  const card=document.querySelector(`.card[data-player="${pid}"]`);
+  const aStake=card.querySelector(`#${pid}-auto-stake`);
+  const aX=card.querySelector(`#${pid}-auto-x`);
+  const stake = validateStake(Number(aStake.value||0));
+  if (stake==null) return;
+  const x = clamp(Number(aX.value||0),1.05,1000);
+
+  try{
+    const r=await fetch(API.bet(),{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({playerId:pid, stake, autoCashOut:x})
+    });
+    const j=await r.json(); if(!j.ok){ notify(j.error||'Auto bet failed','error'); return; }
+    const status=document.getElementById(`${pid}-status`);
+    const tEl=document.getElementById(`${pid}-ticket`);
+    const pEl=document.getElementById(`${pid}-payout`);
+    if(status) status.textContent='LIVE';
+    if(tEl) tEl.textContent=j.ticketId;
+    if(pEl) pEl.textContent='—';
+    addT({playerId:pid,ticketId:j.ticketId,stake,autoCashOut:x,state:'LIVE'});
+    notify(`Auto bet placed: ${KES(stake)} @ ${x}x`, 'success', 1700);
+    SFX.play('bet');
+    await refreshBal(pid);
+  }catch{
+    notify('Network error placing auto bet','error');
+  }
 }
 
 /* polling */
@@ -532,6 +604,16 @@ async function poll(){
       progressVis = 0;
       SFX.play('takeoff');
     }
+
+    // NEW: when round opens for betting, auto-place for toggled players
+    if (lastPhase !== 'betting' && phase === 'betting'){
+      setTimeout(()=> {
+        Object.entries(AUTO_PLAY).forEach(([pid,on])=>{
+          if (on) placeAutoFor(pid);
+        });
+      }, 120);
+    }
+
     if (lastPhase !== 'busted' && phase === 'busted'){ markAllLiveAsLost(m); SFX.play('bust'); }
 
     STATE={ phase, multiplier:m, history, bust, speed };
@@ -560,6 +642,20 @@ function wireCard(pid){
   const status=card.querySelector(`#${pid}-status`), tEl=card.querySelector(`#${pid}-ticket`), pEl=card.querySelector(`#${pid}-payout`);
   const stakeEl=card.querySelector(`#${pid}-stake`), betBtn=card.querySelector(`#${pid}-bet`), cashBtn=card.querySelector(`#${pid}-cash`);
   const aStake=card.querySelector(`#${pid}-auto-stake`), aX=card.querySelector(`#${pid}-auto-x`), aBtn=card.querySelector(`#${pid}-auto-on`);
+  const autoToggleBtn=card.querySelector(`#${pid}-auto-toggle`); // added
+
+  // Auto Play toggle wiring (added)
+  function refreshAutoToggle(){
+    autoToggleBtn.textContent = `Auto Play: ${AUTO_PLAY[pid] ? 'ON' : 'OFF'}`;
+    autoToggleBtn.classList.toggle('green', AUTO_PLAY[pid]);
+  }
+  autoToggleBtn.onclick = ()=>{
+    AUTO_PLAY[pid] = !AUTO_PLAY[pid];
+    refreshAutoToggle();
+    if (AUTO_PLAY[pid]) notify('Auto Play ON — will place a bet each round', 'success');
+    else notify('Auto Play OFF', 'info');
+  };
+  refreshAutoToggle();
 
   betBtn.onclick=async ()=>{
     const entered = Number(stakeEl.value||0);
