@@ -99,7 +99,7 @@ const STATE = {
   // ---- Aviator engine ----
   aviator: {
     phase: 'betting',
-    multiplier: 1.00,     // displayed (capped at bust)
+    multiplier: 1.00,
     history: [],
     t0: Date.now(),
     nextChangeAt: Date.now() + 4500,
@@ -112,17 +112,17 @@ const STATE = {
 
 // Tunable pacing (frontend references SPEED to sync visuals)
 const AVIATOR_CFG = {
-  SPEED: 0.60,          // gentle baseline (eased)
-  EASE_POWER: 1.20,     // smoother early ramp
+  SPEED: 0.60,
+  EASE_POWER: 1.20,
   MIN_BET_MS: 4500,
   MIN_FLY_MS: 5500,
   BUST_HOLD_MS: 2000,
-  MAX_BUST: 1000        // allow very high tails
+  MAX_BUST: 1000
 };
 
-// Exposure-aware shaping (house edge preserved but more variety)
+// Exposure-aware shaping
 const EXPOSURE_CFG = {
-  hiTailChanceNoBets: 0.45, // big rounds are common with zero exposure
+  hiTailChanceNoBets: 0.45,
   hiTailChanceWithBets: 0.02,
   hiTailMin: 12,
   hiTailMax: 1000,
@@ -130,7 +130,6 @@ const EXPOSURE_CFG = {
   softCapPerK: 1.15
 };
 
-// === Dynamic min-flight (instant bust for tiny multipliers) ===
 function dynamicMinFlyMs(bust) {
   if (!bust || bust <= 1.02) return 120;
   if (bust <= 1.10) return 900;
@@ -139,11 +138,11 @@ function dynamicMinFlyMs(bust) {
 }
 
 // wallets
-function ensureCashier(id){ if(!STATE.cashiers.has(id)) STATE.cashiers.set(id,{balance:0}); return STATE.cashiers.get(id); }
-function creditCashier(id,amt){ ensureCashier(id).balance += Number(amt)||0; }
 function ensurePlayer(id){ if(!STATE.players.has(id)) STATE.players.set(id,{balance:0}); return STATE.players.get(id); }
 function creditPlayer(id,amt){ ensurePlayer(id).balance += Number(amt)||0; }
 function debitPlayer(id,amt){ const u=ensurePlayer(id); if (u.balance < amt) return false; u.balance -= amt; return true; }
+function ensureCashier(id){ if(!STATE.cashiers.has(id)) STATE.cashiers.set(id,{balance:0}); return STATE.cashiers.get(id); }
+function creditCashier(id,amt){ ensureCashier(id).balance += Number(amt)||0; }
 
 // cycles
 const CYCLE = { football:180*MS.s, dog:120*MS.s, horse:120*MS.s, colors:60*MS.s, lotto49:60*MS.s };
@@ -420,15 +419,15 @@ function runEvent(eventId){
 
 // ----------------- Aviator Helpers -----------------
 function drawBustCore(seed, alpha = 3.0, min = 1.00, max = AVIATOR_CFG.MAX_BUST){
-  const r = mulberry32(seed)();                // U(0,1)
-  const bust = min / Math.pow(1 - r, 1/alpha); // Pareto-like
+  const r = mulberry32(seed)();
+  const bust = min / Math.pow(1 - r, 1/alpha);
   return Math.max(min, Math.min(bust, max));
 }
 function liveMultiplierAt(A, tsMs){
   const tSec   = Math.max(0, (tsMs - A.t0)/1000);
   const shaped = Math.pow(tSec, AVIATOR_CFG.EASE_POWER);
   const speed  = AVIATOR_CFG.SPEED * (A.rateJitter || 1.0);
-  return Math.max(1.00, Math.exp(speed * shaped)); // uncapped live
+  return Math.max(1.00, Math.exp(speed * shaped));
 }
 function timeToReachMultMs(A, mult){
   const speed  = AVIATOR_CFG.SPEED * (A.rateJitter || 1.0);
@@ -436,7 +435,6 @@ function timeToReachMultMs(A, mult){
   return Math.max(0, tSec*1000);
 }
 function bustMomentMs(A){
-  // Actual “bust” moment: must both reach bustAt and satisfy min-fly duration
   const tReach = timeToReachMultMs(A, A.bustAt);
   const tMin   = dynamicMinFlyMs(A.bustAt);
   return A.t0 + Math.max(tReach, tMin);
@@ -452,7 +450,6 @@ function pickBustForRound(A){
   const { liveCount, stakeTotal } = exposureSummary(A);
   const alphaJitter = 2.1 + mulberry32(A.seed ^ 0x3434)()*3.4; // 2.1–5.5
 
-  // Zero exposure: allow heavy tails often
   if (liveCount === 0){
     const hi = mulberry32(A.seed ^ 0x5a5a)() < EXPOSURE_CFG.hiTailChanceNoBets;
     if (hi){
@@ -462,7 +459,6 @@ function pickBustForRound(A){
     return drawBustCore(A.seed, alphaJitter, 1.00, AVIATOR_CFG.MAX_BUST);
   }
 
-  // Some exposure: small chance of very high, otherwise soft-capped
   const allowHi = mulberry32(A.seed ^ 0x9e9e)() < EXPOSURE_CFG.hiTailChanceWithBets;
   let base = allowHi
     ? drawBustCore(A.seed ^ 0x7f7f, alphaJitter, 1.00, EXPOSURE_CFG.hiTailMax)
@@ -473,7 +469,7 @@ function pickBustForRound(A){
   if (base <= softCap) return base;
 
   const over = base - softCap;
-  const squashed = softCap + over / (1 + 0.85*over); // smooth squashing
+  const squashed = softCap + over / (1 + 0.85*over);
   return Math.min(Math.max(1.00, squashed), AVIATOR_CFG.MAX_BUST);
 }
 
@@ -528,7 +524,6 @@ function schedulerTick(now){
     if (ev.status==='OPEN' && now >= ev.locksAt) ev.status='LOCKED';
     if ((ev.status==='LOCKED' || ev.status==='OPEN') && now >= ev.runsAt) runEvent(ev.id);
   }
-  // keep queues filled
   ['dog','horse','colors','lotto49'].forEach(g=>{
     const future = [...STATE.events.values()].filter(e=>e.game===g && (e.status==='OPEN'||e.status==='LOCKED'));
     if (future.length < 1) scheduleEvent(g);
@@ -613,7 +608,7 @@ app.get('/receipt/:id', async (req,res)=>{
 app.get('/aviator', (_req,res)=> res.sendFile(path.join(__dirname, 'static', 'aviator.html')));
 app.get('/aviator/state', (_req,res)=>{
   const now = NOW();
-  advanceAviator(now); // drive engine on read
+  advanceAviator(now);
 
   const A = STATE.aviator;
   const phaseMap = { betting:'BETTING', flying:'RUNNING', busted:'BUST' };
@@ -626,7 +621,7 @@ app.get('/aviator/state', (_req,res)=>{
     status: phaseMap[A.phase],
     liveMultiplier: Number(A.multiplier.toFixed(2)),
     bust: Number(A.bustAt.toFixed(2)),
-    serverNow: now,  // <-- for precise client->server timestamping
+    serverNow: now,
     speed: AVIATOR_CFG.SPEED,
     minBetMs: AVIATOR_CFG.MIN_BET_MS,
     minFlyMs: AVIATOR_CFG.MIN_FLY_MS,
@@ -661,7 +656,7 @@ app.post('/aviator/bet', (req,res)=>{
 app.post('/aviator/cashout', (req,res)=>{
   const { playerId, clientTs, uiMult } = req.body || {};
   const now = NOW();
-  advanceAviator(now); // sync engine
+  advanceAviator(now);
   const A = STATE.aviator;
 
   const bet = A.bets.get(playerId);
@@ -670,20 +665,18 @@ app.post('/aviator/cashout', (req,res)=>{
   if (!bet.live || bet.cashed) return res.status(400).json({ ok:false, error:'Already settled' });
 
   const clickTs = Number.isFinite(Number(clientTs))
-    ? Math.min(now, Number(clientTs) + 10)  // tiny cushion
+    ? Math.min(now, Number(clientTs) + 10)
     : now;
 
   const bustAtMs = bustMomentMs(A);
   if (clickTs > bustAtMs + 80) return res.status(400).json({ ok:false, error:'Too late (busting)' });
 
-  // Compute live multiplier at the exact clickTs, cap to bustAt, floor 2dp (no -0.01 hacks)
   const liveAtClick = liveMultiplierAt(A, clickTs);
   let hit = floorDp(Math.min(liveAtClick, A.bustAt), 2);
 
-  // Optional: if UI sent its displayed value (for perfect UX alignment), use it if <= computed hit
   if (Number.isFinite(Number(uiMult))) {
     const ui = Math.max(1.00, floorDp(Number(uiMult),2));
-    if (ui <= hit) hit = ui; // trust the lower of the two (safe)
+    if (ui <= hit) hit = ui;
   }
 
   bet.cashed = true; bet.live = false; bet.hit = hit;
@@ -711,7 +704,6 @@ app.get('/', (_req,res)=> res.redirect('/static/cashier.html'));
 // ----------------- Boot -----------------
 app.listen(PORT, ()=>{
   console.log(`Mastermind server on :${PORT} (${DOMAIN})`);
-  // seed queues
   ['dog','horse','colors','lotto49'].forEach(g=>{ scheduleEvent(g); });
   ['EPL','LALIGA','UCL'].forEach(L=> seedFootballBatch(L));
 });
