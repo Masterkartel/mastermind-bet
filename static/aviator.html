@@ -357,7 +357,7 @@ const centerText=document.getElementById('centerText');
 
 /* ===== Flight model ===== */
 let STATE={ phase:'betting', multiplier:1, bust:2, history:[], speed:0.46, roundId:'-' };
-let gameSkew = 0;  // (FIX) declare only here, used for precise cashout timestamps
+let gameSkew = 0;  // used for precise cashout timestamps
 
 function minFrontSeconds(bust){
   if (!bust || bust <= 1.02) return 0.10;
@@ -396,6 +396,16 @@ function pathY(p, baseY, bust){
   const k   = 0.44 + 0.16 * steep;
   const pow = 1.05 + 0.10 * steep;
   return baseY - Math.pow(p, pow) * (baseY * (0.95 * k));
+}
+
+/* === screen-space projection so trail always starts bottom-left === */
+function toScreen(pt, camDY, camScale, left, baseY){
+  // Apply: translate(0, camDY) * translate(left,baseY) * scale(camScale) * translate(-left,-baseY)
+  const x1 = pt.x - left;
+  const y1 = pt.y - baseY;
+  const x2 = x1 * camScale;
+  const y2 = y1 * camScale;
+  return { x: left + x2, y: baseY + y2 + camDY };
 }
 
 /* draw */
@@ -439,33 +449,65 @@ function draw(mult,phase,dt){
   const camDY = (tipY < marginTop) ? (marginTop - tipY) : 0;
   const camScale = (isPhone ? (1 + t*0.14) : (1 + t*0.18));
 
+  /* -------- TRAIL IN SCREEN SPACE (origin fixed at bottom-left) -------- */
+  const steps=Math.max(2, Math.floor(340*t));
+  const pts=[];
+  for(let i=0;i<=steps;i++){
+    const p=i/340;
+    const wx=pathX(p,left,trackW), wy=pathY(p,baseY,bust);
+    pts.push(toScreen({x:wx,y:wy}, camDY, camScale, left, baseY));
+  }
+
+  // Bold trail stroke
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.lineCap='round';
+  ctx.lineJoin='round';
+  ctx.strokeStyle='#ff4d6d';
+  ctx.lineWidth=4;                         /* bolder trail */
+  ctx.shadowColor='rgba(255,77,109,0.45)'; /* soft glow */
+  ctx.shadowBlur=10;
+  ctx.stroke();
+  ctx.restore();
+
+  // Filled trail area to bottom-left of viewport
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(0, cssH);               // fixed screen bottom-left
+  for(let i=0;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.lineTo(0, cssH);
+  ctx.closePath();
+  ctx.fillStyle='rgba(255,77,109,0.18)';
+  ctx.fill();
+  ctx.restore();
+  /* --------------------------------------------------------------------- */
+
+  // particles & plane inside follow-cam transform (world space)
   ctx.save();
   ctx.translate(0, camDY);
   ctx.translate(left, baseY);
   ctx.scale(camScale, camScale);
   ctx.translate(-left, -baseY);
 
-  // trail polygon
-  const steps=Math.max(2, Math.floor(340*t));
-  ctx.beginPath(); ctx.moveTo(left, baseY);
-  for(let i=0;i<=steps;i++){ const p=i/340; ctx.lineTo(pathX(p,left,trackW), pathY(p,baseY,bust)); }
-  ctx.strokeStyle='#ff4d6d'; ctx.lineWidth=2; ctx.stroke();
-
-  ctx.lineTo(tipX, baseY); ctx.lineTo(left, baseY); ctx.closePath();
-  ctx.fillStyle='rgba(255,77,109,0.18)'; ctx.fill();
-
-  // particles (draw inside transform so positioning always matches plane)
+  // particles
   const p2 = Math.max(0, t - 0.010);
   const px2 = pathX(p2, left, trackW), py2 = pathY(p2, baseY, bust);
   spawnParticles(px2, py2, dt);
   updateParticles(dt);
   drawParticles();
 
-  // plane sprite — half-size on phones
-  const BASE_PLANE_SCALE = isPhone ? 0.75 : 1.5;   // (FIX) phone = half-size
+  // plane sprite (bold with glow)
+  const BASE_PLANE_SCALE = isPhone ? 0.75 : 1.5;
   const w=140*BASE_PLANE_SCALE, h=60*BASE_PLANE_SCALE;
   const tailAx=4/140, tailAy=36/60;
-  ctx.save(); ctx.translate(tipX, tipY); ctx.drawImage(planeImg, -w*tailAx, -h*tailAy, w, h); ctx.restore();
+  ctx.save();
+  ctx.shadowColor='rgba(255,77,109,0.55)';  // bold plane glow
+  ctx.shadowBlur=16;
+  ctx.translate(tipX, tipY);
+  ctx.drawImage(planeImg, -w*tailAx, -h*tailAy, w, h);
+  ctx.restore();
 
   ctx.restore();
 
@@ -476,9 +518,7 @@ function draw(mult,phase,dt){
 
 /* animation loop */
 function tick(now){
-  let dt = 0; // guard for first frame
-  if (typeof tick.lastTs === 'number') dt = (now - tick.lastTs)/1000; 
-  tick.lastTs = now; tAccum += dt;
+  const dt=(now-lastTs)/1000; lastTs=now; tAccum += dt;
 
   let target = 0;
   if (STATE.phase==='flying'){
