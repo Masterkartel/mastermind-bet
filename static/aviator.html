@@ -177,48 +177,110 @@ function notify(msg,type='info',ms=2400){
   setTimeout(()=>{ t.classList.remove('show'); setTimeout(()=>t.remove(),180); }, ms);
 }
 
-/* SFX (tiny, inline) */
+/* ===== SFX (spribe-ish; takeoff, bust, cash, plus flying loop) ===== */
 const sndBtn = document.getElementById('soundBtn');
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
 let ACTX=null, MASTER=null, SOUND_ON=false;
+
+let HUM=null, HUM_GAIN=null, HUM_LFO=null; // flying loop
+
 function ensureAudio(){
-  if (!ACTX){ ACTX = new AudioCtx(); MASTER = ACTX.createGain(); MASTER.gain.value = 0.18; MASTER.connect(ACTX.destination); }
+  if (!ACTX){
+    ACTX = new AudioCtx();
+    MASTER = ACTX.createGain(); MASTER.gain.value = 0.20; MASTER.connect(ACTX.destination);
+  }
 }
-function tone({type='sine',freq=440,dur=0.15,vol=0.35,attack=0.005,decay=0.12}){
+function env(g, t0, a=0.01, d=0.18){
+  g.gain.cancelScheduledValues(t0);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.linearRampToValueAtTime(g._max||0.35, t0 + a);
+  g.gain.exponentialRampToValueAtTime(0.0008, t0 + a + d);
+}
+function ping(type,f,vol=0.35,a=0.008,d=0.16){
   if(!SOUND_ON||!ACTX) return;
-  const t=ACTX.currentTime; const o=ACTX.createOscillator(); const g=ACTX.createGain();
-  o.type=type; o.frequency.setValueAtTime(freq,t);
-  g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+attack); g.gain.linearRampToValueAtTime(0.0001,t+attack+decay);
-  o.connect(g); g.connect(MASTER); o.start(t); o.stop(t+dur);
+  const t=ACTX.currentTime;
+  const o=ACTX.createOscillator(); o.type=type; o.frequency.setValueAtTime(f,t);
+  const g=ACTX.createGain(); g._max=vol;
+  o.connect(g); g.connect(MASTER);
+  env(g,t,a,d);
+  o.start(t); o.stop(t+a+d+0.02);
 }
-function sweepUp(f1=380,f2=1100,dur=0.5,type='sawtooth',vol=0.28){
+function whooshTakeoff(){
   if(!SOUND_ON||!ACTX) return;
-  const t=ACTX.currentTime; const o=ACTX.createOscillator(); const g=ACTX.createGain();
-  o.type=type; o.frequency.setValueAtTime(f1,t); o.frequency.exponentialRampToValueAtTime(f2,t+dur);
-  g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+0.03); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
-  o.connect(g); g.connect(MASTER); o.start(t); o.stop(t+dur+0.02);
+  const t=ACTX.currentTime;
+  const o=ACTX.createOscillator(); o.type='sawtooth'; o.frequency.setValueAtTime(280,t); o.frequency.exponentialRampToValueAtTime(1300,t+0.55);
+  const n=ACTX.createBufferSource();
+  const buf=ACTX.createBuffer(1, ACTX.sampleRate*0.6, ACTX.sampleRate);
+  const d=buf.getChannelData(0); for(let i=0;i<d.length;i++){ d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,1.5); }
+  n.buffer=buf;
+
+  const gO=ACTX.createGain(); gO._max=0.18; env(gO,t,0.03,0.5);
+  const gN=ACTX.createGain(); gN._max=0.22; env(gN,t,0.02,0.55);
+
+  o.connect(gO); gO.connect(MASTER);
+  n.connect(gN); gN.connect(MASTER);
+
+  o.start(t); o.stop(t+0.6);
+  n.start(t); n.stop(t+0.6);
 }
-function sweepDown(f1=1500,f2=90,dur=0.5,type='triangle',vol=0.30){
+function fallBust(){
   if(!SOUND_ON||!ACTX) return;
-  const t=ACTX.currentTime; const o=ACTX.createOscillator(); const g=ACTX.createGain();
-  o.type=type; o.frequency.setValueAtTime(f1,t); o.frequency.exponentialRampToValueAtTime(f2,t+dur);
-  g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
-  o.connect(g); g.connect(MASTER); o.start(t); o.stop(t+dur+0.02);
+  const t=ACTX.currentTime;
+  const o=ACTX.createOscillator(); o.type='triangle'; o.frequency.setValueAtTime(1600,t); o.frequency.exponentialRampToValueAtTime(100,t+0.55);
+  const g=ACTX.createGain(); g._max=0.28; env(g,t,0.02,0.55);
+  o.connect(g); g.connect(MASTER); o.start(t); o.stop(t+0.6);
 }
+function cashChirp(){
+  if(!SOUND_ON||!ACTX) return;
+  ping('triangle',760,0.26,0.01,0.12);
+  setTimeout(()=>ping('triangle',1080,0.26,0.01,0.14),60);
+}
+
+/* flying hum (subtle) */
+function startHum(){
+  if(!SOUND_ON||!ACTX || HUM) return;
+  const t=ACTX.currentTime;
+
+  HUM = ACTX.createOscillator(); HUM.type='sawtooth'; HUM.frequency.value = 110;
+  HUM_GAIN = ACTX.createGain(); HUM_GAIN.gain.value=0.0;
+
+  HUM_LFO = ACTX.createOscillator(); HUM_LFO.type='sine'; HUM_LFO.frequency.value=7.5;
+  const lfoGain = ACTX.createGain(); lfoGain.gain.value = 12; // vibrato depth (Hz)
+  HUM_LFO.connect(lfoGain); lfoGain.connect(HUM.frequency);
+
+  HUM.connect(HUM_GAIN); HUM_GAIN.connect(MASTER);
+  HUM.start(t); HUM_LFO.start(t);
+
+  HUM_GAIN.gain.linearRampToValueAtTime(0.12, t+0.25); // fade in
+}
+function stopHum(){
+  if(!HUM || !ACTX) return;
+  const t=ACTX.currentTime;
+  HUM_GAIN.gain.cancelScheduledValues(t);
+  HUM_GAIN.gain.linearRampToValueAtTime(0.0, t+0.15);
+  setTimeout(()=>{
+    try{ HUM.stop(); HUM.disconnect(); HUM=null; }catch{}
+    try{ HUM_LFO.stop(); HUM_LFO.disconnect(); HUM_LFO=null; }catch{}
+    HUM_GAIN=null;
+  }, 220);
+}
+
 const SFX = {
-  toggle(){ SOUND_ON=!SOUND_ON; if(SOUND_ON){ ensureAudio(); sndBtn.textContent='🔊'; } else { sndBtn.textContent='🔇'; } },
+  toggle(){ SOUND_ON=!SOUND_ON; if(SOUND_ON){ ensureAudio(); sndBtn.textContent='🔊'; } else { sndBtn.textContent='🔇'; stopHum(); } },
   play(name){
     if(!SOUND_ON) return;
-    if(name==='bet') tone({type:'square',freq:920,dur:0.09,vol:0.22,attack:0.002,decay:0.07});
-    if(name==='cash') { tone({type:'triangle',freq:720,dur:0.12,vol:0.26}); tone({type:'triangle',freq:1020,dur:0.16,vol:0.26}); }
-    if(name==='takeoff') sweepUp(340,1400,0.55,'sawtooth',0.22);
-    if(name==='bust') sweepDown(1600,110,0.55,'triangle',0.28);
-  }
+    if(name==='bet') ping('square',920,0.22,0.002,0.07);
+    if(name==='cash') cashChirp();
+    if(name==='takeoff') whooshTakeoff();
+    if(name==='bust') fallBust();
+  },
+  humOn: startHum,
+  humOff: stopHum
 };
 sndBtn.onclick = ()=>{ try{ SFX.toggle(); if(SOUND_ON&&ACTX.state==='suspended') ACTX.resume(); }catch{} };
 
 /* ===== Clock & skew ===== */
-const clk=document.getElementById('clock'); let healthSkew=0; /* (FIX) no duplicate gameSkew here */
+const clk=document.getElementById('clock'); let healthSkew=0;
 async function syncClock(){ try{ const r=await fetch(API.health()); const j=await r.json(); healthSkew=j.ts-Date.now(); }catch{ clk.textContent='OFFLINE'; } }
 setInterval(()=>{ const d=new Date(Date.now()+healthSkew); clk.textContent=d.toLocaleString(); }, 500); syncClock();
 
@@ -277,30 +339,16 @@ function fit(){
 }
 fit(); addEventListener('resize',()=>requestAnimationFrame(fit));
 
-/* Sky bits */
-const SKY = { streaks:[], clouds:[] };
-(function initSky(){
-  SKY.streaks.length=0; SKY.clouds.length=0;
-  const rnd=(a,b)=> a + Math.random()*(b-a);
-  const LAYERS = [
-    {n:28, sp:  16, len:[20,60], th:[1,2], a:0.10},
-    {n:22, sp:  28, len:[30,90], th:[1,2], a:0.16},
-    {n:16, sp:  42, len:[40,120],th:[1,2], a:0.22},
-  ];
-  LAYERS.forEach(L=>{ for(let i=0;i<L.n;i++){ SKY.streaks.push({ x:Math.random()*cssW, y:Math.random()*cssH, len:rnd(L.len[0],L.len[1]), th:rnd(L.th[0],L.th[1]), sp:L.sp*(0.7+Math.random()*0.6), a:L.a*(0.6+Math.random()*0.8) }); }});
-  for(let i=0;i<7;i++){ SKY.clouds.push({ x:Math.random()*cssW, y:Math.random()*cssH*0.7, r:120+Math.random()*220, a:0.05+Math.random()*0.08, spx:2+Math.random()*3, spy:-4 - Math.random()*4 }); }
-})();
-
 /* contrail particles — kept in world coords and drawn inside transform */
 const PARTICLES=[];
 function spawnParticles(px,py,dt){
-  const count = Math.min(30, Math.round(18 * dt * (0.6 + 1.1*progressVis)));
+  const count = Math.min(28, Math.round(18 * dt * (0.6 + 1.1*progressVis)));
   for(let i=0;i<count;i++){
     PARTICLES.push({
       x: px + (Math.random()*6-3),
       y: py + (Math.random()*6-3),
-      vx: -20 - Math.random()*22,
-      vy:  6  + Math.random()*10,
+      vx: -24 - Math.random()*24,
+      vy:  7  + Math.random()*10,
       life: 0.9 + Math.random()*1.0,
       age: 0,
       r: 1.0 + Math.random()*1.4
@@ -324,31 +372,42 @@ function drawParticles(){
   }
 }
 
-/* plane sprite */
+/* plane sprite — spribe-ish, bolder silhouette */
 const planeImg=new Image();
 planeImg.src='data:image/svg+xml;utf8,'+encodeURIComponent(`
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 60">
-  <g fill="#ff4d6d">
-    <path d="M4 36 L62 30 L138 30 L110 40 L62 38 L4 36 Z" opacity=".65"/>
-    <path d="M22 28 L66 20 L104 14 L122 18 L66 26 L22 28 Z"/>
-    <path d="M110 18 L136 29 L110 34 Z"/>
-    <rect x="61" y="24" width="10" height="6" rx="2" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 72">
+  <defs>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="2.2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g fill="#ff4d6d" stroke="#ff4d6d" stroke-width="2.2" filter="url(#glow)">
+    <path d="M8 42 L74 36 L154 34 L128 46 L74 44 Z" opacity="0.9"/>
+    <path d="M28 30 L86 20 L124 14 L140 18 L86 28 L28 32 Z" opacity="1"/>
+    <path d="M126 20 L154 34 L126 38 Z" opacity="1"/>
+    <rect x="73" y="28" width="14" height="8" rx="2" />
   </g>
 </svg>`);
 
-/* UI chips */
+/* UI chips (no duplicates between top strip and drawer) */
 function chipClass(v){ return v>=2?'good':(v>=1.3?'avg':'bad'); }
 const chipsBox=document.getElementById('chips'); const drawerGrid=document.getElementById('drawerGrid');
 const expander=document.getElementById('expander'); const moreBtn=document.getElementById('moreBtn');
 let expanded=false; moreBtn.onclick=()=>{ expanded=!expanded; expander.style.display=expanded?'block':'none'; };
+
 function paintChips(list){
+  const data = Array.isArray(list) ? list : [];
+  const HEAD = 6, MAX_DRAWER = 96;
+
   chipsBox.innerHTML='';
-  (list||[]).slice(0,6).forEach(v=>{
+  data.slice(0, HEAD).forEach(v=>{
     const c=document.createElement('div'); c.className='chip '+chipClass(v);
     c.textContent=Number(v).toFixed(2)+'x'; c.title=c.textContent; chipsBox.appendChild(c);
   });
+
   drawerGrid.innerHTML='';
-  (list||[]).slice(0,96).forEach(v=>{
+  data.slice(HEAD, HEAD+MAX_DRAWER).forEach(v=>{
     const d=document.createElement('div'); d.className='chip '+chipClass(v);
     d.textContent=Number(v).toFixed(2)+'x'; d.title=d.textContent; drawerGrid.appendChild(d);
   });
@@ -357,7 +416,7 @@ const centerText=document.getElementById('centerText');
 
 /* ===== Flight model ===== */
 let STATE={ phase:'betting', multiplier:1, bust:2, history:[], speed:0.46, roundId:'-' };
-let gameSkew = 0;  // used for precise cashout timestamps
+let gameSkew = 0;
 
 function minFrontSeconds(bust){
   if (!bust || bust <= 1.02) return 0.10;
@@ -371,24 +430,11 @@ let flightDurSec  = 6.0;
 let progressVis   = 0;
 let LAST_DRAW_MULT = 1.00;
 
-const NOISE = { sx:0, sy:0, fx:0, fy:0, phx:0, phy:0 };
-function mulberry32(a){ return function(){ let t=(a+=0x6D2B79F5); t=Math.imul(t^t>>>15,t|1); t^=t+Math.imul(t^t>>>7,t|61); return ((t^t>>>14)>>>0)/4294967296; } }
-function seedFromString(s){ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return h>>>0; }
-function reseedNoise(roundId){
-  const rnd = mulberry32(seedFromString(String(roundId||'x')));
-  NOISE.sx = 0.0011 + rnd()*0.0012;
-  NOISE.sy = 0.0036 + rnd()*0.0036;
-  NOISE.fx = 1.0   + rnd()*1.2;
-  NOISE.fy = 1.2   + rnd()*1.4;
-  NOISE.phx= rnd()*Math.PI*2;
-  NOISE.phy= rnd()*Math.PI*2;
-}
-
 function tFromMult(mult,bust){ if(!mult||mult<=1||!bust||bust<=1) return 0; return Math.min(1, Math.log(mult)/Math.log(bust)); }
 function multFromT(t,bust){ const b=Math.max(1.000001,Number(bust||2)); return Math.pow(b, Math.max(0,Math.min(1,t))); }
 function damp(cur,tgt,rate,dt){ const k=Math.exp(-rate*Math.max(0,dt)); return cur*k + tgt*(1-k); }
 
-/* Path helpers */
+/* Path helpers — always start bottom-left; follow-cam keeps it visible */
 const DIAG_END = 0.30;
 function pathX(p, left, trackW){ const s = 1 - Math.exp(-2.4 * p); const base = left + trackW * DIAG_END * s; const wob = Math.pow(p,1.2)*(0.0011*trackW)*Math.sin(1.2*Math.PI*p); return base + wob; }
 function pathY(p, baseY, bust){
@@ -396,16 +442,6 @@ function pathY(p, baseY, bust){
   const k   = 0.44 + 0.16 * steep;
   const pow = 1.05 + 0.10 * steep;
   return baseY - Math.pow(p, pow) * (baseY * (0.95 * k));
-}
-
-/* === screen-space projection so trail always starts bottom-left === */
-function toScreen(pt, camDY, camScale, left, baseY){
-  // Apply: translate(0, camDY) * translate(left,baseY) * scale(camScale) * translate(-left,-baseY)
-  const x1 = pt.x - left;
-  const y1 = pt.y - baseY;
-  const x2 = x1 * camScale;
-  const y2 = y1 * camScale;
-  return { x: left + x2, y: baseY + y2 + camDY };
 }
 
 /* draw */
@@ -449,62 +485,46 @@ function draw(mult,phase,dt){
   const camDY = (tipY < marginTop) ? (marginTop - tipY) : 0;
   const camScale = (isPhone ? (1 + t*0.14) : (1 + t*0.18));
 
-  /* -------- TRAIL IN SCREEN SPACE (origin fixed at bottom-left) -------- */
-  const steps=Math.max(2, Math.floor(340*t));
-  const pts=[];
-  for(let i=0;i<=steps;i++){
-    const p=i/340;
-    const wx=pathX(p,left,trackW), wy=pathY(p,baseY,bust);
-    pts.push(toScreen({x:wx,y:wy}, camDY, camScale, left, baseY));
-  }
-
-  // Bold trail stroke
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
-  ctx.lineCap='round';
-  ctx.lineJoin='round';
-  ctx.strokeStyle='#ff4d6d';
-  ctx.lineWidth=4;                         /* bolder trail */
-  ctx.shadowColor='rgba(255,77,109,0.45)'; /* soft glow */
-  ctx.shadowBlur=10;
-  ctx.stroke();
-  ctx.restore();
-
-  // Filled trail area to bottom-left of viewport
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(0, cssH);               // fixed screen bottom-left
-  for(let i=0;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
-  ctx.lineTo(0, cssH);
-  ctx.closePath();
-  ctx.fillStyle='rgba(255,77,109,0.18)';
-  ctx.fill();
-  ctx.restore();
-  /* --------------------------------------------------------------------- */
-
-  // particles & plane inside follow-cam transform (world space)
   ctx.save();
   ctx.translate(0, camDY);
   ctx.translate(left, baseY);
   ctx.scale(camScale, camScale);
   ctx.translate(-left, -baseY);
 
-  // particles
+  // ===== CONTRAIL (bold, inside only) =====
+  const steps=Math.max(2, Math.floor(360*t));
+  ctx.beginPath(); ctx.moveTo(left, baseY);
+  for(let i=0;i<=steps;i++){ const p=i/360; ctx.lineTo(pathX(p,left,trackW), pathY(p,baseY,bust)); }
+
+  // glow stroke (outer)
+  ctx.save();
+  ctx.strokeStyle='rgba(255,77,109,0.25)';
+  ctx.lineWidth=12; ctx.lineJoin='round'; ctx.lineCap='round';
+  ctx.shadowColor='rgba(255,77,109,0.18)'; ctx.shadowBlur=14;
+  ctx.stroke();
+  ctx.restore();
+
+  // main stroke
+  ctx.strokeStyle='#ff4d6d';
+  ctx.lineWidth=4.5; ctx.lineJoin='round'; ctx.lineCap='round';
+  ctx.stroke();
+
+  // inner core
+  ctx.strokeStyle='rgba(255,210,220,0.65)';
+  ctx.lineWidth=2.2; ctx.stroke();
+
+  // particles (draw inside transform so positioning always matches plane)
   const p2 = Math.max(0, t - 0.010);
   const px2 = pathX(p2, left, trackW), py2 = pathY(p2, baseY, bust);
   spawnParticles(px2, py2, dt);
   updateParticles(dt);
   drawParticles();
 
-  // plane sprite (bold with glow)
-  const BASE_PLANE_SCALE = isPhone ? 0.75 : 1.5;
-  const w=140*BASE_PLANE_SCALE, h=60*BASE_PLANE_SCALE;
-  const tailAx=4/140, tailAy=36/60;
+  // plane sprite — bold
+  const BASE_PLANE_SCALE = isPhone ? 0.78 : 1.56;
+  const w=160*BASE_PLANE_SCALE, h=72*BASE_PLANE_SCALE;
+  const tailAx=8/160, tailAy=42/72; // anchor near exhaust
   ctx.save();
-  ctx.shadowColor='rgba(255,77,109,0.55)';  // bold plane glow
-  ctx.shadowBlur=16;
   ctx.translate(tipX, tipY);
   ctx.drawImage(planeImg, -w*tailAx, -h*tailAy, w, h);
   ctx.restore();
@@ -594,10 +614,11 @@ async function poll(){
       const offsetSec = Math.min(flightDurSec, Math.log(Math.max(1.000001,m)) / Math.max(0.01, speed));
       flightStartMs = performance.now() - offsetSec*1000;
       progressVis = 0;
-      if (roundId !== lastRoundId){ reseedNoise(roundId); lastRoundId=roundId; }
-      SFX.play('takeoff');
+      if (roundId !== lastRoundId){ lastRoundId=roundId; }
+      SFX.play('takeoff'); SFX.humOn();
     }
-    if (lastPhase !== 'busted' && phase === 'busted'){ markAllLiveAsLost(m); SFX.play('bust'); }
+    if (lastPhase !== 'busted' && phase === 'busted'){ markAllLiveAsLost(m); SFX.play('bust'); SFX.humOff(); }
+    if (lastPhase !== 'betting' && phase === 'betting'){ SFX.humOff(); }
 
     STATE={ phase, multiplier:m, history, bust, speed, roundId };
     paintChips(history);
@@ -634,7 +655,7 @@ function wireCard(pid){
       status.textContent='LIVE'; tEl.textContent=j.ticketId; pEl.textContent='—';
       addT({playerId:pid,ticketId:j.ticketId,stake,state:'LIVE'});
       notify(`Bet placed: ${KES(stake)}`, 'success', 1600);
-      SFX.play('bet');
+      if(SOUND_ON) ping('square',920,0.22,0.002,0.07);
       await refreshBal(pid);
     }catch{ notify('Network error placing bet','error'); }
   };
@@ -665,7 +686,7 @@ function wireCard(pid){
       status.textContent='LIVE'; tEl.textContent=j.ticketId; pEl.textContent='—';
       addT({playerId:pid,ticketId:j.ticketId,stake,autoCashOut:x,state:'LIVE'});
       notify(`Auto bet placed: ${KES(stake)} @ ${x}x`, 'success', 1700);
-      SFX.play('bet');
+      if(SOUND_ON) ping('square',920,0.22,0.002,0.07);
       await refreshBal(pid);
     }catch{ notify('Network error placing auto bet','error'); }
   };
