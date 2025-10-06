@@ -3,18 +3,30 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>MASTERMIND — Cashier</title>
+  <title>Cashier</title>
   <style>
     :root{
       --bg:#0a0e1a; --panel:#0e162b; --line:#24304f; --text:#e6edf3; --muted:#9aa4b2;
       --accent:#22c55e; --danger:#ef4444; --warn:#f59e0b; --chip:#101a34;
     }
     *{box-sizing:border-box}
-    body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--bg);color:var(--text)}
-    header{padding:12px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+    html, body { margin:0; padding:0; height:100%; width:100%; overflow-x:hidden; background:var(--bg); color:var(--text); }
+    header{
+      padding:12px 18px;border-bottom:1px solid var(--line);
+      display:flex;align-items:center;gap:12px;flex-wrap:wrap
+    }
     .brand{font-weight:900;letter-spacing:.4px}
-    .container{max-width:1200px;margin:0 auto;padding:16px;display:grid;grid-template-columns:2.1fr .9fr;gap:16px}
-    .panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px}
+    .hbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-left:auto}
+    .kpi{padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:#0e172f;font-size:12px}
+    .link{display:flex;align-items:center;gap:6px;text-decoration:none;color:#7dd3fc}
+    .link img{width:22px;height:22px;display:block}
+    .link small{display:block;font-size:10px;line-height:1;letter-spacing:.6px;text-transform:uppercase;color:#cfe1ff;opacity:.9;text-align:center}
+
+    .container{
+      width:100%; max-width:100%; margin:0; padding:10px;
+      display:grid; grid-template-columns:2.1fr .9fr; gap:14px;
+    }
+    .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;width:100%}
     .tabs{display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap}
     .tab{padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#0f1933;color:#e6edf3;cursor:pointer;font-weight:800}
     .tab.active{outline:2px solid var(--accent)}
@@ -24,24 +36,31 @@
     .sel{padding:10px;border:1px solid var(--line);border-radius:10px;background:#0d1428;cursor:pointer;text-align:center}
     .sel:hover{outline:2px solid #1f6feb44}
     .tag{font-size:12px;color:#b7c0cd;margin:4px 0}
-    .right{display:grid;gap:12px}
     .title{font-weight:900;margin-bottom:8px}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0d1428}
     input,button{font-family:inherit}
     input[type="number"], input[type="text"]{width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:#0d1428;color:#fff}
     .btn{padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#0d1428;color:#fff;cursor:pointer;font-weight:800}
     .btn.primary{background:#0f2b1b;border-color:#1b4d28}
-    .row{display:flex;gap:8px;align-items:center}
-    .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0d1428}
-    .danger{color:#fff;background:#3b0b0b;border-color:#4d1313}
-    .warn{background:#2b250f;border-color:#4b3e12}
-    .ok{background:#102b16;border-color:#1b4d28}
-    .kpi{padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:#0e172f;font-size:12px}
-    .hbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-    .betslip{display:grid;gap:8px}
-    .note{font-size:12px;color:#b9c2cf}
+    .btn.warn{background:#2b250f;border-color:#4b3e12}
+    .btn.danger{background:#3b0b0b;border-color:#4d1313}
     .divider{height:1px;background:var(--line);margin:8px 0}
 
-    /* glossy pool-like balls */
+    /* racing lanes (more realistic) */
+    .track{position:relative;height:170px;border:1px dashed var(--line);border-radius:12px;margin-bottom:8px;background:repeating-linear-gradient(to bottom, #0f1629 0, #0f1629 26px, #0b1324 26px, #0b1324 28px)}
+    .runner{position:absolute;left:8px;width:46px;height:18px;background:#e5e7eb;border-radius:3px 10px 10px 3px;box-shadow:0 0 6px #fff2; display:flex;align-items:center;justify-content:center;color:#111;font-size:12px;font-weight:900}
+    .runner::after{content:""; position:absolute; right:-6px; top:6px; width:8px; height:6px; border-radius:2px; background:#d1d5db; box-shadow:0 0 6px #fff2;}
+    .laneNum{position:absolute;left:0;top:0;transform:translate(6px,4px);font-size:10px;color:#111;opacity:.7}
+    .runner.move{animation:run 6s linear infinite}
+    @keyframes run { 0%{transform:translateX(0)} 100%{transform:translateX(calc(100% - 70px))} }
+
+    /* market toggles (dogs/horses) */
+    .togglebar{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+    .toggle{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0d1428;cursor:pointer;font-size:12px}
+    .toggle.active{outline:2px solid var(--accent)}
+
+    /* Colors + Numbers grid */
     .balls{display:grid;grid-template-columns:repeat(7, 1fr);gap:10px}
     .ball{
       height:48px;width:48px;border-radius:50%;
@@ -62,24 +81,37 @@
     .PURPLE{background:#a855f7}
     .BLACK{background:#111827;color:#e5e7eb;border-color:#000}
 
-    /* racing lanes */
-    .track{position:relative;height:170px;border:1px dashed var(--line);border-radius:12px;margin-bottom:8px;background:repeating-linear-gradient(to bottom, #0f1629 0, #0f1629 26px, #0b1324 26px, #0b1324 28px)}
-    .runner{position:absolute;left:8px;width:36px;height:18px;background:#e5e7eb;border-radius:3px 10px 10px 3px;box-shadow:0 0 6px #fff2}
-    .badge{display:inline-block;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0d1428;margin-right:6px;font-size:12px}
-    .chips{display:flex;gap:6px;flex-wrap:wrap}
-    .chip{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:var(--chip);cursor:pointer}
-    .chip.active{outline:2px solid var(--accent)}
-    .small{font-size:12px}
+    /* tickets history watermark */
+    .tickets-list .item{position:relative;padding:10px;border:1px solid var(--line);border-radius:10px;background:#0d1428;margin-bottom:8px}
+    .tickets-list .item .wm{
+      position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+      font-size:40px; font-weight:900; letter-spacing:6px; color:#ffffff0f; pointer-events:none; user-select:none;
+      text-transform:uppercase;
+    }
+    .wm.OPEN{color:#93c5fd1a}
+    .wm.WON{color:#22c55e22}
+    .wm.LOST{color:#ef444422}
+
+    /* Clock pill */
+    .clock{min-width:220px;text-align:right}
+
+    /* Responsive */
+    @media (max-width: 960px) {
+      .container { grid-template-columns:1fr; padding:6px; gap:10px; }
+      header { flex-direction:column; align-items:flex-start; gap:8px; }
+      .hbar { gap:6px; }
+      .balls{grid-template-columns:repeat(6,1fr)}
+    }
   </style>
 </head>
 <body>
 <header>
-  <div class="brand">MASTERMIND — Cashier</div>
-  <div class="hbar">
-    <div class="kpi">Cashier: <b id="cashierId">shop-1</b></div>
-    <div class="kpi">Balance: <b id="cashBal">0 KES</b></div>
-    <div class="kpi"><a href="/aviator" style="color:#7dd3fc;text-decoration:none">Aviator Page ➜</a></div>
-  </div>
+  <div class="brand">Cashier</div>
+  <a class="link" href="/aviator" target="_blank" title="Open Aviator">
+    <img src="/static/img/aviator-icon.png" alt="Aviator"/>
+    <small>Aviator</small>
+  </a>
+  <div class="kpi clock" id="clock">—</div>
 </header>
 
 <div class="container">
@@ -90,48 +122,78 @@
       <div class="tab" data-tab="dogs">Dogs</div>
       <div class="tab" data-tab="horses">Horses</div>
       <div class="tab" data-tab="colors">Colors</div>
-      <div class="tab" data-tab="lotto">Numbers 1–49</div>
-      <div class="tab" onclick="location.href='/aviator'">Aviator</div>
+      <div class="tab" onclick="window.open('/aviator','_blank')">Aviator</div>
     </div>
 
     <div class="title" id="title">—</div>
     <div id="stage" class="grid"></div>
   </div>
 
-  <!-- RIGHT: up next, previous, betslip -->
-  <div class="right">
-    <div class="panel">
-      <div class="title">Controls</div>
-      <div class="row"><input id="cashierIdInput" value="shop-1"><button class="btn" onclick="applyCashier()">Set Cashier</button><button class="btn" onclick="topupCashier(5000)">Top-up 5,000</button></div>
-      <div class="row small muted">Min 20, Max 1,000, Max Payout 20,000</div>
+  <!-- RIGHT: controls + up next + betslip + aviator wallet -->
+  <div class="panel">
+    <div class="title">Controls</div>
+    <div class="row">
+      <div class="kpi">Cashier: <b id="cashierId">shop-1</b></div>
+      <div class="kpi">Balance: <b id="cashBal">0 KES</b></div>
+    </div>
+    <div class="row">
+      <input id="cashierIdInput" value="shop-1" placeholder="Cashier ID">
+      <button class="btn" onclick="applyCashier()">Set</button>
+      <button class="btn" onclick="topupCashier(5000)">Top-up 5,000</button>
+    </div>
+    <div class="row muted small">Min 20, Max 1,000, Max Payout 20,000</div>
+
+    <div class="divider"></div>
+
+    <div class="title">Aviator Players (A/B/C)</div>
+    <div class="row">
+      <div class="pill">A: <b id="pA-bal">—</b></div>
+      <input id="pA-amt" type="number" min="20" max="50000" placeholder="Amount">
+      <button class="btn primary" onclick="loadPlayer('pA')">Load</button>
+      <button class="btn warn" onclick="payPlayer('pA')">Pay Player (clear)</button>
+    </div>
+    <div class="row">
+      <div class="pill">B: <b id="pB-bal">—</b></div>
+      <input id="pB-amt" type="number" min="20" max="50000" placeholder="Amount">
+      <button class="btn primary" onclick="loadPlayer('pB')">Load</button>
+      <button class="btn warn" onclick="payPlayer('pB')">Pay Player (clear)</button>
+    </div>
+    <div class="row">
+      <div class="pill">C: <b id="pC-bal">—</b></div>
+      <input id="pC-amt" type="number" min="20" max="50000" placeholder="Amount">
+      <button class="btn primary" onclick="loadPlayer('pC')">Load</button>
+      <button class="btn warn" onclick="payPlayer('pC')">Pay Player (clear)</button>
     </div>
 
-    <div class="panel">
-      <div class="title">Up Next</div>
-      <div id="next" class="list"></div>
-      <div class="divider"></div>
-      <div class="title">Previous Results</div>
-      <div id="prev" class="list"></div>
-    </div>
+    <div class="divider"></div>
 
-    <div class="panel">
+    <div class="title">Up Next</div>
+    <div id="next" class="list"></div>
+    <div class="divider"></div>
+
+    <!-- Betslip (hidden until a selection is chosen) -->
+    <div id="betslipPanel" class="panel" style="padding:10px; display:none; background:#0f1933;">
       <div class="title">Betslip</div>
-      <div class="betslip">
-        <div class="muted" id="currentSel">No selection</div>
-        <input id="stake" type="number" min="20" max="1000" value="100" placeholder="Stake (KES)"/>
-        <div class="row"><div class="pill">Odds: <b id="odds">—</b></div><div class="pill">Potential: <b id="payout">—</b></div></div>
-        <button class="btn primary" onclick="placeBet()">Place Bet</button>
-        <div class="note">Min 20, Max 1000, Max Payout 20,000</div>
-        <div class="divider"></div>
-        <div class="title small">Recent Tickets</div>
-        <div id="tickets" class="list"></div>
-      </div>
+      <div class="muted" id="currentSel">No selection</div>
+      <input id="stake" type="number" min="20" max="1000" value="100" placeholder="Stake (KES)"/>
+      <div class="row"><div class="pill">Odds: <b id="odds">—</b></div><div class="pill">Potential: <b id="payout">—</b></div></div>
+      <button class="btn primary" onclick="placeBet()">Place Bet</button>
+      <div class="note muted small">Min 20, Max 1000, Max Payout 20,000</div>
     </div>
+
+    <div class="divider"></div>
+
+    <div class="title">History</div>
+    <div class="row">
+      <input id="ticketSearch" type="text" placeholder="Scan/enter ticket ref (e.g. T-XXXX) or ID…"/>
+      <button class="btn" onclick="loadTickets()">Search</button>
+    </div>
+    <div id="tickets" class="tickets-list"></div>
   </div>
 </div>
 
 <script>
-const api = location.origin.replace(/:\\d+$/, ':4000'); // works behind nginx
+const api = location.origin.replace(/:\d+$/, ':4000'); // works behind nginx
 const KES = (x)=> new Intl.NumberFormat('en-KE',{style:'currency',currency:'KES'}).format(Number(x||0));
 
 let CURRENT = null;        // { event, market, selection }
@@ -139,25 +201,36 @@ let CURRENT_TAB = 'football';
 let CURRENT_LEAGUE = 'EPL';
 let CASHIER_ID = 'shop-1';
 
+/* ===== Clock (like /aviator) ===== */
+const clk=document.getElementById('clock'); let healthSkew=0;
+async function syncClock(){ try{ const r=await fetch(`${api}/health`); const j=await r.json(); healthSkew=j.ts-Date.now(); }catch{ clk.textContent='OFFLINE'; } }
+setInterval(()=>{ const d=new Date(Date.now()+healthSkew); clk.textContent=d.toLocaleString(); }, 500); syncClock();
+
+/* ===== Cashier state ===== */
 function el(id){ return document.getElementById(id); }
 function setTitle(t){ el('title').textContent = t; }
 
-// Cashier state
 async function refreshCashier(){
-  const r = await fetch(`${api}/cashier/${CASHIER_ID}/balance`); const j = await r.json();
-  el('cashBal').textContent = KES(j.balance);
-  el('cashierId').textContent = CASHIER_ID;
+  try{
+    const r = await fetch(`${api}/cashier/${CASHIER_ID}/balance`); const j = await r.json();
+    el('cashBal').textContent = KES(j.balance||0);
+    el('cashierId').textContent = CASHIER_ID;
+  }catch{}
 }
 async function topupCashier(amount){
-  await fetch(`${api}/cashier/topup`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cashierId:CASHIER_ID,amount})});
-  refreshCashier();
+  try{
+    await fetch(`${api}/cashier/topup`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cashierId:CASHIER_ID,amount})});
+    refreshCashier();
+  }catch{}
 }
 function applyCashier(){ CASHIER_ID = el('cashierIdInput').value || 'shop-1'; refreshCashier(); }
 
-// Betslip helpers
+/* ===== Betslip visibility + helpers ===== */
+function showBetslip(show){ el('betslipPanel').style.display = show ? 'block' : 'none'; }
 function choose(ev, m, sel){
   CURRENT = {event:ev, market:m, selection:sel};
-  el('currentSel').textContent = `${ev.game.toUpperCase()} — ${m.type} — ${sel.name} @ ${m.odds[sel.id]}`;
+  showBetslip(true);
+  el('currentSel').textContent = `${ev.game.toUpperCase()} — ${m.type} — ${sel.name} ${m.odds[sel.id]}`;
   el('odds').textContent = m.odds[sel.id];
   const stake = Number(el('stake').value || 0);
   el('payout').textContent = stake ? KES(Math.min(stake * Number(m.odds[sel.id]), 20000)) : '—';
@@ -171,28 +244,64 @@ el('stake').addEventListener('input',()=>{
 async function placeBet(){
   if (!CURRENT) return alert('Pick a market/selection first');
   const stake = Number(el('stake').value || 0);
+  if (!Number.isFinite(stake) || stake < 20) return alert('Minimum stake is 20 KES');
+  if (stake > 1000) return alert('Maximum stake is 1000 KES');
+
   const payload = { eventId: CURRENT.event.id, marketId: CURRENT.market.id, selectionId: CURRENT.selection.id, stake, cashierId: CASHIER_ID };
   const r = await fetch(`${api}/bets`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   const j = await r.json();
   if (!j.ok) return alert(j.error || JSON.stringify(j));
+
   refreshCashier();
-  // add to recent tickets + open receipt
+  // auto load history
   loadTickets();
-  window.open(`/receipt/${j.bet.id}`,'_blank');
+
+  // Auto-open receipt and try to print (thermal will intercept if backend handles)
+  const receiptUrl = `/receipt/${j.bet.id}`;
+  const w = window.open(receiptUrl,'_blank');
+  if (w) setTimeout(()=>{ try{ w.focus(); w.print(); }catch{} }, 800);
 }
 
+/* ===== History + Search (barcode ready) ===== */
+let LAST_TICKETS = [];
 async function loadTickets(){
-  const r = await fetch(`${api}/bets?cashierId=${encodeURIComponent(CASHIER_ID)}`); const list = await r.json();
+  const q = el('ticketSearch').value.trim().toLowerCase();
+  try{
+    const r = await fetch(`${api}/bets?cashierId=${encodeURIComponent(CASHIER_ID)}`);
+    const list = await r.json();
+    LAST_TICKETS = Array.isArray(list) ? list : [];
+    renderTickets(q);
+  }catch{
+    renderTickets('');
+  }
+}
+function renderTickets(query){
   const box = el('tickets'); box.innerHTML = '';
-  list.slice(0,10).forEach(t=>{
+  let items = LAST_TICKETS;
+  if (query){
+    items = items.filter(t=>{
+      const ref=(t.ref||'').toLowerCase();
+      const id=(t.id||'').toLowerCase();
+      return ref.includes(query) || id.includes(query);
+    });
+  }
+  items.slice(0,14).forEach(t=>{
     const d = document.createElement('div');
-    d.className='sel';
-    d.textContent = `${t.ref} — ${t.status} — ${KES(t.stake)} @ ${t.odds} → ${t.payout?KES(t.payout):''}`;
+    d.className='item';
+    const line = `${t.ref||t.id||''} — ${t.status} — ${KES(t.stake)} ${t.odds} → ${t.payout?KES(t.payout):''}`;
+    d.textContent = line;
+    const wm = document.createElement('div');
+    wm.className = `wm ${t.status||'OPEN'}`;
+    wm.textContent = (t.status||'OPEN');
+    d.appendChild(wm);
     box.appendChild(d);
   });
 }
+el('ticketSearch').addEventListener('keydown', (e)=>{
+  if (e.key === 'Enter'){ loadTickets(); }
+});
 
-/* -------- Tabs ---------- */
+/* ===== Tabs ===== */
 document.querySelectorAll('.tab[data-tab]').forEach(t=>{
   t.addEventListener('click', ()=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
@@ -200,24 +309,25 @@ document.querySelectorAll('.tab[data-tab]').forEach(t=>{
     CURRENT_TAB = t.dataset.tab;
     el('stage').innerHTML = '';
     el('next').innerHTML = '';
-    el('prev').innerHTML = '';
+    showBetslip(false);
     if (CURRENT_TAB==='football') loadFootball();
     if (CURRENT_TAB==='dogs') loadRacing('dog');
     if (CURRENT_TAB==='horses') loadRacing('horse');
-    if (CURRENT_TAB==='colors') loadColors();
-    if (CURRENT_TAB==='lotto') loadLotto();
+    if (CURRENT_TAB==='colors') loadColorsMerged();
   });
 });
 
-/* -------- Football (multi-fixture with markets) ---------- */
+/* ===== Football ===== */
 async function loadFootball(){
   // league chips
-  const head = document.createElement('div'); head.className='chips';
+  const head = document.createElement('div'); head.className='row';
+  const chips = document.createElement('div'); chips.className='row';
   ['EPL','LALIGA','UCL'].forEach(L=>{
-    const c=document.createElement('div'); c.className='chip'; if(L===CURRENT_LEAGUE) c.classList.add('active');
-    c.textContent=L; c.onclick=()=>{ CURRENT_LEAGUE=L; el('stage').innerHTML=''; loadFootball(); };
-    head.appendChild(c);
+    const c=document.createElement('div'); c.className='pill'; if(L===CURRENT_LEAGUE) c.style.outline='2px solid var(--accent)';
+    c.style.cursor='pointer'; c.textContent=L; c.onclick=()=>{ CURRENT_LEAGUE=L; el('stage').innerHTML=''; loadFootball(); };
+    chips.appendChild(c);
   });
+  head.appendChild(chips);
   el('stage').appendChild(head);
 
   const all = (await (await fetch(`${api}/events?game=football`)).json()).filter(e=>e.league===CURRENT_LEAGUE);
@@ -238,7 +348,7 @@ async function loadFootball(){
       const lab=document.createElement('div'); lab.className='muted'; lab.textContent=tag; box.appendChild(lab);
       const row=document.createElement('div'); row.style.display='grid'; row.style.gridTemplateColumns=`repeat(${cols}, 1fr)`; row.style.gap='8px';
       m.selections.forEach(s=>{
-        const b=document.createElement('div'); b.className='sel'; b.textContent=`${s.name} @ ${m.odds[s.id]}`;
+        const b=document.createElement('div'); b.className='sel'; b.textContent=`${s.name}  ${m.odds[s.id]}`;
         b.onclick=()=>choose(ev,m,s); row.appendChild(b);
       });
       box.appendChild(row);
@@ -255,127 +365,150 @@ async function loadFootball(){
     el('stage').appendChild(box);
   }
 
-  // side panels
+  // side: Up next (3)
   el('next').innerHTML='';
   all.slice(10,13).forEach(n=>{
     const d=document.createElement('div'); d.className='sel';
     d.textContent=`${new Date(n.runsAt).toLocaleTimeString()} — ${n.home.abbr} vs ${n.away.abbr}`;
     el('next').appendChild(d);
   });
-  const res = await (await fetch(`${api}/results?game=football&limit=8`)).json();
-  el('prev').innerHTML='';
-  res.forEach(r=>{ const d=document.createElement('div'); d.className='sel'; d.textContent=`${r.league||''} ${r.score}`; el('prev').appendChild(d); });
-
-  CURRENT=null; el('currentSel').textContent='No selection'; el('odds').textContent='—'; el('payout').textContent='—';
 }
 
-/* -------- Racing (Dogs/Horses) ---------- */
+/* ===== Racing (Dogs/Horses) with toggles ===== */
 async function loadRacing(game){
-  setTitle(game==='dog'?'Dogs — WIN / FORECAST / QUINELLA / TRICAST':'Horses — WIN / FORECAST / QUINELLA / TRICAST');
+  setTitle((game==='dog'?'Dogs':'Horses') + ' — WIN / FORECAST / QUINELLA / TRICAST');
+
   const events = (await (await fetch(`${api}/events?game=${game}`)).json()).slice(0,3);
   if (!events.length){ el('stage').innerHTML='<div class="muted">No events.</div>'; return; }
 
   for (const ev of events){
     const markets = await (await fetch(`${api}/markets/${ev.id}`)).json();
-    const main = markets.find(x=>x.type==='MAIN_WIN');
-    if (!main) continue;
+    const byType={}; markets.forEach(m=>byType[m.type]=m);
     const box = document.createElement('div'); box.className='list'; box.style.marginBottom='10px';
+
     const h = document.createElement('div'); h.className='tag';
-    h.textContent = `${new Date(ev.runsAt).toLocaleTimeString()} — ${game.toUpperCase()} (${main.selections.length} runners)`;
+    const main = byType['MAIN_WIN'];
+    const runners = main ? main.selections.length : 0;
+    h.textContent = `${new Date(ev.runsAt).toLocaleTimeString()} — ${game.toUpperCase()} (${runners} runners)`;
     box.appendChild(h);
 
     // lanes
     const lanes = document.createElement('div'); lanes.className='track';
-    for (let i=0;i<main.selections.length;i++){
-      const r=document.createElement('div'); r.className='runner'; r.style.top=(10 + i*28)+'px';
-      r.title = main.selections[i].name; lanes.appendChild(r);
+    for (let i=0;i<runners;i++){
+      const r=document.createElement('div'); r.className='runner move'; r.style.top=(10 + i*28)+'px';
+      r.innerHTML = `<span class="laneNum">${i+1}</span>${i+1}`;
+      lanes.appendChild(r);
     }
     box.appendChild(lanes);
 
-    function addRow(title, m, cols){
-      if(!m) return;
-      const lab=document.createElement('div'); lab.className='muted'; lab.textContent=title; box.appendChild(lab);
-      const row=document.createElement('div'); row.style.display='grid'; row.style.gridTemplateColumns=`repeat(${cols},1fr)`; row.style.gap='8px';
-      m.selections.forEach(s=>{ const b=document.createElement('div'); b.className='sel'; b.textContent=`${s.name} @ ${m.odds[s.id]}`; b.onclick=()=>choose(ev,m,s); row.appendChild(b); });
-      box.appendChild(row);
-    }
+    // toggles
+    const toggles = document.createElement('div'); toggles.className='togglebar';
+    const order = ['MAIN_WIN','FORECAST','QUINELLA','TRICAST'];
+    let active = 'MAIN_WIN';
+    order.forEach(k=>{
+      const t=document.createElement('div'); t.className='toggle'+(k===active?' active':''); t.textContent=k.replace('_',' ');
+      t.onclick=()=>{ active=k; [...toggles.children].forEach(x=>x.classList.remove('active')); t.classList.add('active'); renderMarket(); };
+      toggles.appendChild(t);
+    });
+    box.appendChild(toggles);
 
-    const byType={}; markets.forEach(m=>byType[m.type]=m);
-    addRow('MAIN — WIN', byType['MAIN_WIN'], 3);
-    addRow('FORECAST (Exacta)', byType['FORECAST'], 3);
-    addRow('QUINELLA', byType['QUINELLA'], 3);
-    addRow('TRICAST', byType['TRICAST'], 3);
+    const holder = document.createElement('div'); box.appendChild(holder);
+
+    function renderMarket(){
+      holder.innerHTML='';
+      const m = byType[active]; if(!m) return;
+      const cols = (active==='MAIN_WIN')?3:3;
+      const row=document.createElement('div'); row.style.display='grid'; row.style.gridTemplateColumns=`repeat(${cols},1fr)`; row.style.gap='8px';
+      m.selections.forEach(s=>{
+        const b=document.createElement('div'); b.className='sel'; b.textContent=`${s.name}  ${m.odds[s.id]}`;
+        b.onclick=()=>choose(ev,m,s); row.appendChild(b);
+      });
+      holder.appendChild(row);
+    }
+    renderMarket();
 
     el('stage').appendChild(box);
   }
-
-  // side panels
-  const res = await (await fetch(`${api}/results?game=${game}&limit=8`)).json();
-  el('prev').innerHTML=''; res.forEach(r=>{ const d=document.createElement('div'); d.className='sel'; if (r.podium){ const p=r.podium.slice(0,3).map(x=>x.id).join(' → '); d.textContent=`${game.toUpperCase()}: ${p}`; } else d.textContent=JSON.stringify(r); el('prev').appendChild(d); });
 }
 
-/* -------- Colors ---------- */
-async function loadColors(){
-  setTitle('Colors — glossy pool balls');
-  const ev = (await (await fetch(`${api}/events?game=colors`)).json())[0];
-  const markets = await (await fetch(`${api}/markets/${ev.id}`)).json();
-  const m = markets.find(x=>x.type==='MAIN_COLOR');
+/* ===== Colors merged (Colors + Numbers 1–49 in same tab) ===== */
+async function loadColorsMerged(){
+  setTitle('Colors — color balls + numbers 1–49');
 
-  // glossy balls grid
-  const grid=document.createElement('div'); grid.className='balls';
-  m.selections.forEach(s=>{
-    const b=document.createElement('div'); b.className=`ball ${s.id}`; b.textContent=s.id==='BLACK'?'Bk':'';
-    // show label inside for all
-    b.textContent = s.id[0];
-    b.title = `${s.name} @ ${m.odds[s.id]}`;
-    b.onclick=()=>choose(ev,m,s);
-    // big letter
-    b.style.fontSize='18px';
-    grid.appendChild(b);
+  const evC = (await (await fetch(`${api}/events?game=colors`)).json())[0];
+  const mC = (await (await fetch(`${api}/markets/${evC.id}`)).json()).find(x=>x.type==='MAIN_COLOR');
+
+  const evN = (await (await fetch(`${api}/events?game=lotto49`)).json())[0];
+  const mN = (await (await fetch(`${api}/markets/${evN.id}`)).json()).find(x=>x.type==='PICK1');
+
+  // Colors
+  const boxC = document.createElement('div'); boxC.className='list'; boxC.style.marginBottom='10px';
+  const headC=document.createElement('div'); headC.className='muted'; headC.textContent='Pick a Color'; boxC.appendChild(headC);
+  const gridC=document.createElement('div'); gridC.className='balls';
+  mC.selections.forEach(s=>{
+    const b=document.createElement('div'); b.className=`ball ${s.id}`; b.textContent=s.id[0]; b.title=`${s.name}  ${mC.odds[s.id]}`;
+    b.onclick=()=>choose(evC,mC,s); gridC.appendChild(b);
   });
-  el('stage').appendChild(grid);
+  boxC.appendChild(gridC);
+  el('stage').appendChild(boxC);
 
-  // side
-  const res = await (await fetch(`${api}/results?game=colors&limit=6`)).json();
-  el('prev').innerHTML='';
-  res.forEach(r=>{ const d=document.createElement('div'); d.className='sel'; d.textContent=`${r.color} (ball ${r.ball})`; el('prev').appendChild(d); });
-}
-
-/* -------- Lotto49 ---------- */
-async function loadLotto(){
-  setTitle('Numbers 1–49 — pick 1');
-  const ev = (await (await fetch(`${api}/events?game=lotto49`)).json())[0];
-  const markets = await (await fetch(`${api}/markets/${ev.id}`)).json();
-  const m = markets.find(x=>x.type==='PICK1');
-
-  const grid=document.createElement('div'); grid.className='balls';
-  for (const s of m.selections){
+  // Numbers 1–49
+  const boxN = document.createElement('div'); boxN.className='list';
+  const headN=document.createElement('div'); headN.className='muted'; headN.textContent='Pick a Number (1–49)'; boxN.appendChild(headN);
+  const gridN=document.createElement('div'); gridN.className='balls';
+  for (const s of mN.selections){
     const n = Number(s.id);
     const color = ['RED','BLUE','GREEN','YELLOW','PURPLE','BLACK'][(n-1)%6];
     const b=document.createElement('div'); b.className=`ball ${color}`; b.textContent=s.id;
-    b.title = `#${s.id} @ ${m.odds[s.id]}`;
-    b.onclick=()=>choose(ev,m,s);
-    grid.appendChild(b);
+    b.title = `#${s.id}  ${mN.odds[s.id]}`;
+    b.onclick=()=>choose(evN,mN,s);
+    gridN.appendChild(b);
   }
-  el('stage').appendChild(grid);
+  boxN.appendChild(gridN);
+  el('stage').appendChild(boxN);
 
-  const res = await (await fetch(`${api}/results?game=lotto49&limit=8`)).json();
-  el('prev').innerHTML=''; res.forEach(r=>{ const d=document.createElement('div'); d.className='sel'; d.textContent=`Draw: ${r.ball}`; el('prev').appendChild(d); });
+  // Up next: keep previous behavior minimal
+  el('next').innerHTML='';
 }
 
-/* -------- Boot ---------- */
+/* ===== Aviator wallet load / pay (clear to zero) ===== */
+async function refreshPlayer(pid){
+  try{
+    const r=await fetch(`${api}/aviator/wallet/${pid}`); const j=await r.json();
+    el(`${pid}-bal`).textContent = KES(j.balance||0);
+    return Number(j.balance||0);
+  }catch{ el(`${pid}-bal`).textContent = '—'; return 0; }
+}
+async function loadPlayer(pid){
+  const amt = Number(el(`${pid}-amt`).value||0);
+  if (!Number.isFinite(amt) || amt<=0) return alert('Enter a valid amount');
+  await fetch(`${api}/aviator/wallet/load`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, amount:amt})});
+  refreshPlayer(pid);
+}
+async function payPlayer(pid){
+  // "Pay Player" means cashier pays out and clears account → post negative balance
+  const bal = await refreshPlayer(pid);
+  if (bal<=0) return alert('Nothing to clear.');
+  await fetch(`${api}/aviator/wallet/load`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, amount:-bal})});
+  refreshPlayer(pid);
+}
+
+/* ===== Boot ===== */
 async function boot(){
   await refreshCashier();
+  ['pA','pB','pC'].forEach(refreshPlayer);
+
   loadFootball();
   loadTickets();
-  // simple refresh of side panels every 7s
+
+  // periodic refresh
   setInterval(()=>{
     if (CURRENT_TAB==='football') loadFootball();
     if (CURRENT_TAB==='dogs') loadRacing('dog');
     if (CURRENT_TAB==='horses') loadRacing('horse');
-    if (CURRENT_TAB==='colors') loadColors();
-    if (CURRENT_TAB==='lotto') loadLotto();
+    if (CURRENT_TAB==='colors') loadColorsMerged();
     loadTickets();
+    ['pA','pB','pC'].forEach(refreshPlayer);
   }, 7000);
 }
 boot();
