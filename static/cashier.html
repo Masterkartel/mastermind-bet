@@ -4,7 +4,6 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Cashier</title>
-  <!-- Futuristic font + Inter fallback -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700;800&display=swap">
   <style>
@@ -23,7 +22,6 @@
     }
     a{color:#7dd3fc;text-decoration:none}
 
-    /* Header */
     header{
       position:sticky; top:0; z-index:50; display:flex; align-items:center; gap:12px;
       padding:10px 16px; border-bottom:1px solid var(--line);
@@ -39,7 +37,6 @@
     .pill.solid{background:#0e172f;border-color:#2a3e6a}
     .clock{min-width:220px;text-align:right}
 
-    /* Round/time dial */
     .roundbar{display:flex;align-items:center;gap:10px}
     .dial{
       --p:0deg; --col:var(--dial-fg);
@@ -55,7 +52,6 @@
     .roundtxt b{font-size:12px}
     .roundtxt small{font-size:11px;color:var(--muted)}
 
-    /* Schedule strip (now + next three times) */
     .sched{display:flex;gap:8px;flex-wrap:wrap}
     .slot{
       display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;
@@ -64,7 +60,6 @@
     .slot.active{outline:2px solid var(--accent)}
     .slot small{font-size:11px;color:var(--muted)}
 
-    /* Layout */
     .container{max-width:var(--maxw);margin:0 auto;padding:10px 10px 14px;display:grid;grid-template-columns:minmax(0,2.1fr) minmax(0,.9fr);gap:14px}
     @media (max-width:1100px){ .container{grid-template-columns:1fr} }
 
@@ -73,20 +68,16 @@
     .muted{color:var(--muted);font-size:12px}
     .divider{height:1px;background:var(--line);margin:10px 0}
 
-    /* Tabs & chips */
     .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
     .tab{padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:#0f1933;color:#e6edf3;cursor:pointer;font-weight:700;display:flex;align-items:center;gap:8px}
     .tab.active{outline:2px solid var(--accent)}
     .chips{display:flex;gap:6px;flex-wrap:wrap}
     .chip{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0f1933;cursor:pointer;display:flex;gap:6px;align-items:center}
     .chip.active{outline:2px solid var(--accent)}
-
-    /* Markets toggle (horizontal) */
     .markets{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 10px}
     .mkt{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0f1933;cursor:pointer;font-size:12px}
     .mkt.active{outline:2px solid #22c55e}
 
-    /* FOOTBALL row (like your screenshot) */
     .fxrow{
       display:grid; grid-template-columns:30px 1fr auto; gap:10px; align-items:center;
       padding:8px;border:1px solid var(--line);border-radius:12px;background:#0e172f;margin-bottom:8px
@@ -100,7 +91,6 @@
     .oddbtn:hover{filter:brightness(1.15)}
     .idx{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;background:#0b1324;border:1px solid var(--line);font-weight:800;font-size:12px}
 
-    /* Racing lanes */
     .track{position:relative;height:196px;border:1px dashed var(--line);border-radius:14px;margin:10px 0 6px;
       background:
         linear-gradient(90deg,#0b1324 0 10px, #12203f 10px 12px, transparent 12px),
@@ -109,7 +99,6 @@
     .runner{position:absolute;left:8px;width:44px;height:20px;background:#e5e7eb;border-radius:3px 10px 10px 3px;box-shadow:0 0 6px #fff2, inset 0 -2px 3px #0003}
     .runner:after{content:"";position:absolute;right:-6px;top:6px;width:8px;height:8px;border-radius:50%;background:#e5e7eb;box-shadow:0 0 5px #fff4}
 
-    /* Balls with odds label */
     .balls{display:grid;gap:10px}
     .balls.colors{grid-template-columns:repeat(6,1fr)}
     .balls.numbers{grid-template-columns:repeat(7,1fr)}
@@ -134,7 +123,6 @@
     .PURPLE{background:#a855f7}
     .BLACK{background:#111827;color:#e5e7eb;border-color:#000}
 
-    /* Betslip & tickets */
     .betslip{display:grid;gap:8px}
     input,button,select{font-family:inherit}
     input[type="number"], input[type="text"]{width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);background:#0d1428;color:#fff}
@@ -148,7 +136,6 @@
 
     .ico{width:16px;height:16px;display:inline-block;vertical-align:middle}
 
-    /* Toaster */
     .toaster{position:fixed;top:16px;right:16px;display:flex;flex-direction:column;gap:10px;z-index:80}
     .toast{background:#0f1933;border:1px solid #2a3b63;color:#e6edf3;padding:10px 12px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.35);opacity:0;transform:translateY(-6px);transition:opacity .18s ease, transform .18s ease}
     .toast.show{opacity:1;transform:none}
@@ -171,7 +158,6 @@
 </header>
 
 <div class="container">
-  <!-- LEFT -->
   <div class="panel">
     <div class="tabs">
       <div class="tab active" data-tab="football">
@@ -192,7 +178,6 @@
       </div>
     </div>
 
-    <!-- Time dial + schedule -->
     <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px;display:flex">
       <div style="display:flex;gap:12px;align-items:center">
         <div class="roundbar">
@@ -207,13 +192,10 @@
       <div class="sched" id="schedule"></div>
     </div>
 
-    <!-- League chips -->
     <div class="chips" id="leagueChips" style="display:flex"></div>
-
     <div id="stage"></div>
   </div>
 
-  <!-- RIGHT -->
   <div class="panel">
     <div class="title">Controls</div>
     <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -276,7 +258,7 @@
 <div id="toaster" class="toaster"></div>
 
 <script>
-/* Toasts */
+/* ---------- Toasts ---------- */
 const toaster=document.getElementById('toaster');
 function notify(msg,type='info',ms=2200){
   const t=document.createElement('div');
@@ -286,57 +268,58 @@ function notify(msg,type='info',ms=2200){
   setTimeout(()=>{ t.classList.remove('show'); setTimeout(()=>t.remove(),180); }, ms);
 }
 
-/* Basics */
-const api = location.origin.replace(/:\\d+$/, ':4000');
+/* ---------- API helper (tries same-origin, then :4000) ---------- */
+const ORIGIN = location.origin;
+const PORT4000 = ORIGIN.replace(/^(https?:\/\/[^/:]+)(?::\d+)?$/,'$1:4000');
+const API = {
+  async get(path){
+    try{ const r = await fetch(`${ORIGIN}${path}`,{cache:'no-store'}); if(r.ok) return r; }catch{}
+    return fetch(`${PORT4000}${path}`,{cache:'no-store'});
+  },
+  async post(path, body){
+    const opts={method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})};
+    try{ const r = await fetch(`${ORIGIN}${path}`,opts); if(r.ok) return r; }catch{}
+    return fetch(`${PORT4000}${path}`,opts);
+  }
+};
 const KES = x=> new Intl.NumberFormat('en-KE',{style:'currency',currency:'KES'}).format(Number(x||0));
 const el = id=>document.getElementById(id);
 
-/* Clock */
+/* ---------- Clock ---------- */
 let healthSkew=0;
-async function syncClock(){ try{ const r=await fetch(`${api}/health`); const j=await r.json(); healthSkew=j.ts-Date.now(); }catch{} }
-setInterval(()=>{ const d=new Date(Date.now()+healthSkew); el('clock').textContent=d.toLocaleString(); }, 500); syncClock();
+async function syncClock(){
+  try{ const r=await API.get('/health'); const j=await r.json(); healthSkew=j.ts-Date.now(); }catch{ healthSkew=0; }
+}
+setInterval(()=>{ const d=new Date(Date.now()+healthSkew); el('clock').textContent=d.toLocaleString(); }, 500);
+syncClock();
 
-/* Cashier */
+/* ---------- Cashier ---------- */
 let CASHIER_ID = 'shop-1';
 async function refreshCashier(){
-  try{ const r=await fetch(`${api}/cashier/${CASHIER_ID}/balance`); const j=await r.json();
+  try{ const r=await API.get(`/cashier/${CASHIER_ID}/balance`); const j=await r.json();
     el('cashBal').textContent = KES(j.balance||0);
     el('cashierId').textContent = CASHIER_ID;
   }catch{}
 }
-async function topupCashier(amount){
-  await fetch(`${api}/cashier/topup`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cashierId:CASHIER_ID,amount})});
-  refreshCashier();
-}
+async function topupCashier(amount){ await API.post(`/cashier/topup`,{cashierId:CASHIER_ID,amount}); refreshCashier(); }
 function applyCashier(){ CASHIER_ID = el('cashierIdInput').value || 'shop-1'; refreshCashier(); }
 
-/* Aviator wallets */
-async function aviView(){
-  const pid=el('aviPlayer').value; try{
-    const r=await fetch(`${api}/aviator/wallet/${pid}`); const j=await r.json();
-    el('aviBal').textContent = `Bal: ${KES(j.balance||0)}`;
-  }catch{ el('aviBal').textContent='Bal: —'; }
-}
+/* ---------- Aviator wallets ---------- */
+async function aviView(){ const pid=el('aviPlayer').value; try{ const r=await API.get(`/aviator/wallet/${pid}`); const j=await r.json(); el('aviBal').textContent=`Bal: ${KES(j.balance||0)}`; }catch{ el('aviBal').textContent='Bal: —'; } }
 async function aviLoad(){
   const pid=el('aviPlayer').value; const amt=Number(el('aviAmount').value||0)||0;
   if (!amt) return notify('Enter amount to load.','error');
-  try{
-    const r=await fetch(`${api}/aviator/wallet/load`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, amount:amt})});
-    const j=await r.json(); el('aviBal').textContent = `Bal: ${KES(j.balance||0)}`; notify('Wallet updated','success');
-  }catch{ notify('Wallet update failed','error'); }
+  try{ const r=await API.post(`/aviator/wallet/load`,{playerId:pid, amount:amt}); const j=await r.json(); el('aviBal').textContent=`Bal: ${KES(j.balance||0)}`; notify('Wallet updated','success'); }catch{ notify('Wallet update failed','error'); }
 }
 async function aviClear(){
   const pid=el('aviPlayer').value;
-  try{
-    const r=await fetch(`${api}/aviator/wallet/${pid}`); const j=await r.json();
-    const bal=j.balance||0; if (bal>0){
-      await fetch(`${api}/aviator/wallet/load`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, amount:-bal})});
-      el('aviBal').textContent = `Bal: ${KES(0)}`; notify('Paid & cleared','success');
-    } else notify('Nothing to clear','info');
+  try{ const r=await API.get(`/aviator/wallet/${pid}`); const j=await r.json(); const bal=j.balance||0;
+    if (bal>0){ await API.post(`/aviator/wallet/load`,{playerId:pid, amount:-bal}); el('aviBal').textContent=`Bal: ${KES(0)}`; notify('Paid & cleared','success'); }
+    else notify('Nothing to clear','info');
   }catch{ notify('Clear failed','error'); }
 }
 
-/* Logos with fallback */
+/* ---------- Logos ---------- */
 function logoHTML(folder, abbr, big=true){
   const code = (abbr||'???').toUpperCase();
   const base = `/static/logos/${folder}/${code}`;
@@ -356,12 +339,10 @@ function logoHTML(folder, abbr, big=true){
   return img+ph;
 }
 
-/* Time slots (7 min for football; 3 min for others) */
+/* ---------- Time slots ---------- */
 const dial = el('dial'); const roundTimer=el('roundTimer'); const roundLabel=el('roundLabel'); const scheduleBox=el('schedule');
 let CURRENT_TAB='football', CURRENT=null, CURRENT_LEAGUE='EPL', CURRENT_MARKET='MAIN';
-const MARKET_TABS=['MAIN','OU05','OU15','OU25','OU35','BTTS','H15','A15','DC','DNB','CMB15','CMB25'];
-let nextBoundaryTs=null, boundarySpanMs=0, selectedSlot=0;
-let weekPointer=0; // drives which 10 fixtures we show
+let nextBoundaryTs=null, boundarySpanMs=0, selectedSlot=0, weekPointer=0;
 
 function ceilToStep(ms, min){ const step=min*60*1000; return Math.ceil(ms/step)*step; }
 function buildSchedule(stepMin){
@@ -383,7 +364,6 @@ function setTiming(){
     boundarySpanMs = 7*60*1000;
     roundLabel.textContent = `WEEK VIEW • 10 fixtures`;
   }else{
-    // endless; time only
     nextBoundaryTs = ceilToStep(now, 3);
     boundarySpanMs = 3*60*1000;
     roundLabel.textContent = `NEXT START • ${new Date(nextBoundaryTs).toLocaleTimeString()}`;
@@ -400,14 +380,14 @@ function tickDial(){
   roundTimer.textContent = `Next in ${String(mm).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
   if (remain<=0){
     nextBoundaryTs += boundarySpanMs;
-    if (CURRENT_TAB==='football'){ weekPointer++; } // advance to next block of 10
+    if (CURRENT_TAB==='football'){ weekPointer++; }
     buildSchedule(boundarySpanMs/60000);
     refreshByTab();
   }
 }
 setInterval(tickDial, 500);
 
-/* Betslip */
+/* ---------- Betslip ---------- */
 function showSlip(b){ el('betslip').style.display=b?'block':'none'; el('noSlip').style.display=b?'none':'block'; }
 function validateStake(raw){
   const stake=Number(raw); if(!Number.isFinite(stake)||stake<=0){ notify('Enter a valid stake.','error');return null;}
@@ -431,16 +411,16 @@ async function placeBet(){
   if(!CURRENT) return notify('Pick a selection first','error');
   const stake=validateStake(el('stake').value); if(stake==null) return;
   const payload={eventId:CURRENT.event.id,marketId:CURRENT.market.id,selectionId:CURRENT.selection.id,stake,cashierId:CASHIER_ID,slot:selectedSlot};
-  const r=await fetch(`${api}/bets`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); const j=await r.json();
+  const r=await API.post(`/bets`,payload); const j=await r.json();
   if(!j.ok){ notify(j.error||'Bet failed','error'); return; }
   await refreshCashier(); await loadTickets();
   const w=window.open(`/receipt/${j.bet.id}`,'_blank','width=380,height=560'); try{w.focus();}catch{}
   notify('Bet placed','success');
 }
 
-/* History */
+/* ---------- History ---------- */
 async function loadTickets(){
-  const r = await fetch(`${api}/bets?cashierId=${encodeURIComponent(CASHIER_ID)}`); const list = await r.json();
+  const r = await API.get(`/bets?cashierId=${encodeURIComponent(CASHIER_ID)}`); const list = await r.json();
   const box = el('tickets'); box.innerHTML='';
   list.slice(0,16).forEach(t=>{
     const d=document.createElement('div'); d.className='ticket';
@@ -450,7 +430,6 @@ async function loadTickets(){
                  <div class="muted">${KES(t.stake)} • ${t.odds} → ${t.payout?KES(t.payout):'—'}</div>`;
     box.appendChild(d);
   });
-  // scan / search
   const input = el('historySearch');
   input.oninput=()=>{
     const q=input.value.trim().toUpperCase(); if(!q) return loadTickets();
@@ -467,7 +446,7 @@ async function loadTickets(){
   };
 }
 
-/* Helpers */
+/* ---------- Helpers ---------- */
 function pickMarket(byType, candidates){
   const keys=Object.keys(byType||{});
   for(const c of candidates){
@@ -477,16 +456,14 @@ function pickMarket(byType, candidates){
   return null;
 }
 
-/* FOOTBALL (10 fixtures per view; big logos; one row like screenshot) */
+/* ---------- FOOTBALL (10 fixtures per view) ---------- */
 const MARKET_TABS = ['MAIN','OU05','OU15','OU25','OU35','BTTS','H15','A15','DC','DNB','CMB15','CMB25'];
-let CURRENT_MARKET='MAIN'; let CURRENT_LEAGUE='EPL';
 
 async function loadFootball(){
   setTiming();
   el('leagueChips').style.display='flex';
   const stage=el('stage'); stage.innerHTML='';
 
-  // league chips
   const head=el('leagueChips'); head.innerHTML='';
   ['EPL','LALIGA','UCL'].forEach(L=>{
     const c=document.createElement('div'); c.className='chip'; if(L===CURRENT_LEAGUE) c.classList.add('active');
@@ -494,33 +471,28 @@ async function loadFootball(){
     head.appendChild(c);
   });
 
-  // market tabs
   const mrow=document.createElement('div'); mrow.className='markets';
   const MLAB={MAIN:'MAIN',OU05:'OU 0.5',OU15:'OU 1.5',OU25:'OU 2.5',OU35:'OU 3.5',BTTS:'BTTS',H15:'HOME 1.5',A15:'AWAY 1.5',DC:'DOUBLE CHANCE',DNB:'DRAW NO BET',CMB15:'1X2+OU1.5',CMB25:'1X2+OU2.5'};
   MARKET_TABS.forEach(m=>{ const b=document.createElement('div'); b.className='mkt'; if(m===CURRENT_MARKET) b.classList.add('active'); b.textContent=MLAB[m]; b.onclick=()=>{CURRENT_MARKET=m; loadFootball();}; mrow.appendChild(b);});
   stage.appendChild(mrow);
 
-  // fetch fixtures
-  const all=(await (await fetch(`${api}/events?game=football`)).json()).filter(e=>e.league===CURRENT_LEAGUE);
+  let all=[];
+  try{ const r=await API.get(`/events?game=football`); all=(await r.json()).filter(e=>e.league===CURRENT_LEAGUE); }catch{}
   if(!all.length){ stage.innerHTML+='<div class="muted">No fixtures.</div>'; return; }
-  // order by start time stable
   all.sort((a,b)=>a.runsAt-b.runsAt);
 
-  // slice into blocks of 10, pick based on weekPointer (continuous)
   const blocks=[]; for(let i=0;i<all.length;i+=10) blocks.push(all.slice(i,i+10));
   const blk = blocks[(weekPointer)%blocks.length];
 
-  // render 10 rows
   let rowIndex=0;
   for(const ev of blk){
     rowIndex++;
-    const markets=await (await fetch(`${api}/markets/${ev.id}`)).json();
+    let markets=[]; try{ const r=await API.get(`/markets/${ev.id}`); markets=await r.json(); }catch{}
     const byType={}; markets.forEach(m=>byType[m.type]=m);
 
     const folder = CURRENT_LEAGUE.toLowerCase()==='epl'?'epl':(CURRENT_LEAGUE.toLowerCase()==='laliga'?'laliga':'ucl');
     const H=ev.home.abbr, A=ev.away.abbr;
 
-    // candidates for each market
     const mMain  = pickMarket(byType,[`MAIN_1X2_${CURRENT_LEAGUE}`,/MAIN.*1X2.*${CURRENT_LEAGUE}/]);
     const mOU05  = pickMarket(byType,[`OU_0_5_${CURRENT_LEAGUE}`,/OU[_-]?0[_-]?5.*${CURRENT_LEAGUE}/]);
     const mOU15  = pickMarket(byType,[`OU_1_5_${CURRENT_LEAGUE}`,/OU[_-]?1[_-]?5.*${CURRENT_LEAGUE}/]);
@@ -538,30 +510,22 @@ async function loadFootball(){
     const mdef=mMap[CURRENT_MARKET]; if(!mdef) continue;
 
     const row=document.createElement('div'); row.className='fxrow';
+    const idx=document.createElement('div'); idx.className='idx'; idx.textContent=String(rowIndex); row.appendChild(idx);
 
-    // index
-    const idx=document.createElement('div'); idx.className='idx'; idx.textContent=String(rowIndex);
-    row.appendChild(idx);
-
-    // teams + logos big
     const t=document.createElement('div'); t.className='fxteams';
     t.innerHTML = `${logoHTML(folder,H,true)} <span>${H}</span> <span class="vs">vs</span> ${logoHTML(folder,A,true)} <span>${A}</span>`;
     row.appendChild(t);
 
-    // odds bar (compact buttons, no "@")
     const od=document.createElement('div'); od.className='oddsbar';
     mdef.selections.forEach(s=>{
       const b=document.createElement('div'); b.className='oddbtn'; b.textContent=mdef.odds[s.id];
-      b.title = `${s.name}`;
-      b.onclick=()=>choose(ev,mdef,s);
-      od.appendChild(b);
+      b.title = `${s.name}`; b.onclick=()=>choose(ev,mdef,s); od.appendChild(b);
     });
     row.appendChild(od);
 
     stage.appendChild(row);
   }
 
-  // Up next list
   el('next').innerHTML='';
   blk.slice(0,10).forEach(n=>{
     const d=document.createElement('div'); d.className='oddbtn'; d.style.background='#0e172f'; d.style.border='1px solid #2a3e6a';
@@ -570,7 +534,7 @@ async function loadFootball(){
   });
 }
 
-/* Racing (time-only, endless) */
+/* ---------- Racing ---------- */
 async function loadRacing(game){
   setTiming();
   el('leagueChips').style.display='none';
@@ -584,17 +548,16 @@ async function loadRacing(game){
   });
   stage.appendChild(mrow);
 
-  const events=(await (await fetch(`${api}/events?game=${game}`)).json()).slice(0,3);
+  let events=[]; try{ const r=await API.get(`/events?game=${game}`); events=(await r.json()).slice(0,3);}catch{}
   if(!events.length){ stage.innerHTML+='<div class="muted">No events.</div>'; return; }
 
   for(const ev of events){
-    const markets=await (await fetch(`${api}/markets/${ev.id}`)).json();
+    let markets=[]; try{ const r=await API.get(`/markets/${ev.id}`); markets=await r.json(); }catch{}
     const byType={}; markets.forEach(m=>byType[m.type]=m);
     const main=byType['MAIN_WIN'];
 
     const box=document.createElement('div'); box.className='panel'; box.style.background='#0e172f'; box.style.borderColor='#26385f';
 
-    // lanes (8 for horses; realistic spacing; not overlapping UI)
     if(main){
       const lanes=document.createElement('div'); lanes.className='track';
       const count = game==='horse' ? 8 : Math.min(12, main.selections.length);
@@ -628,7 +591,6 @@ async function loadRacing(game){
     el('stage').appendChild(box);
   }
 
-  // right column times (no "round")
   el('next').innerHTML='';
   const base=nextBoundaryTs-boundarySpanMs; for(let i=0;i<4;i++){
     const t=new Date(base+i*boundarySpanMs); const d=document.createElement('div'); d.className='oddbtn'; d.style.background='#0e172f'; d.style.border='1px solid #2a3e6a';
@@ -636,17 +598,13 @@ async function loadRacing(game){
   }
 }
 
-/* Colors & Numbers (balls with odds under each) */
+/* ---------- Colors & Numbers ---------- */
 async function loadColorsNumbers(){
   setTiming();
   el('leagueChips').style.display='none';
   const stage=el('stage'); stage.innerHTML='';
 
-  // COLORS
-  const evC=(await (await fetch(`${api}/events?game=colors`)).json())[0];
-  const marketsC=await (await fetch(`${api}/markets/${evC.id}`)).json();
-  const mC=marketsC.find(x=>x.type==='MAIN_COLOR');
-
+  let evC,marketsC,mC; try{ evC=(await (await API.get(`/events?game=colors`)).json())[0]; marketsC=await (await API.get(`/markets/${evC.id}`)).json(); mC=marketsC.find(x=>x.type==='MAIN_COLOR'); }catch{}
   const boxC=document.createElement('div'); boxC.className='panel'; boxC.style.background='#0e172f'; boxC.style.borderColor='#26385f';
   boxC.innerHTML='<div class="title">Colors</div>';
   const gridC=document.createElement('div'); gridC.className='balls colors';
@@ -658,12 +616,8 @@ async function loadColorsNumbers(){
   });
   boxC.appendChild(gridC); stage.appendChild(boxC);
 
-  // NUMBERS
-  const evN=(await (await fetch(`${api}/events?game=lotto49`)).json())[0];
-  const marketsN=await (await fetch(`${api}/markets/${evN.id}`)).json();
-  const mN=marketsN.find(x=>x.type==='PICK1');
+  let evN,marketsN,mN; try{ evN=(await (await API.get(`/events?game=lotto49`)).json())[0]; marketsN=await (await API.get(`/markets/${evN.id}`)).json(); mN=marketsN.find(x=>x.type==='PICK1'); }catch{}
   const colors=['RED','BLUE','GREEN','YELLOW','PURPLE','BLACK'];
-
   const boxN=document.createElement('div'); boxN.className='panel'; boxN.style.background='#0e172f'; boxN.style.borderColor='#26385f';
   boxN.innerHTML='<div class="title">Numbers 1–49</div>';
   const gridN=document.createElement('div'); gridN.className='balls numbers';
@@ -676,7 +630,6 @@ async function loadColorsNumbers(){
   });
   boxN.appendChild(gridN); stage.appendChild(boxN);
 
-  // times on right
   el('next').innerHTML='';
   const base=nextBoundaryTs-boundarySpanMs; for(let i=0;i<4;i++){
     const t=new Date(base+i*boundarySpanMs); const d=document.createElement('div'); d.className='oddbtn'; d.style.background='#0e172f'; d.style.border='1px solid #2a3e6a';
@@ -684,7 +637,7 @@ async function loadColorsNumbers(){
   }
 }
 
-/* Router */
+/* ---------- Router & Boot ---------- */
 document.querySelectorAll('.tab[data-tab]').forEach(t=>{
   t.addEventListener('click', ()=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
@@ -696,20 +649,20 @@ document.querySelectorAll('.tab[data-tab]').forEach(t=>{
     if (CURRENT_TAB==='colors') loadColorsNumbers();
   });
 });
-
-/* Boot */
-async function boot(){
-  await refreshCashier();
-  setTiming();
-  await loadFootball(); // default
-  await loadTickets();
-  setInterval(async ()=>{ await refreshCashier(); refreshByTab(); await loadTickets(); }, 9000);
-}
 function refreshByTab(){
   if (CURRENT_TAB==='football') loadFootball();
   if (CURRENT_TAB==='dogs') loadRacing('dog');
   if (CURRENT_TAB==='horses') loadRacing('horse');
   if (CURRENT_TAB==='colors') loadColorsNumbers();
+}
+
+async function loadTickets(){ /* unchanged below, already defined above */ }
+async function boot(){
+  await refreshCashier();
+  setTiming();
+  await loadFootball();
+  await loadTickets();
+  setInterval(async ()=>{ await refreshCashier(); refreshByTab(); await loadTickets(); }, 9000);
 }
 boot();
 </script>
