@@ -213,7 +213,8 @@ const SFX = {
   play(name){
     if(!SOUND_ON) return;
     if(name==='bet') tone({type:'square',freq:920,dur:0.09,vol:0.22,attack:0.002,decay:0.07});
-    if(name==='cash') { tone({type:'triangle',freq:720,dur=0.12,vol:0.26}); tone({type:'triangle',freq:1020,dur=0.16,vol:0.26}); }
+    /* FIX: use dur: not dur= */
+    if(name==='cash') { tone({type:'triangle',freq:720,dur:0.12,vol:0.26}); tone({type:'triangle',freq:1020,dur:0.16,vol:0.26}); }
     if(name==='takeoff') sweepUp(340,1400,0.55,'sawtooth',0.22);
     if(name==='bust') sweepDown(1600,110,0.55,'triangle',0.28);
   }
@@ -262,7 +263,7 @@ function initStars(){
 function drawStars(slideY){
   ctx.save();
   for(const s of STARS){
-    const y = s.y - slideY*0.6; // slight parallax
+    const y = s.y - slideY*0.6;
     const tw = 0.6 + 0.4*Math.sin(s.w*tAccum + s.ph);
     ctx.fillStyle = `rgba(220,235,255,${s.a*tw})`;
     ctx.beginPath(); ctx.arc(s.x, y, s.r, 0, Math.PI*2); ctx.fill();
@@ -356,7 +357,7 @@ const centerText=document.getElementById('centerText');
 
 /* ===== Flight model (time-synced) ===== */
 let STATE={ phase:'betting', multiplier:1, bust:2, history:[], speed:0.46, roundId:'-' };
-let DISPLAY_2DP = 1.00;   /* <-- exact number shown on screen (2dp) */
+let DISPLAY_2DP = 1.00;   /* exact number shown on-screen (2dp) */
 
 function minFrontSeconds(bust){
   if (!bust || bust <= 1.02) return 0.10;
@@ -404,8 +405,8 @@ function wobbleY(p, height){
 function pathX(p, left, trackW){ return baseX(p,left,trackW) + wobbleX(p, trackW); }
 function pathY(p, baseY, bust){
   const steep = Math.log(Math.max(1.0001, Number(bust || 2)));
-  const k   = 0.44 + 0.16 * steep;   // stronger ascent
-  const pow = 1.05 + 0.10 * steep;   // gentle curvature
+  const k   = 0.44 + 0.16 * steep;
+  const pow = 1.05 + 0.10 * steep;
   return baseY - Math.pow(p, pow) * (baseY * (0.95 * k)) + wobbleY(p, baseY);
 }
 
@@ -439,18 +440,16 @@ function draw(mult,phase,dt){
   ctx.clearRect(0,0,cssW,cssH);
 
   const left=0, baseY=cssH-1, trackW=cssW-1, bust=STATE.bust||2;
-
   const tSky = (phase==='flying') ? progressVis : (phase==='busted' ? 1 : 0);
   drawSky(dt, tSky);
 
   if (phase === 'busted') {
     const shown = mult?Number(mult).toFixed(2):'';
-    DISPLAY_2DP = shown?Number(shown):1.00;            /* keep last screen value */
+    DISPLAY_2DP = shown?Number(shown):1.00;
     centerText.className='centerText flew';
     centerText.textContent='FLEW AWAY!\n'+(shown?`${shown}x`:``);
-    return; // hide trail + plane
+    return;
   }
-
   if (phase === 'betting'){
     DISPLAY_2DP = 1.00;
     centerText.className='centerText multi';
@@ -458,9 +457,8 @@ function draw(mult,phase,dt){
     return;
   }
 
-  // FLYING
+  // FLYING visuals
   const t = progressVis;
-
   const camScale = 1 + t*0.30;
   ctx.save(); ctx.translate(left, baseY); ctx.scale(camScale, camScale); ctx.translate(-left, -baseY);
 
@@ -481,11 +479,10 @@ function draw(mult,phase,dt){
 
   const SCALE=1.5, w=140*SCALE, h=60*SCALE;
   ctx.save(); ctx.translate(tipX, tipY); ctx.drawImage(planeImg, -w*(4/140), -h*(36/60), w, h); ctx.restore();
-
   ctx.restore();
 
   const shown = Number(mult?mult:1).toFixed(2);
-  DISPLAY_2DP = Number(shown);                           /* <- exact on-screen number (2dp) */
+  DISPLAY_2DP = Number(shown);       /* <-- exact 2dp number the user sees */
   centerText.className='centerText multi';
   centerText.textContent = `${shown}x`;
 }
@@ -503,7 +500,6 @@ function tick(now){
   } else {
     PARTICLES.length = 0;
   }
-
   const rate = (STATE.phase==='flying') ? 7.0 : 9.0;
   progressVis = damp(progressVis, target, rate, dt);
 
@@ -513,7 +509,6 @@ function tick(now){
 
   draw(visualMult, STATE.phase, dt);
   maybeNotifyAutoWins(visualMult);
-
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
@@ -532,7 +527,7 @@ function renderT(){
 }
 function markAllLiveAsLost(mult){ tickets.forEach(t=>{ if(t.state==='LIVE'){ t.state='LOST'; t.hit=mult; t.payout=0; } }); renderT(); }
 
-/* Notify auto-cashout */
+/* Notify auto-cashout (client-side preview only) */
 function maybeNotifyAutoWins(currentMult){
   if (STATE.phase!=='flying') return;
   tickets.forEach(t=>{
@@ -621,7 +616,7 @@ function wireCard(pid){
   cashBtn.addEventListener('pointerdown',()=>{ preSeen = DISPLAY_2DP; },{passive:true});
 
   cashBtn.onclick=async ()=>{
-    const seenToSend = (typeof preSeen==='number' && preSeen>=1) ? preSeen : DISPLAY_2DP;
+    const seenToSend = Number(((typeof preSeen==='number' && preSeen>=1) ? preSeen : DISPLAY_2DP).toFixed(2));
     preSeen=null;
     try{
       const r=await fetch(API.cashout(),{
