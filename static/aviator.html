@@ -476,7 +476,9 @@ function draw(mult,phase,dt){
 
 /* animation loop */
 function tick(now){
-  const dt=(now-lastTs)/1000; lastTs=now; tAccum += dt;
+  let dt = 0; // guard for first frame
+  if (typeof tick.lastTs === 'number') dt = (now - tick.lastTs)/1000; 
+  tick.lastTs = now; tAccum += dt;
 
   let target = 0;
   if (STATE.phase==='flying'){
