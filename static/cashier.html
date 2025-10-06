@@ -147,12 +147,17 @@
 
     /* Tiny SVG badges */
     .ico{width:16px;height:16px;display:inline-block;vertical-align:middle}
+    /* Toaster */
+    .toaster{position:fixed;top:16px;right:16px;display:flex;flex-direction:column;gap:10px;z-index:80}
+    .toast{background:#0f1933;border:1px solid #2a3b63;color:#e6edf3;padding:10px 12px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.35);opacity:0;transform:translateY(-6px);transition:opacity .18s ease, transform .18s ease}
+    .toast.show{opacity:1;transform:none}
+    .toast.success{border-color:#1d3f2a;background:#0e2217}
+    .toast.error{border-color:#4d1a1a;background:#2a0e0e}
   </style>
 </head>
 <body>
 <header>
   <div class="brand">
-    <!-- Football badge -->
     <svg class="ico" viewBox="0 0 24 24"><path fill="#7dd3fc" d="M12 2a10 10 0 1 0 0 20a10 10 0 0 0 0-20Zm0 2a8 8 0 0 1 7.7 6H12V4Z"/></svg>
     Cashier
   </div>
@@ -198,7 +203,6 @@
         </div>
         <div class="pill" id="roundTimer">Next in —</div>
       </div>
-      <!-- schedule strip -->
       <div class="sched" id="schedule"></div>
     </div>
 
@@ -370,7 +374,10 @@ let CURRENT_TAB = 'football';
 let CURRENT = null;
 let CURRENT_LEAGUE = 'EPL';
 let CURRENT_MARKET = 'MAIN';
-const MARKET_TABS = ['MAIN','OU15','OU25','BTTS','H15','A15','CMB15','CMB25'];
+/* Added markets here */
+const MARKET_TABS = [
+  'MAIN','OU05','OU15','OU25','OU35','BTTS','H15','A15','DC','DNB','CMB15','CMB25','HT1X2','2H1X2'
+];
 
 let nextBoundaryTs = null;
 let boundarySpanMs = 0;
@@ -379,7 +386,7 @@ let roundIndex = 1;  // others 1..4
 let selectedSlot = 0; // 0=live/current, 1..3=next
 
 function ceilToStep(dateMs, stepMin){ const stepMs=stepMin*60*1000; return Math.ceil(dateMs/stepMs)*stepMs; }
-function ceilTo3MinSlot(dateMs){ return ceilToStep(dateMs, 3); }
+function ceilTo3MinSlot(dateMs){ return Math.ceil(dateMs/(3*60*1000))*(3*60*1000); }
 
 function setFootballWeekTiming(){
   const now = Date.now()+healthSkew;
@@ -431,14 +438,12 @@ function tickDial(){
   const mm = Math.floor(ss/60), s = ss%60;
   roundTimer.textContent = `Next in ${String(mm).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
 
-  const liveWindow = true; // keep LIVE on
-  dial.classList.toggle('live', liveWindow);
+  dial.classList.add('live');
   liveText.textContent = 'LIVE';
 
   if (remain<=0){
     nextBoundaryTs += boundarySpanMs;
     advanceCycle();
-    // rebuild schedule timestamps
     buildScheduleTiles(boundarySpanMs/60000, (CURRENT_TAB==='football')?'WEEK':'ROUND');
   }
 }
@@ -485,7 +490,7 @@ async function placeBet(){
     selectionId: CURRENT.selection.id,
     stake,
     cashierId: CASHIER_ID,
-    slot: selectedSlot // so backend can tag future slot if you want
+    slot: selectedSlot
   };
   const r = await fetch(`${api}/bets`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   const j = await r.json();
@@ -527,6 +532,30 @@ function renderTickets(list){
 }
 
 /* =================== FOOTBALL =================== */
+function pickMarket(byType, candidates){
+  // candidates: array of strings or regexes; returns the first byType[key] that matches
+  const keys = Object.keys(byType||{});
+  for(const cand of candidates){
+    if (typeof cand==='string'){
+      if (byType[cand]) return byType[cand];
+    }else{
+      const k = keys.find(k=>cand.test(k));
+      if (k) return byType[k];
+    }
+  }
+  return null;
+}
+function renderRow(box, ev, mdef, cols=3){
+  if(!mdef) return;
+  const row=document.createElement('div'); row.style.display='grid'; row.style.gridTemplateColumns=`repeat(${cols}, 1fr)`; row.style.gap='8px';
+  mdef.selections.forEach(s=>{
+    const txt = `${s.name.replace(/\s*\(.*?\)\s*/g,'')} ${mdef.odds[s.id]}`;
+    const b=document.createElement('div'); b.className='sel'; b.textContent=txt;
+    b.onclick=()=>choose(ev,mdef,s);
+    row.appendChild(b);
+  });
+  box.appendChild(row);
+}
 async function loadFootball(){
   setFootballWeekTiming();
 
@@ -545,7 +574,11 @@ async function loadFootball(){
 
   // market tabs row (single view only)
   const mrow = document.createElement('div'); mrow.className='markets';
-  const MLAB = {MAIN:'MAIN', OU15:'OU 1.5', OU25:'OU 2.5', BTTS:'BTTS', H15:'HOME 1.5', A15:'AWAY 1.5', CMB15:'1X2+OU1.5', CMB25:'1X2+OU2.5'};
+  const MLAB = {
+    MAIN:'MAIN', OU05:'OU 0.5', OU15:'OU 1.5', OU25:'OU 2.5', OU35:'OU 3.5',
+    BTTS:'BTTS', H15:'HOME 1.5', A15:'AWAY 1.5', DC:'DOUBLE CHANCE', DNB:'DRAW NO BET',
+    CMB15:'1X2+OU1.5', CMB25:'1X2+OU2.5', HT1X2:'HT 1X2', '2H1X2':'2H 1X2'
+  };
   MARKET_TABS.forEach(m=>{
     const b=document.createElement('div'); b.className='mkt'; b.textContent = MLAB[m];
     if(m===CURRENT_MARKET) b.classList.add('active');
@@ -558,7 +591,6 @@ async function loadFootball(){
   const all = (await (await fetch(`${api}/events?game=football`)).json()).filter(e=>e.league===CURRENT_LEAGUE);
   if (!all.length){ el('stage').innerHTML+='<div class="muted">No fixtures.</div>'; return; }
 
-  // only the selected market for each fixture
   for (const ev of all.slice(0, 24)){
     const markets = await (await fetch(`${api}/markets/${ev.id}`)).json();
     const byType={}; markets.forEach(m=>byType[m.type]=m);
@@ -576,26 +608,65 @@ async function loadFootball(){
     hbar.appendChild(clubs); hbar.appendChild(tm);
     box.appendChild(hbar);
 
-    function rowFor(mdef, cols=3){
-      if(!mdef) return;
-      const row=document.createElement('div'); row.style.display='grid'; row.style.gridTemplateColumns=`repeat(${cols}, 1fr)`; row.style.gap='8px';
-      mdef.selections.forEach(s=>{
-        const txt = `${s.name.replace(/\s*\(.*?\)\s*/g,'')} ${mdef.odds[s.id]}`;
-        const b=document.createElement('div'); b.className='sel'; b.textContent=txt;
-        b.onclick=()=>choose(ev,mdef,s);
-        row.appendChild(b);
-      });
-      box.appendChild(row);
-    }
+    // Try flexible keys for each market
+    const mMain = pickMarket(byType, [
+      `MAIN_1X2_${CURRENT_LEAGUE}`, /MAIN.*1X2.*${CURRENT_LEAGUE}/
+    ]);
+    const mOU05 = pickMarket(byType, [
+      `OU_0_5_${CURRENT_LEAGUE}`, /OU[_-]?0[_-]?5.*${CURRENT_LEAGUE}/
+    ]);
+    const mOU15 = pickMarket(byType, [
+      `OU_1_5_${CURRENT_LEAGUE}`, /OU[_-]?1[_-]?5.*${CURRENT_LEAGUE}/
+    ]);
+    const mOU25 = pickMarket(byType, [
+      `OU_2_5_${CURRENT_LEAGUE}`, /OU[_-]?2[_-]?5.*${CURRENT_LEAGUE}/
+    ]);
+    const mOU35 = pickMarket(byType, [
+      `OU_3_5_${CURRENT_LEAGUE}`, /OU[_-]?3[_-]?5.*${CURRENT_LEAGUE}/
+    ]);
+    const mBTTS = pickMarket(byType, [
+      `BTTS_${CURRENT_LEAGUE}`, /BTTS.*${CURRENT_LEAGUE}/
+    ]);
+    const mH15 = pickMarket(byType, [
+      `HOME_OU_1_5_${CURRENT_LEAGUE}`, /HOME.*OU.*1[_-]?5.*${CURRENT_LEAGUE}/
+    ]);
+    const mA15 = pickMarket(byType, [
+      `AWAY_OU_1_5_${CURRENT_LEAGUE}`, /AWAY.*OU.*1[_-]?5.*${CURRENT_LEAGUE}/
+    ]);
+    const mDC = pickMarket(byType, [
+      `DC_${CURRENT_LEAGUE}`, new RegExp(`DOUBLE[_-]?CHANCE.*${CURRENT_LEAGUE}`)
+    ]);
+    const mDNB = pickMarket(byType, [
+      `DNB_${CURRENT_LEAGUE}`, new RegExp(`DRAW[_-]?NO[_-]?BET.*${CURRENT_LEAGUE}`)
+    ]);
+    const mCMB15 = pickMarket(byType, [
+      `COMBO_1X2_OU_1_5_${CURRENT_LEAGUE}`, /COMBO.*1X2.*OU.*1[_-]?5.*${CURRENT_LEAGUE}/
+    ]);
+    const mCMB25 = pickMarket(byType, [
+      `COMBO_1X2_OU_2_5_${CURRENT_LEAGUE}`, /COMBO.*1X2.*OU.*2[_-]?5.*${CURRENT_LEAGUE}/
+    ]);
+    const mHT1X2 = pickMarket(byType, [
+      `HT_1X2_${CURRENT_LEAGUE}`, `H1_1X2_${CURRENT_LEAGUE}`, `1H_1X2_${CURRENT_LEAGUE}`, /H(T|1).*1X2.*${CURRENT_LEAGUE}/
+    ]);
+    const m2H1X2 = pickMarket(byType, [
+      `H2_1X2_${CURRENT_LEAGUE}`, `2H_1X2_${CURRENT_LEAGUE}`, /H2.*1X2.*${CURRENT_LEAGUE}/
+    ]);
 
-    if (CURRENT_MARKET==='MAIN') rowFor(byType[`MAIN_1X2_${CURRENT_LEAGUE}`], 3);
-    if (CURRENT_MARKET==='OU15') rowFor(byType[`OU_1_5_${CURRENT_LEAGUE}`], 2);
-    if (CURRENT_MARKET==='OU25') rowFor(byType[`OU_2_5_${CURRENT_LEAGUE}`], 2);
-    if (CURRENT_MARKET==='BTTS') rowFor(byType[`BTTS_${CURRENT_LEAGUE}`], 2);
-    if (CURRENT_MARKET==='H15') rowFor(byType[`HOME_OU_1_5_${CURRENT_LEAGUE}`], 2);
-    if (CURRENT_MARKET==='A15') rowFor(byType[`AWAY_OU_1_5_${CURRENT_LEAGUE}`], 2);
-    if (CURRENT_MARKET==='CMB15') rowFor(byType[`COMBO_1X2_OU_1_5_${CURRENT_LEAGUE}`], 3);
-    if (CURRENT_MARKET==='CMB25') rowFor(byType[`COMBO_1X2_OU_2_5_${CURRENT_LEAGUE}`], 3);
+    // Render only the selected market
+    if (CURRENT_MARKET==='MAIN')   renderRow(box, ev, mMain, 3);
+    if (CURRENT_MARKET==='OU05')   renderRow(box, ev, mOU05, 2);
+    if (CURRENT_MARKET==='OU15')   renderRow(box, ev, mOU15, 2);
+    if (CURRENT_MARKET==='OU25')   renderRow(box, ev, mOU25, 2);
+    if (CURRENT_MARKET==='OU35')   renderRow(box, ev, mOU35, 2);
+    if (CURRENT_MARKET==='BTTS')   renderRow(box, ev, mBTTS, 2);
+    if (CURRENT_MARKET==='H15')    renderRow(box, ev, mH15, 2);
+    if (CURRENT_MARKET==='A15')    renderRow(box, ev, mA15, 2);
+    if (CURRENT_MARKET==='DC')     renderRow(box, ev, mDC, 3);
+    if (CURRENT_MARKET==='DNB')    renderRow(box, ev, mDNB, 2);
+    if (CURRENT_MARKET==='CMB15')  renderRow(box, ev, mCMB15, 3);
+    if (CURRENT_MARKET==='CMB25')  renderRow(box, ev, mCMB25, 3);
+    if (CURRENT_MARKET==='HT1X2')  renderRow(box, ev, mHT1X2, 3);
+    if (CURRENT_MARKET==='2H1X2')  renderRow(box, ev, m2H1X2, 3);
 
     el('stage').appendChild(box);
   }
@@ -684,7 +755,7 @@ async function loadRacing(game){
   }
 }
 
-/* =================== Colors & Numbers (with combo hooks) =================== */
+/* =================== Colors & Numbers =================== */
 async function loadColorsNumbers(){
   setRacingRoundTiming();
 
@@ -712,8 +783,6 @@ async function loadColorsNumbers(){
   boxC.appendChild(gridC);
   el('stage').appendChild(boxC);
 
-  // Extra logic hooks from your screenshot:
-  // COLOR_MATCH_COUNT or COLOR_MATCH_N
   const matchCount = marketsC.find(x=>/COLOR.*MATCH/i.test(x.type));
   if (matchCount){
     const boxM=document.createElement('div'); boxM.className='list';
@@ -728,7 +797,6 @@ async function loadColorsNumbers(){
     el('stage').appendChild(boxM);
   }
 
-  // COLOR+NUMBER combo (if backend exposes e.g. COLOR_NUMBER / COLOR_NUM_COMBO)
   const combo = marketsC.find(x=>/COLOR.*NUMBER|COLOR_NUM/i.test(x.type));
   if (combo){
     const boxX=document.createElement('div'); boxX.className='list';
@@ -813,8 +881,6 @@ async function boot(){
   await refreshCashier();
   await loadFootball();   // default
   await loadTickets();
-
-  // periodic refresh
   setInterval(async ()=>{
     await refreshCashier();
     refreshByTab();
