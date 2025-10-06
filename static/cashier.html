@@ -68,14 +68,18 @@
     .muted{color:var(--muted);font-size:12px}
     .divider{height:1px;background:var(--line);margin:10px 0}
 
-    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
-    .tab{padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:#0f1933;color:#e6edf3;cursor:pointer;font-weight:700;display:flex;align-items:center;gap:8px}
-    .tab.active{outline:2px solid var(--accent)}
-    .chips{display:flex;gap:6px;flex-wrap:wrap}
-    .chip{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0f1933;cursor:pointer;display:flex;gap:6px;align-items:center}
-    .chip.active{outline:2px solid var(--accent)}
-    .markets{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 10px}
-    .mkt{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0f1933;cursor:pointer;font-size:12px}
+    /* Seamless segmented controls */
+    .seg{display:inline-flex;border-radius:14px;overflow:hidden;border:1px solid #2b3c62;background:#0e172f}
+    .seg .segbtn{padding:8px 14px;font-weight:800;cursor:pointer;border-right:1px solid #2b3c62;user-select:none}
+    .seg .segbtn:last-child{border-right:none}
+    .seg .segbtn[aria-pressed="true"]{background:#12305b;outline:2px solid var(--accent)}
+
+    /* Top tiles bar */
+    .tiles-wrap{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+
+    /* Markets strip (kept but cheap to re-render only) */
+    .markets{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px}
+    .mkt{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0f1933;cursor:pointer;font-size:12px;font-weight:800}
     .mkt.active{outline:2px solid #22c55e}
 
     .fxrow{
@@ -159,22 +163,13 @@
 
 <div class="container">
   <div class="panel">
-    <div class="tabs">
-      <div class="tab active" data-tab="football">
-        <svg class="ico" viewBox="0 0 24 24"><path fill="#93c5fd" d="M12 2c5.5 0 10 4.5 10 10s-4.5 10-10 10S2 17.5 2 12S6.5 2 12 2Zm0 3l-3 2l1 3l-2 2l2 2l-1 3l3 2l3-2l-1-3l2-2l-2-2l1-3l-3-2Z"/></svg>
-        Football
-      </div>
-      <div class="tab" data-tab="dogs">
-        <svg class="ico" viewBox="0 0 24 24"><path fill="#fca5a5" d="M3 7h5l2 3h6l2-3h3l-2 10H5z"/></svg>
-        Dogs
-      </div>
-      <div class="tab" data-tab="horses">
-        <svg class="ico" viewBox="0 0 24 24"><path fill="#fde68a" d="M3 14h4l3-5h7l4 5v2H3z"/></svg>
-        Horses
-      </div>
-      <div class="tab" data-tab="colors">
-        <svg class="ico" viewBox="0 0 24 24"><circle cx="8" cy="8" r="4" fill="#ef4444"/><circle cx="16" cy="8" r="4" fill="#3b82f6"/><circle cx="12" cy="16" r="4" fill="#10b981"/></svg>
-        Colors & Numbers
+    <!-- Top category tiles as a seamless segmented control -->
+    <div class="tiles-wrap">
+      <div class="seg" role="tablist" aria-label="Game categories">
+        <button class="segbtn" data-tab="football" aria-pressed="true">Football</button>
+        <button class="segbtn" data-tab="dogs" aria-pressed="false">Dogs</button>
+        <button class="segbtn" data-tab="horses" aria-pressed="false">Horses</button>
+        <button class="segbtn" data-tab="colors" aria-pressed="false">Colors & Numbers</button>
       </div>
     </div>
 
@@ -270,7 +265,7 @@ function notify(msg,type='info',ms=2200){
 
 /* ---------- API helper (tries same-origin, then :4000) ---------- */
 const ORIGIN = location.origin;
-const PORT4000 = ORIGIN.replace(/^(https?:\/\/[^/:]+)(?::\d+)?$/,'$1:4000');
+const PORT4000 = ORIGIN.replace(/^(https?:\/\/[^\/:]+)(?::\d+)?$/,'$1:4000');
 const API = {
   async get(path){
     try{ const r = await fetch(`${ORIGIN}${path}`,{cache:'no-store'}); if(r.ok) return r; }catch{}
@@ -353,7 +348,7 @@ function buildSchedule(stepMin){
     const label = new Date(ts).toLocaleTimeString();
     const slot=document.createElement('div'); slot.className='slot'; if(i===selectedSlot) slot.classList.add('active');
     slot.innerHTML = `<b>${label}</b><small>${stepMin} min</small>`;
-    slot.onclick=()=>{ selectedSlot=i; document.querySelectorAll('.slot').forEach(x=>x.classList.remove('active')); slot.classList.add('active'); refreshByTab(); };
+    slot.onclick=()=>{ selectedSlot=i; document.querySelectorAll('.slot').forEach(x=>x.classList.remove('active')); slot.classList.add('active'); refreshByTab(true); };
     scheduleBox.appendChild(slot);
   }
 }
@@ -382,7 +377,7 @@ function tickDial(){
     nextBoundaryTs += boundarySpanMs;
     if (CURRENT_TAB==='football'){ weekPointer++; }
     buildSchedule(boundarySpanMs/60000);
-    refreshByTab();
+    refreshByTab(false, true); // timed refresh
   }
 }
 setInterval(tickDial, 500);
@@ -446,6 +441,27 @@ async function loadTickets(){
   };
 }
 
+/* ---------- Data cache so fixtures stay fixed while toggling markets ---------- */
+const CACHE = {
+  events: { /* game -> [events] */ },
+  markets: { /* eventId -> {type -> market} */ },
+  loadedAt: { /* game -> ts */ }
+};
+
+async function getEvents(game){
+  // cache for 60s to keep fixtures fixed while toggling; refreshed on dial tick
+  const now = Date.now();
+  if (CACHE.events[game] && now - (CACHE.loadedAt[game]||0) < 60_000) return CACHE.events[game];
+  try{ const r=await API.get(`/events?game=${game}`); const arr=await r.json(); CACHE.events[game]=arr; CACHE.loadedAt[game]=now; return arr; }catch{ return CACHE.events[game]||[]; }
+}
+async function getMarkets(eventId){
+  if (!CACHE.markets[eventId]){
+    try{ const r=await API.get(`/markets/${eventId}`); const arr=await r.json(); const map={}; arr.forEach(m=>map[m.type]=m); CACHE.markets[eventId]=map; }
+    catch{ CACHE.markets[eventId]={}; }
+  }
+  return CACHE.markets[eventId];
+}
+
 /* ---------- Helpers ---------- */
 function pickMarket(byType, candidates){
   const keys=Object.keys(byType||{});
@@ -458,28 +474,29 @@ function pickMarket(byType, candidates){
 
 /* ---------- FOOTBALL (10 fixtures per view) ---------- */
 const MARKET_TABS = ['MAIN','OU05','OU15','OU25','OU35','BTTS','H15','A15','DC','DNB','CMB15','CMB25'];
+const MLAB={MAIN:'MAIN',OU05:'OU 0.5',OU15:'OU 1.5',OU25:'OU 2.5',OU35:'OU 3.5',BTTS:'BTTS',H15:'HOME 1.5',A15:'AWAY 1.5',DC:'DOUBLE CHANCE',DNB:'DRAW NO BET',CMB15:'1X2+OU1.5',CMB25:'1X2+OU2.5'};
 
-async function loadFootball(){
-  setTiming();
-  el('leagueChips').style.display='flex';
+async function renderFootball(){
   const stage=el('stage'); stage.innerHTML='';
 
+  // leagues chips
+  el('leagueChips').style.display='flex';
   const head=el('leagueChips'); head.innerHTML='';
   ['EPL','LALIGA','UCL'].forEach(L=>{
-    const c=document.createElement('div'); c.className='chip'; if(L===CURRENT_LEAGUE) c.classList.add('active');
-    c.innerHTML=`<b>${L}</b>`; c.onclick=()=>{ CURRENT_LEAGUE=L; weekPointer=0; loadFootball(); };
+    const c=document.createElement('div'); c.className='pill'; c.style.cursor='pointer'; if(L===CURRENT_LEAGUE) c.style.outline='2px solid var(--accent)';
+    c.innerHTML=`<b>${L}</b>`; c.onclick=()=>{ CURRENT_LEAGUE=L; weekPointer=0; CURRENT_MARKET='MAIN'; renderFootball(); };
     head.appendChild(c);
   });
 
+  // markets segmented strip (no re-fetching on toggle)
   const mrow=document.createElement('div'); mrow.className='markets';
-  const MLAB={MAIN:'MAIN',OU05:'OU 0.5',OU15:'OU 1.5',OU25:'OU 2.5',OU35:'OU 3.5',BTTS:'BTTS',H15:'HOME 1.5',A15:'AWAY 1.5',DC:'DOUBLE CHANCE',DNB:'DRAW NO BET',CMB15:'1X2+OU1.5',CMB25:'1X2+OU2.5'};
-  MARKET_TABS.forEach(m=>{ const b=document.createElement('div'); b.className='mkt'; if(m===CURRENT_MARKET) b.classList.add('active'); b.textContent=MLAB[m]; b.onclick=()=>{CURRENT_MARKET=m; loadFootball();}; mrow.appendChild(b);});
+  MARKET_TABS.forEach(m=>{ const b=document.createElement('div'); b.className='mkt'; if(m===CURRENT_MARKET) b.classList.add('active'); b.textContent=MLAB[m]; b.onclick=()=>{CURRENT_MARKET=m; renderFootball();}; mrow.appendChild(b);});
   stage.appendChild(mrow);
 
-  let all=[];
-  try{ const r=await API.get(`/events?game=football`); all=(await r.json()).filter(e=>e.league===CURRENT_LEAGUE); }catch{}
+  // fixed fixtures block (from cache)
+  let all = await getEvents('football');
+  all=(all||[]).filter(e=>e.league===CURRENT_LEAGUE).sort((a,b)=>a.runsAt-b.runsAt);
   if(!all.length){ stage.innerHTML+='<div class="muted">No fixtures.</div>'; return; }
-  all.sort((a,b)=>a.runsAt-b.runsAt);
 
   const blocks=[]; for(let i=0;i<all.length;i+=10) blocks.push(all.slice(i,i+10));
   const blk = blocks[(weekPointer)%blocks.length];
@@ -487,11 +504,10 @@ async function loadFootball(){
   let rowIndex=0;
   for(const ev of blk){
     rowIndex++;
-    let markets=[]; try{ const r=await API.get(`/markets/${ev.id}`); markets=await r.json(); }catch{}
-    const byType={}; markets.forEach(m=>byType[m.type]=m);
+    const byType = await getMarkets(ev.id);
 
     const folder = CURRENT_LEAGUE.toLowerCase()==='epl'?'epl':(CURRENT_LEAGUE.toLowerCase()==='laliga'?'laliga':'ucl');
-    const H=ev.home.abbr, A=ev.away.abbr;
+    const H=ev.home.abbr, A=ev.away.abbr; // stays fixed while toggling
 
     const mMain  = pickMarket(byType,[`MAIN_1X2_${CURRENT_LEAGUE}`,/MAIN.*1X2.*${CURRENT_LEAGUE}/]);
     const mOU05  = pickMarket(byType,[`OU_0_5_${CURRENT_LEAGUE}`,/OU[_-]?0[_-]?5.*${CURRENT_LEAGUE}/]);
@@ -507,7 +523,8 @@ async function loadFootball(){
     const mCMB25 = pickMarket(byType,[`COMBO_1X2_OU_2_5_${CURRENT_LEAGUE}`,/COMBO.*1X2.*OU.*2[_-]?5.*${CURRENT_LEAGUE}/]);
 
     const mMap={MAIN:mMain,OU05:mOU05,OU15:mOU15,OU25:mOU25,OU35:mOU35,BTTS:mBTTS,H15:mH15,A15:mA15,DC:mDC,DNB:mDNB,CMB15:mCMB15,CMB25:mCMB25};
-    const mdef=mMap[CURRENT_MARKET]; if(!mdef) continue;
+    const mdef=mMap[CURRENT_MARKET] || mMain; // always fall back to MAIN for smoothness
+    if(!mdef) continue;
 
     const row=document.createElement('div'); row.className='fxrow';
     const idx=document.createElement('div'); idx.className='idx'; idx.textContent=String(rowIndex); row.appendChild(idx);
@@ -526,6 +543,7 @@ async function loadFootball(){
     stage.appendChild(row);
   }
 
+  // Up next panel (kept stable to the chosen 10)
   el('next').innerHTML='';
   blk.slice(0,10).forEach(n=>{
     const d=document.createElement('div'); d.className='oddbtn'; d.style.background='#0e172f'; d.style.border='1px solid #2a3e6a';
@@ -535,8 +553,7 @@ async function loadFootball(){
 }
 
 /* ---------- Racing ---------- */
-async function loadRacing(game){
-  setTiming();
+async function renderRacing(game){
   el('leagueChips').style.display='none';
   const stage=el('stage'); stage.innerHTML='';
 
@@ -544,7 +561,7 @@ async function loadRacing(game){
   const mrow=document.createElement('div'); mrow.className='markets';
   ['MAIN','FORECAST','QUINELLA','TRICAST'].forEach(m=>{
     const b=document.createElement('div'); b.className='mkt'; if(window.racingMkt[game]===m) b.classList.add('active');
-    b.textContent=m; b.onclick=()=>{window.racingMkt[game]=m; loadRacing(game);}; mrow.appendChild(b);
+    b.textContent=m; b.onclick=()=>{window.racingMkt[game]=m; renderRacing(game);}; mrow.appendChild(b);
   });
   stage.appendChild(mrow);
 
@@ -552,8 +569,7 @@ async function loadRacing(game){
   if(!events.length){ stage.innerHTML+='<div class="muted">No events.</div>'; return; }
 
   for(const ev of events){
-    let markets=[]; try{ const r=await API.get(`/markets/${ev.id}`); markets=await r.json(); }catch{}
-    const byType={}; markets.forEach(m=>byType[m.type]=m);
+    const byType = await getMarkets(ev.id);
     const main=byType['MAIN_WIN'];
 
     const box=document.createElement('div'); box.className='panel'; box.style.background='#0e172f'; box.style.borderColor='#26385f';
@@ -599,8 +615,7 @@ async function loadRacing(game){
 }
 
 /* ---------- Colors & Numbers ---------- */
-async function loadColorsNumbers(){
-  setTiming();
+async function renderColorsNumbers(){
   el('leagueChips').style.display='none';
   const stage=el('stage'); stage.innerHTML='';
 
@@ -638,31 +653,35 @@ async function loadColorsNumbers(){
 }
 
 /* ---------- Router & Boot ---------- */
-document.querySelectorAll('.tab[data-tab]').forEach(t=>{
-  t.addEventListener('click', ()=>{
-    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
-    t.classList.add('active');
-    CURRENT_TAB = t.dataset.tab; CURRENT=null; showSlip(false);
-    if (CURRENT_TAB==='football') loadFootball();
-    if (CURRENT_TAB==='dogs') loadRacing('dog');
-    if (CURRENT_TAB==='horses') loadRacing('horse');
-    if (CURRENT_TAB==='colors') loadColorsNumbers();
+function setCategory(tab){
+  document.querySelectorAll('.segbtn[data-tab]').forEach(b=>{
+    const active = b.dataset.tab===tab; b.setAttribute('aria-pressed', active? 'true':'false');
   });
-});
-function refreshByTab(){
-  if (CURRENT_TAB==='football') loadFootball();
-  if (CURRENT_TAB==='dogs') loadRacing('dog');
-  if (CURRENT_TAB==='horses') loadRacing('horse');
-  if (CURRENT_TAB==='colors') loadColorsNumbers();
+  CURRENT_TAB = tab; CURRENT=null; showSlip(false);
+  setTiming();
+  if (tab==='football'){ CURRENT_MARKET='MAIN'; renderFootball(); }
+  if (tab==='dogs'){ renderRacing('dog'); }
+  if (tab==='horses'){ renderRacing('horse'); }
+  if (tab==='colors'){ renderColorsNumbers(); }
 }
 
-async function loadTickets(){ /* unchanged below, already defined above */ }
+document.querySelectorAll('.segbtn[data-tab]').forEach(b=>{
+  b.addEventListener('click', ()=> setCategory(b.dataset.tab));
+});
+
+function refreshByTab(forceReloadEvents=false, timed=false){
+  if (CURRENT_TAB==='football') { if(forceReloadEvents||timed) { CACHE.loadedAt.football=0; } renderFootball(); }
+  if (CURRENT_TAB==='dogs') renderRacing('dog');
+  if (CURRENT_TAB==='horses') renderRacing('horse');
+  if (CURRENT_TAB==='colors') renderColorsNumbers();
+}
+
 async function boot(){
   await refreshCashier();
   setTiming();
-  await loadFootball();
+  setCategory('football'); // default; ensures MAIN market
   await loadTickets();
-  setInterval(async ()=>{ await refreshCashier(); refreshByTab(); await loadTickets(); }, 9000);
+  setInterval(async ()=>{ await refreshCashier(); refreshByTab(false,true); await loadTickets(); }, 9000);
 }
 boot();
 </script>
