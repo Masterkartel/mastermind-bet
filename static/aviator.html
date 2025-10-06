@@ -213,7 +213,7 @@ const SFX = {
   play(name){
     if(!SOUND_ON) return;
     if(name==='bet') tone({type:'square',freq:920,dur:0.09,vol:0.22,attack:0.002,decay:0.07});
-    if(name==='cash') { tone({type:'triangle',freq:720,dur:0.12,vol:0.26}); tone({type:'triangle',freq:1020,dur:0.16,vol:0.26}); }
+    if(name==='cash') { tone({type:'triangle',freq:720,dur=0.12,vol:0.26}); tone({type:'triangle',freq:1020,dur=0.16,vol:0.26}); }
     if(name==='takeoff') sweepUp(340,1400,0.55,'sawtooth',0.22);
     if(name==='bust') sweepDown(1600,110,0.55,'triangle',0.28);
   }
@@ -356,6 +356,7 @@ const centerText=document.getElementById('centerText');
 
 /* ===== Flight model (time-synced) ===== */
 let STATE={ phase:'betting', multiplier:1, bust:2, history:[], speed:0.46, roundId:'-' };
+let DISPLAY_2DP = 1.00;   /* <-- exact number shown on screen (2dp) */
 
 function minFrontSeconds(bust){
   if (!bust || bust <= 1.02) return 0.10;
@@ -443,15 +444,18 @@ function draw(mult,phase,dt){
   drawSky(dt, tSky);
 
   if (phase === 'busted') {
+    const shown = mult?Number(mult).toFixed(2):'';
+    DISPLAY_2DP = shown?Number(shown):1.00;            /* keep last screen value */
     centerText.className='centerText flew';
-    centerText.textContent='FLEW AWAY!\n'+(mult?`${Number(mult).toFixed(2)}x`:``);
+    centerText.textContent='FLEW AWAY!\n'+(shown?`${shown}x`:``);
     return; // hide trail + plane
   }
 
   if (phase === 'betting'){
+    DISPLAY_2DP = 1.00;
     centerText.className='centerText multi';
     centerText.textContent='Place your bets…';
-    return; // no trail/plane until takeoff
+    return;
   }
 
   // FLYING
@@ -476,14 +480,14 @@ function draw(mult,phase,dt){
   drawParticles();
 
   const SCALE=1.5, w=140*SCALE, h=60*SCALE;
-  const tailAx=4/140, tailAy=36/60;
-  ctx.save(); ctx.translate(tipX, tipY); ctx.rotate(0);
-  ctx.drawImage(planeImg, -w*tailAx, -h*tailAy, w, h); ctx.restore();
+  ctx.save(); ctx.translate(tipX, tipY); ctx.drawImage(planeImg, -w*(4/140), -h*(36/60), w, h); ctx.restore();
 
   ctx.restore();
 
+  const shown = Number(mult?mult:1).toFixed(2);
+  DISPLAY_2DP = Number(shown);                           /* <- exact on-screen number (2dp) */
   centerText.className='centerText multi';
-  centerText.textContent = mult?`${Number(mult).toFixed(2)}x`:``;
+  centerText.textContent = `${shown}x`;
 }
 
 /* animation loop */
@@ -588,6 +592,8 @@ async function ensureMinBalance(pid, min=100){
   const bal=await refreshBal(pid);
   if (bal<min){ try{ await fetch(API.walletLoad(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid, amount:2000})}); await refreshBal(pid);}catch{} }
 }
+
+/* === capture & send the EXACT on-screen number at cash click === */
 function wireCard(pid){
   const card=document.querySelector(`.card[data-player="${pid}"]`);
   const tabs=card.querySelectorAll('.tab'); const manual=card.querySelector('.pane.manual'); const auto=card.querySelector('.pane.auto');
@@ -609,9 +615,20 @@ function wireCard(pid){
       await refreshBal(pid);
     }catch{ notify('Network error placing bet','error'); }
   };
+
+  /* capture the number the moment the finger goes down */
+  let preSeen=null;
+  cashBtn.addEventListener('pointerdown',()=>{ preSeen = DISPLAY_2DP; },{passive:true});
+
   cashBtn.onclick=async ()=>{
+    const seenToSend = (typeof preSeen==='number' && preSeen>=1) ? preSeen : DISPLAY_2DP;
+    preSeen=null;
     try{
-      const r=await fetch(API.cashout(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({playerId:pid})});
+      const r=await fetch(API.cashout(),{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({playerId:pid, seen: seenToSend})
+      });
       const j=await r.json(); if(!j.ok) return notify(j.error||'Cashout failed','error');
       status.textContent='CASHED'; pEl.textContent=KES(j.payout);
       const t=tickets.find(x=>x.playerId===pid && x.state==='LIVE');
@@ -622,6 +639,7 @@ function wireCard(pid){
       await refreshBal(pid);
     }catch{ notify('Network error during cashout','error'); }
   };
+
   aBtn.onclick=async ()=>{
     const stake=clamp(Number(aStake.value||0),20,1000), x=clamp(Number(aX.value||0),1.05,1000);
     try{
