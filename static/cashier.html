@@ -9,6 +9,8 @@
       --bg:#070b16; --panel:#0b1428; --line:#1c2741; --text:#e6edf3; --muted:#9aa4b2;
       --accent:#22c55e; --danger:#ef4444; --warn:#f59e0b; --chip:#0f1a33; --ink:#0e172f;
       --sky1:#122445; --sky2:#0b1324;
+      --dial-bg:#0d1428; --dial-fg:#22c55e; --dial-warn:#f59e0b; --dial-live:#ef4444;
+      --maxw:100%;
     }
     *{box-sizing:border-box}
     html,body{height:100%}
@@ -30,8 +32,25 @@
     .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0d1428;font-size:12px}
     .clock{min-width:220px;text-align:right}
 
+    /* Round dial (circular clock countdown) */
+    .roundbar{display:flex;align-items:center;gap:10px}
+    .dial{
+      --p:0deg; --col:var(--dial-fg);
+      width:34px;height:34px;border-radius:50%;
+      background:
+        conic-gradient(var(--col) var(--p), #0000 var(--p)),
+        radial-gradient(circle 15px, #0000 14px, var(--dial-bg) 15px);
+      border:1px solid var(--line);
+      position:relative;
+    }
+    .dial.live{ --col: var(--dial-live); animation:pulse 1.1s infinite alternate; }
+    @keyframes pulse{ from{filter:brightness(1)} to{filter:brightness(1.25)} }
+    .roundtxt{display:flex;flex-direction:column;line-height:1}
+    .roundtxt b{font-size:12px}
+    .roundtxt small{font-size:11px;color:var(--muted)}
+
     /* Layout */
-    .container{max-width:1500px;margin:0 auto;padding:14px;display:grid;grid-template-columns:2fr 1fr;gap:14px}
+    .container{max-width:var(--maxw);margin:0 auto;padding:10px 10px 14px;display:grid;grid-template-columns:2fr 1fr;gap:14px}
     @media (max-width:1100px){ .container{grid-template-columns:1fr} }
 
     .panel{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:12px}
@@ -44,7 +63,7 @@
     .tab{padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:#0f1933;color:#e6edf3;cursor:pointer;font-weight:800}
     .tab.active{outline:2px solid var(--accent)}
     .chips{display:flex;gap:6px;flex-wrap:wrap}
-    .chip{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:var(--chip);cursor:pointer}
+    .chip{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#0f1933;cursor:pointer}
     .chip.active{outline:2px solid var(--accent)}
     .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 
@@ -67,8 +86,8 @@
     .logo{width:26px;height:26px;border-radius:50%;background:#0b1324;border:1px solid #1c2741;object-fit:cover}
     .ph{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#10203c;color:#9fb3d4;font-weight:900}
 
-    /* Racing lanes (dogs/horses) */
-    .track{position:relative;height:180px;border:1px dashed var(--line);border-radius:14px;margin:10px 0 6px;
+    /* Racing lanes (dogs/horses) — 8 lanes for horses fixed */
+    .track{position:relative;height:186px;border:1px dashed var(--line);border-radius:14px;margin:10px 0 6px;
       background:
         linear-gradient(90deg,#0b1324 0 10px, #12203f 10px 12px, transparent 12px),
         repeating-linear-gradient(to bottom, #0f1629 0, #0f1629 26px, #0b1324 26px, #0b1324 28px);
@@ -102,7 +121,7 @@
 
     /* Betslip & tickets */
     .betslip{display:grid;gap:8px}
-    input,button{font-family:inherit}
+    input,button,select{font-family:inherit}
     input[type="number"], input[type="text"]{width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:#0d1428;color:#fff}
     .btn{padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#0d1428;color:#fff;cursor:pointer;font-weight:800}
     .btn.primary{background:#0f2b1b;border-color:#1b4d28}
@@ -126,8 +145,12 @@
 <header>
   <div class="brand">Cashier</div>
   <div class="grow"></div>
+
+  <!-- Global live clock -->
   <div class="pill clock" id="clock">—</div>
-  <a href="/aviator" class="pill" style="display:flex;gap:6px;align-items:center;background:#0e172f">
+
+  <!-- Aviator link on right -->
+  <a href="/aviator" class="pill" style="display:flex;gap:6px;align-items:center;background:#0e172f;margin-left:6px">
     <img src="/static/img/aviator-icon.png" alt="Aviator" style="width:18px;height:18px;border-radius:50%"/>
     <span style="font-weight:800">Aviator</span>
   </a>
@@ -143,17 +166,22 @@
       <div class="tab" data-tab="colors">Colors & Numbers</div>
     </div>
 
-    <div id="stageWrap">
-      <div class="row" style="justify-content:space-between;align-items:center">
-        <div class="title" id="title">—</div>
-        <div class="pill" id="roundTimer">Next round in —</div>
+    <!-- Round dial + label -->
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
+      <div class="roundbar">
+        <div id="dial" class="dial" title="Round timer"></div>
+        <div class="roundtxt">
+          <b id="liveText">—</b>
+          <small id="roundLabel">—</small>
+        </div>
       </div>
-
-      <!-- Football league chips -->
-      <div class="chips" id="leagueChips" style="display:flex"></div>
-
-      <div id="stage" class="grid"></div>
+      <div class="pill" id="roundTimer">Next in —</div>
     </div>
+
+    <!-- Football league chips -->
+    <div class="chips" id="leagueChips" style="display:flex"></div>
+
+    <div id="stage" class="grid"></div>
   </div>
 
   <!-- RIGHT -->
@@ -217,7 +245,7 @@
 <div id="toaster" class="toaster"></div>
 
 <script>
-/* -------- Toasts -------- */
+/* ---------------- Toasts ---------------- */
 const toaster=document.getElementById('toaster');
 function notify(msg,type='info',ms=2200){
   const t=document.createElement('div');
@@ -227,12 +255,12 @@ function notify(msg,type='info',ms=2200){
   setTimeout(()=>{ t.classList.remove('show'); setTimeout(()=>t.remove(),180); }, ms);
 }
 
-/* -------- Basics -------- */
+/* ---------------- Basics ---------------- */
 const api = location.origin.replace(/:\\d+$/, ':4000');
 const KES = (x)=> new Intl.NumberFormat('en-KE',{style:'currency',currency:'KES'}).format(Number(x||0));
 function el(id){ return document.getElementById(id); }
 
-/* Clock sync (like Aviator) */
+/* Global clock (sync) */
 let healthSkew=0;
 async function syncClock(){ try{ const r=await fetch(`${api}/health`); const j=await r.json(); healthSkew=j.ts-Date.now(); }catch{} }
 setInterval(()=>{ const d=new Date(Date.now()+healthSkew); el('clock').textContent=d.toLocaleString(); }, 500); syncClock();
@@ -279,7 +307,7 @@ async function aviClear(){
   }catch{ notify('Clear failed','error'); }
 }
 
-/* Logo loader with fallbacks: .png -> .jpg -> .svg -> placeholder */
+/* Logo loader with fallbacks */
 function logoHTML(leagueFolder, abbr){
   const code = (abbr||'???').toUpperCase();
   const base = `/static/logos/${leagueFolder}/${code}`;
@@ -302,31 +330,90 @@ function logoHTML(leagueFolder, abbr){
   return img+ph;
 }
 
-/* Global view state */
+/* ------------- Rounds/Weeks engine ------------- */
+/*
+Football “Weeks”: 4-cycle (WEEK 1..4). Each week boundary = every 7 minutes.
+Dogs/Horses/Colors “Rounds”: 4 slots per cycle, spaced 3 minutes (e.g., :33/:36/:39/:42 style).
+We run a LIVE dial (conic-gradient) + label and auto-reload data on boundary.
+*/
+const dial = el('dial');
+const roundTimer = el('roundTimer');
+const liveText = el('liveText');
+const roundLabel = el('roundLabel');
+
+let MODE = 'football'; // football | dogs | horses | colors
+let weekIndex = 1;     // 1..4 (football)
+let roundIndex = 1;    // 1..4 (others)
+let nextBoundaryTs = null;
+let boundarySpanMs = 0;
+
+function ceilToStep(dateMs, stepMin){
+  const stepMs = stepMin*60*1000;
+  return Math.ceil(dateMs/stepMs)*stepMs;
+}
+function ceilTo3MinSlot(dateMs){
+  // next slot: round up to next multiple of 3 minutes
+  return ceilToStep(dateMs, 3);
+}
+function setFootballWeekTiming(){
+  MODE='football';
+  const now = Date.now()+healthSkew;
+  nextBoundaryTs = ceilToStep(now, 7);
+  boundarySpanMs = 7*60*1000;
+  roundLabel.textContent = `WEEK ${weekIndex}`;
+}
+function setRacingRoundTiming(){
+  MODE = (CURRENT_TAB==='dogs'?'dogs': CURRENT_TAB==='horses'?'horses':'colors');
+  const now = Date.now()+healthSkew;
+  nextBoundaryTs = ceilTo3MinSlot(now);
+  boundarySpanMs = 3*60*1000;
+  roundLabel.textContent = `ROUND ${roundIndex}`;
+}
+function advanceCycle(){
+  if (MODE==='football'){
+    weekIndex = (weekIndex % 4) + 1;
+    roundLabel.textContent = `WEEK ${weekIndex}`;
+    notify(`New WEEK ${weekIndex}`, 'success', 1500);
+    loadFootball(); // refresh fixtures view
+  } else {
+    roundIndex = (roundIndex % 4) + 1;
+    roundLabel.textContent = `ROUND ${roundIndex}`;
+    notify(`New ROUND ${roundIndex}`, 'success', 1500);
+    if (CURRENT_TAB==='dogs') loadRacing('dog');
+    if (CURRENT_TAB==='horses') loadRacing('horse');
+    if (CURRENT_TAB==='colors') loadColorsNumbers();
+  }
+}
+function tickDial(){
+  const now = Date.now()+healthSkew;
+  const remain = Math.max(0, (nextBoundaryTs||now) - now);
+  const ratio = boundarySpanMs ? 1 - remain / boundarySpanMs : 0;
+  const deg = Math.max(0, Math.min(360, ratio*360));
+  dial.style.setProperty('--p', deg+'deg');
+
+  // LIVE label + countdown text
+  const ss = Math.ceil(remain/1000);
+  const mm = Math.floor(ss/60), s = ss%60;
+  roundTimer.textContent = `Next in ${String(mm).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+
+  const liveWindow = remain <= 30*1000 || ratio>0.05; // show LIVE most of the cycle
+  dial.classList.toggle('live', liveWindow);
+  liveText.textContent = liveWindow ? 'LIVE' : '—';
+
+  if (remain<=0){
+    // move to next boundary
+    nextBoundaryTs += boundarySpanMs;
+    advanceCycle();
+  }
+}
+setInterval(tickDial, 500);
+
+/* ------------- Global view state ------------- */
 let CURRENT = null; // {event, market, selection}
 let CURRENT_TAB = 'football';
 let CURRENT_LEAGUE = 'EPL';
 let CURRENT_MARKET = 'MAIN';
 const MARKET_TABS = ['MAIN','OU15','OU25','BTTS','H15','A15','CMB15','CMB25'];
-
-/* Round countdown */
-let nextRoundAt = null;
-let lastRoundKey = '';
-function startRoundTimer(){
-  clearInterval(startRoundTimer._t);
-  function tick(){
-    if (!nextRoundAt){ el('roundTimer').textContent = 'Next round —'; return; }
-    const now = Date.now()+healthSkew;
-    const ms = Math.max(0, nextRoundAt - now);
-    const s = Math.floor(ms/1000);
-    el('roundTimer').textContent = `Next round in ${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
-    if (ms===0){
-      notify('New round loaded','success',1400);
-    }
-  }
-  tick();
-  startRoundTimer._t = setInterval(tick, 500);
-}
 
 /* Betslip */
 function showSlip(show){ el('betslip').style.display=show?'block':'none'; el('noSlip').style.display=show?'none':'block'; }
@@ -390,16 +477,20 @@ function renderTickets(list){
     const ref = t.ref || `T-${(t.id||'').slice(0,8).toUpperCase()}`;
     d.innerHTML = `
       <div class="wm ${t.status||'OPEN'}">${t.status||'OPEN'}</div>
-      <div><b>${ref}</b> — ${t.game?.toUpperCase()||''} — ${t.status}</div>
+      <div><b>${ref}</b> — ${t.game?.toUpperCase()||''} — ${t.status||'OPEN'}</div>
       <div class="muted">${KES(t.stake)} • ${t.odds} → ${t.payout?KES(t.payout):'—'}</div>`;
     box.appendChild(d);
   });
 }
 
-/* ---------- FOOTBALL (no endless scroll; single market view) ---------- */
+/* ---------- FOOTBALL (single-market view; week cycle) ---------- */
 async function loadFootball(){
-  el('title').textContent = `Football — ${CURRENT_LEAGUE}`;
+  // week scheduler
+  setFootballWeekTiming();
+
+  el('leagueChips').style.display='flex';
   el('stage').innerHTML='';
+  el('roundTimer').title = '7-minute week cycles';
 
   // league chips
   const head = el('leagueChips'); head.innerHTML='';
@@ -423,18 +514,12 @@ async function loadFootball(){
   const all = (await (await fetch(`${api}/events?game=football`)).json()).filter(e=>e.league===CURRENT_LEAGUE);
   if (!all.length){ el('stage').innerHTML+='<div class="muted">No fixtures.</div>'; return; }
 
-  // Next round countdown: use earliest runsAt
-  const soon = all.reduce((a,b)=> (a && a.runsAt < b.runsAt) ? a : (!a?b:b), null);
-  if (soon){ nextRoundAt = soon.runsAt; startRoundTimer(); }
-
-  // Build one compact card per fixture for the SELECTED market only
-  for (const ev of all.slice(0, 12)){
+  // Build compact cards for the SELECTED market only
+  for (const ev of all.slice(0, 18)){
     const markets = await (await fetch(`${api}/markets/${ev.id}`)).json();
     const byType={}; markets.forEach(m=>byType[m.type]=m);
 
     const box = document.createElement('div'); box.className='list';
-
-    // header with circular logos & time
     const hbar = document.createElement('div'); hbar.className='fx-head';
     const clubs = document.createElement('div'); clubs.className='teams';
     const folder = CURRENT_LEAGUE.toLowerCase()==='epl'?'epl':(CURRENT_LEAGUE.toLowerCase()==='laliga'?'laliga':'ucl');
@@ -447,7 +532,6 @@ async function loadFootball(){
     hbar.appendChild(clubs); hbar.appendChild(tm);
     box.appendChild(hbar);
 
-    // chosen market only (no "@", compact grid)
     function rowFor(mdef, cols=3){
       if(!mdef) return;
       const row=document.createElement('div'); row.style.display='grid'; row.style.gridTemplateColumns=`repeat(${cols}, 1fr)`; row.style.gap='8px';
@@ -472,22 +556,23 @@ async function loadFootball(){
     el('stage').appendChild(box);
   }
 
-  // Up next (right column)
+  // Up next (sidebar)
   el('next').innerHTML='';
-  all.slice(0,5).forEach(n=>{
+  all.slice(0,6).forEach(n=>{
     const d=document.createElement('div'); d.className='sel';
     d.textContent=`${new Date(n.runsAt+healthSkew).toLocaleTimeString()} — ${n.home.abbr} vs ${n.away.abbr}`;
     el('next').appendChild(d);
   });
 }
 
-/* -------- Racing (Dogs/Horses) -------- */
+/* -------- Racing (Dogs/Horses) with 3-min rounds and 8-lane horses -------- */
 async function loadRacing(game){
-  el('leagueChips').style.display='none';
-  el('title').textContent = game==='dog'?'Dogs — WIN / FORECAST / QUINELLA / TRICAST':'Horses — WIN / FORECAST / QUINELLA / TRICAST';
-  el('stage').innerHTML='';
+  setRacingRoundTiming();
 
-  // market toggles like others (MAIN default), lanes sit BELOW this row
+  el('leagueChips').style.display='none';
+  el('stage').innerHTML='';
+  el('roundTimer').title = '3-minute round slots (x4)';
+
   if (!window.racingMkt) window.racingMkt = {dog:'MAIN', horse:'MAIN'};
   const mrow = document.createElement('div'); mrow.className='markets';
   ['MAIN','FORECAST','QUINELLA','TRICAST'].forEach(m=>{
@@ -500,28 +585,20 @@ async function loadRacing(game){
   const events = (await (await fetch(`${api}/events?game=${game}`)).json()).slice(0,3);
   if (!events.length){ el('stage').innerHTML+='<div class="muted">No events.</div>'; return; }
 
-  // countdown from earliest
-  const soon = events.reduce((a,b)=> (a && a.runsAt < b.runsAt) ? a : (!a?b:b), null);
-  if (soon){ nextRoundAt = soon.runsAt; startRoundTimer(); }
-
   for (const ev of events){
     const markets = await (await fetch(`${api}/markets/${ev.id}`)).json();
     const byType={}; markets.forEach(m=>byType[m.type]=m);
+    const main = byType['MAIN_WIN'];
 
     const box = document.createElement('div'); box.className='list';
-
     const head = document.createElement('div'); head.className='fx-head';
     const lab = document.createElement('div'); lab.className='title'; lab.textContent=`${new Date(ev.runsAt+healthSkew).toLocaleTimeString()} — ${game.toUpperCase()}`;
-    const tm = document.createElement('div'); tm.className='pill'; tm.textContent = 'Round';
+    const tm = document.createElement('div'); tm.className='pill'; tm.textContent = `ROUND ${roundIndex}`;
     head.appendChild(lab); head.appendChild(tm); box.appendChild(head);
-
-    // lanes BELOW markets row, with extra spacing
-    const main = byType['MAIN_WIN'];
-    const want = window.racingMkt[game];
 
     function addGrid(title, m, cols){
       if(!m) return;
-      const lab=document.createElement('div'); lab.className='muted'; lab.textContent=title; box.appendChild(lab);
+      const lbl=document.createElement('div'); lbl.className='muted'; lbl.textContent=title; box.appendChild(lbl);
       const row=document.createElement('div'); row.style.display='grid'; row.style.gridTemplateColumns=`repeat(${cols},1fr)`; row.style.gap='8px';
       m.selections.forEach(s=>{
         const b=document.createElement('div'); b.className='sel'; b.textContent=`${s.name.replace(/DOG|HORSE/gi,'').trim()} ${m.odds[s.id]}`;
@@ -530,21 +607,21 @@ async function loadRacing(game){
       box.appendChild(row);
     }
 
+    const want = window.racingMkt[game];
     if (want==='MAIN') addGrid('MAIN — WIN', byType['MAIN_WIN'], 3);
     if (want==='FORECAST') addGrid('FORECAST (Exacta)', byType['FORECAST'], 3);
     if (want==='QUINELLA') addGrid('QUINELLA', byType['QUINELLA'], 3);
     if (want==='TRICAST') addGrid('TRICAST', byType['TRICAST'], 3);
 
-    // spacing so lanes never overlap the markets row
     const spacer = document.createElement('div'); spacer.style.height='6px'; box.appendChild(spacer);
 
     if (main){
       const lanes = document.createElement('div'); lanes.className='track';
-      const count = game==='horse' ? 8 : main.selections.length; // horses: fixed 8 lanes
+      const count = game==='horse' ? 8 : Math.min(12, main.selections.length);
       for (let i=0;i<Math.min(count, main.selections.length);i++){
-        const r=document.createElement('div'); r.className='runner'; r.style.top=(12 + i*28)+'px';
-        r.animate([{transform:'translateX(0)'},{transform:'translateX(6px)'},{transform:'translateX(0)'}],
-          {duration:2000+Math.random()*1200,iterations:Infinity});
+        const r=document.createElement('div'); r.className='runner'; r.style.top=(12 + i*22)+'px';
+        r.animate([{transform:'translateX(0)'},{transform:'translateX(8px)'},{transform:'translateX(0)'}],
+          {duration:2200+Math.random()*1200,iterations:Infinity});
         r.title = main.selections[i].name; lanes.appendChild(r);
       }
       box.appendChild(lanes);
@@ -553,21 +630,26 @@ async function loadRacing(game){
     el('stage').appendChild(box);
   }
 
-  // “Up next”
+  // Up next (show the next 4 slots at 3-min steps)
   el('next').innerHTML='';
-  events.slice(0,5).forEach(n=>{
+  const base = ceilTo3MinSlot(Date.now()+healthSkew);
+  for(let i=0;i<4;i++){
+    const t = new Date(base + i*3*60*1000);
     const d=document.createElement('div'); d.className='sel';
-    d.textContent=`${new Date(n.runsAt+healthSkew).toLocaleTimeString()} — ${game.toUpperCase()}`;
+    d.textContent = `${t.toLocaleTimeString()} — ROUND ${((roundIndex+i-1)%4)+1}`;
     el('next').appendChild(d);
-  });
+  }
 }
 
-/* -------- Colors & Numbers (merged, colored balls present) -------- */
+/* -------- Colors & Numbers (merged, colored numbers) -------- */
 async function loadColorsNumbers(){
-  el('leagueChips').style.display='none';
-  el('title').textContent = 'Colors & Numbers — glossy balls';
-  el('stage').innerHTML='';
+  setRacingRoundTiming();
 
+  el('leagueChips').style.display='none';
+  el('stage').innerHTML='';
+  el('roundTimer').title = '3-minute round slots (x4)';
+
+  // COLORS
   const evC = (await (await fetch(`${api}/events?game=colors`)).json())[0];
   const marketsC = await (await fetch(`${api}/markets/${evC.id}`)).json();
   const mC = marketsC.find(x=>x.type==='MAIN_COLOR');
@@ -575,7 +657,7 @@ async function loadColorsNumbers(){
   const boxC=document.createElement('div'); boxC.className='list';
   boxC.innerHTML = `<div class="muted">Colors</div>`;
   const gridC=document.createElement('div'); gridC.className='balls colors';
-  mC.selections.forEach(s=>{
+  mC?.selections?.forEach(s=>{
     const b=document.createElement('div'); b.className=`ball ${s.id}`; b.textContent=s.id[0];
     b.title = `${s.name} ${mC.odds[s.id]}`;
     b.onclick=()=>choose(evC,mC,s);
@@ -584,15 +666,18 @@ async function loadColorsNumbers(){
   boxC.appendChild(gridC);
   el('stage').appendChild(boxC);
 
+  // NUMBERS (1–49) — colored by cycling RED/BLUE/GREEN/YELLOW/PURPLE/BLACK
   const evN = (await (await fetch(`${api}/events?game=lotto49`)).json())[0];
   const marketsN = await (await fetch(`${api}/markets/${evN.id}`)).json();
   const mN = marketsN.find(x=>x.type==='PICK1');
 
+  const colors = ['RED','BLUE','GREEN','YELLOW','PURPLE','BLACK'];
   const boxN=document.createElement('div'); boxN.className='list';
   boxN.innerHTML = `<div class="muted">Numbers 1–49</div>`;
   const gridN=document.createElement('div'); gridN.className='balls numbers';
-  mN.selections.forEach(s=>{
-    const b=document.createElement('div'); b.className='ball BLACK'; b.textContent=s.id;
+  mN?.selections?.forEach(s=>{
+    const idx = (Number(s.id)-1) % colors.length;
+    const b=document.createElement('div'); b.className=`ball ${colors[idx]}`; b.textContent=s.id;
     b.title = `#${s.id} ${mN.odds[s.id]}`;
     b.onclick=()=>choose(evN,mN,s);
     gridN.appendChild(b);
@@ -600,9 +685,30 @@ async function loadColorsNumbers(){
   boxN.appendChild(gridN);
   el('stage').appendChild(boxN);
 
-  // countdown: pick the earlier of the two
-  const soon = Math.min(evC?.runsAt||Infinity, evN?.runsAt||Infinity);
-  if (isFinite(soon)){ nextRoundAt = soon; startRoundTimer(); }
+  // If backend provides "COLOR_MATCH_COUNT", render it as extra market
+  const matchCount = marketsC.find(x=>x.type==='COLOR_MATCH_COUNT');
+  if (matchCount){
+    const boxM=document.createElement('div'); boxM.className='list';
+    boxM.innerHTML = `<div class="muted">Color — Number of matches</div>`;
+    const row=document.createElement('div'); row.style.display='grid'; row.style.gridTemplateColumns=`repeat(3,1fr)`; row.style.gap='8px';
+    matchCount.selections.forEach(s=>{
+      const b=document.createElement('div'); b.className='sel'; b.textContent=`${s.name} ${matchCount.odds[s.id]}`;
+      b.onclick=()=>choose(evC,matchCount,s);
+      row.appendChild(b);
+    });
+    boxM.appendChild(row);
+    el('stage').appendChild(boxM);
+  }
+
+  // Up next (show 4 upcoming round times)
+  el('next').innerHTML='';
+  const base = ceilTo3MinSlot(Date.now()+healthSkew);
+  for(let i=0;i<4;i++){
+    const t = new Date(base + i*3*60*1000);
+    const d=document.createElement('div'); d.className='sel';
+    d.textContent = `${t.toLocaleTimeString()} — ROUND ${((roundIndex+i-1)%4)+1}`;
+    el('next').appendChild(d);
+  }
 }
 
 /* -------- Tabs router -------- */
@@ -619,12 +725,31 @@ document.querySelectorAll('.tab[data-tab]').forEach(t=>{
   });
 });
 
-/* -------- Up next / Tickets periodic refresh -------- */
+/* -------- Tickets periodic refresh -------- */
+async function loadTickets(){
+  const r = await fetch(`${api}/bets?cashierId=${encodeURIComponent(CASHIER_ID)}`); const list = await r.json();
+  renderTickets(list);
+}
+function renderTickets(list){
+  const box = el('tickets'); box.innerHTML = '';
+  list.slice(0,14).forEach(t=>{
+    const d = document.createElement('div'); d.className='ticket';
+    const ref = t.ref || `T-${(t.id||'').slice(0,8).toUpperCase()}`;
+    d.innerHTML = `
+      <div class="wm ${t.status||'OPEN'}">${t.status||'OPEN'}</div>
+      <div><b>${ref}</b> — ${t.game?.toUpperCase()||''} — ${t.status||'OPEN'}</div>
+      <div class="muted">${KES(t.stake)} • ${t.odds} → ${t.payout?KES(t.payout):'—'}</div>`;
+    box.appendChild(d);
+  });
+}
+
+/* -------- Boot -------- */
 async function boot(){
   await refreshCashier();
-  await loadFootball();
+  await loadFootball();   // default tab
   await loadTickets();
 
+  // periodic refresh so page stays live
   setInterval(async ()=>{
     if (CURRENT_TAB==='football') await loadFootball();
     if (CURRENT_TAB==='dogs') await loadRacing('dog');
