@@ -154,6 +154,13 @@
 
   <div id="toaster" class="toaster"></div>
 
+  <!-- Spribe-like SFX (drop files in /static/sfx/); silent if not found -->
+  <audio id="sfx-bet"     src="/static/sfx/bet.mp3"     preload="auto"></audio>
+  <audio id="sfx-cash"    src="/static/sfx/cash.mp3"    preload="auto"></audio>
+  <audio id="sfx-takeoff" src="/static/sfx/takeoff.mp3" preload="auto"></audio>
+  <audio id="sfx-bust"    src="/static/sfx/bust.mp3"    preload="auto"></audio>
+  <audio id="sfx-flying"  src="/static/sfx/flying.mp3"  preload="auto" loop></audio>
+
 <script>
 /* endpoints */
 const API = {
@@ -177,107 +184,32 @@ function notify(msg,type='info',ms=2400){
   setTimeout(()=>{ t.classList.remove('show'); setTimeout(()=>t.remove(),180); }, ms);
 }
 
-/* ===== SFX (spribe-ish; takeoff, bust, cash, plus flying loop) ===== */
+/* SFX — Spribe files (toggle on/off) */
 const sndBtn = document.getElementById('soundBtn');
-const AudioCtx = window.AudioContext || window.webkitAudioContext;
-let ACTX=null, MASTER=null, SOUND_ON=false;
-
-let HUM=null, HUM_GAIN=null, HUM_LFO=null; // flying loop
-
-function ensureAudio(){
-  if (!ACTX){
-    ACTX = new AudioCtx();
-    MASTER = ACTX.createGain(); MASTER.gain.value = 0.20; MASTER.connect(ACTX.destination);
-  }
-}
-function env(g, t0, a=0.01, d=0.18){
-  g.gain.cancelScheduledValues(t0);
-  g.gain.setValueAtTime(0.0001, t0);
-  g.gain.linearRampToValueAtTime(g._max||0.35, t0 + a);
-  g.gain.exponentialRampToValueAtTime(0.0008, t0 + a + d);
-}
-function ping(type,f,vol=0.35,a=0.008,d=0.16){
-  if(!SOUND_ON||!ACTX) return;
-  const t=ACTX.currentTime;
-  const o=ACTX.createOscillator(); o.type=type; o.frequency.setValueAtTime(f,t);
-  const g=ACTX.createGain(); g._max=vol;
-  o.connect(g); g.connect(MASTER);
-  env(g,t,a,d);
-  o.start(t); o.stop(t+a+d+0.02);
-}
-function whooshTakeoff(){
-  if(!SOUND_ON||!ACTX) return;
-  const t=ACTX.currentTime;
-  const o=ACTX.createOscillator(); o.type='sawtooth'; o.frequency.setValueAtTime(280,t); o.frequency.exponentialRampToValueAtTime(1300,t+0.55);
-  const n=ACTX.createBufferSource();
-  const buf=ACTX.createBuffer(1, ACTX.sampleRate*0.6, ACTX.sampleRate);
-  const d=buf.getChannelData(0); for(let i=0;i<d.length;i++){ d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,1.5); }
-  n.buffer=buf;
-
-  const gO=ACTX.createGain(); gO._max=0.18; env(gO,t,0.03,0.5);
-  const gN=ACTX.createGain(); gN._max=0.22; env(gN,t,0.02,0.55);
-
-  o.connect(gO); gO.connect(MASTER);
-  n.connect(gN); gN.connect(MASTER);
-
-  o.start(t); o.stop(t+0.6);
-  n.start(t); n.stop(t+0.6);
-}
-function fallBust(){
-  if(!SOUND_ON||!ACTX) return;
-  const t=ACTX.currentTime;
-  const o=ACTX.createOscillator(); o.type='triangle'; o.frequency.setValueAtTime(1600,t); o.frequency.exponentialRampToValueAtTime(100,t+0.55);
-  const g=ACTX.createGain(); g._max=0.28; env(g,t,0.02,0.55);
-  o.connect(g); g.connect(MASTER); o.start(t); o.stop(t+0.6);
-}
-function cashChirp(){
-  if(!SOUND_ON||!ACTX) return;
-  ping('triangle',760,0.26,0.01,0.12);
-  setTimeout(()=>ping('triangle',1080,0.26,0.01,0.14),60);
-}
-
-/* flying hum (subtle) */
-function startHum(){
-  if(!SOUND_ON||!ACTX || HUM) return;
-  const t=ACTX.currentTime;
-
-  HUM = ACTX.createOscillator(); HUM.type='sawtooth'; HUM.frequency.value = 110;
-  HUM_GAIN = ACTX.createGain(); HUM_GAIN.gain.value=0.0;
-
-  HUM_LFO = ACTX.createOscillator(); HUM_LFO.type='sine'; HUM_LFO.frequency.value=7.5;
-  const lfoGain = ACTX.createGain(); lfoGain.gain.value = 12; // vibrato depth (Hz)
-  HUM_LFO.connect(lfoGain); lfoGain.connect(HUM.frequency);
-
-  HUM.connect(HUM_GAIN); HUM_GAIN.connect(MASTER);
-  HUM.start(t); HUM_LFO.start(t);
-
-  HUM_GAIN.gain.linearRampToValueAtTime(0.12, t+0.25); // fade in
-}
-function stopHum(){
-  if(!HUM || !ACTX) return;
-  const t=ACTX.currentTime;
-  HUM_GAIN.gain.cancelScheduledValues(t);
-  HUM_GAIN.gain.linearRampToValueAtTime(0.0, t+0.15);
-  setTimeout(()=>{
-    try{ HUM.stop(); HUM.disconnect(); HUM=null; }catch{}
-    try{ HUM_LFO.stop(); HUM_LFO.disconnect(); HUM_LFO=null; }catch{}
-    HUM_GAIN=null;
-  }, 220);
-}
-
-const SFX = {
-  toggle(){ SOUND_ON=!SOUND_ON; if(SOUND_ON){ ensureAudio(); sndBtn.textContent='🔊'; } else { sndBtn.textContent='🔇'; stopHum(); } },
-  play(name){
-    if(!SOUND_ON) return;
-    if(name==='bet') ping('square',920,0.22,0.002,0.07);
-    if(name==='cash') cashChirp();
-    if(name==='takeoff') whooshTakeoff();
-    if(name==='bust') fallBust();
-  },
-  humOn: startHum,
-  humOff: stopHum
+let SOUND_ON=false;
+const SFX_TAGS = {
+  bet:     document.getElementById('sfx-bet'),
+  cash:    document.getElementById('sfx-cash'),
+  takeoff: document.getElementById('sfx-takeoff'),
+  bust:    document.getElementById('sfx-bust'),
+  flying:  document.getElementById('sfx-flying')
 };
-sndBtn.onclick = ()=>{ try{ SFX.toggle(); if(SOUND_ON&&ACTX.state==='suspended') ACTX.resume(); }catch{} };
+function safePlay(tag){ if(!SOUND_ON || !tag) return; try{ tag.currentTime=0; tag.play().catch(()=>{});}catch{} }
+function safeStop(tag){ if(!tag) return; try{ tag.pause(); tag.currentTime=0; }catch{} }
+const SFX = {
+  toggle(){
+    SOUND_ON=!SOUND_ON;
+    sndBtn.textContent = SOUND_ON ? '🔊' : '🔇';
+    if(!SOUND_ON) safeStop(SFX_TAGS.flying);
+  },
+  play(name){
+    if(name==='bet')     safePlay(SFX_TAGS.bet);
+    if(name==='cash')    safePlay(SFX_TAGS.cash);
+    if(name==='takeoff'){ safePlay(SFX_TAGS.takeoff); safePlay(SFX_TAGS.flying); }
+    if(name==='bust'){ safePlay(SFX_TAGS.bust); safeStop(SFX_TAGS.flying); }
+  }
+};
+sndBtn.onclick = ()=> SFX.toggle();
 
 /* ===== Clock & skew ===== */
 const clk=document.getElementById('clock'); let healthSkew=0;
@@ -316,13 +248,12 @@ function initStars(){
     });
   }
 }
-function drawStars(slideY){
+function drawStars(){
   ctx.save();
   for(const s of STARS){
-    const y = s.y - slideY*0.6;
     const tw = 0.6 + 0.4*Math.sin(s.w*tAccum + s.ph);
     ctx.fillStyle = `rgba(220,235,255,${s.a*tw})`;
-    ctx.beginPath(); ctx.arc(s.x, y, s.r, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI*2); ctx.fill();
   }
   ctx.restore();
 }
@@ -339,16 +270,16 @@ function fit(){
 }
 fit(); addEventListener('resize',()=>requestAnimationFrame(fit));
 
-/* contrail particles — kept in world coords and drawn inside transform */
+/* contrail particles (world coords, anchored to bottom-left) */
 const PARTICLES=[];
 function spawnParticles(px,py,dt){
-  const count = Math.min(28, Math.round(18 * dt * (0.6 + 1.1*progressVis)));
+  const count = Math.min(30, Math.round(18 * dt * (0.6 + 1.1*progressVis)));
   for(let i=0;i<count;i++){
     PARTICLES.push({
       x: px + (Math.random()*6-3),
       y: py + (Math.random()*6-3),
-      vx: -24 - Math.random()*24,
-      vy:  7  + Math.random()*10,
+      vx: -20 - Math.random()*22,
+      vy:  6  + Math.random()*10,
       life: 0.9 + Math.random()*1.0,
       age: 0,
       r: 1.0 + Math.random()*1.4
@@ -372,49 +303,42 @@ function drawParticles(){
   }
 }
 
-/* plane sprite — spribe-ish, bolder silhouette */
+/* plane sprite (unbold) */
 const planeImg=new Image();
 planeImg.src='data:image/svg+xml;utf8,'+encodeURIComponent(`
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 72">
-  <defs>
-    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur stdDeviation="2.2" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-  </defs>
-  <g fill="#ff4d6d" stroke="#ff4d6d" stroke-width="2.2" filter="url(#glow)">
-    <path d="M8 42 L74 36 L154 34 L128 46 L74 44 Z" opacity="0.9"/>
-    <path d="M28 30 L86 20 L124 14 L140 18 L86 28 L28 32 Z" opacity="1"/>
-    <path d="M126 20 L154 34 L126 38 Z" opacity="1"/>
-    <rect x="73" y="28" width="14" height="8" rx="2" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 60">
+  <g fill="#ff4d6d" stroke="#ff8aa0" stroke-width="1.2">
+    <path d="M4 36 L62 30 L138 30 L110 40 L62 38 L4 36 Z" opacity=".55"/>
+    <path d="M22 28 L66 20 L104 14 L122 18 L66 26 L22 28 Z" opacity=".95"/>
+    <path d="M110 18 L136 29 L110 34 Z" opacity=".95"/>
+    <rect x="61" y="24" width="10" height="6" rx="2" opacity=".95"/>
   </g>
 </svg>`);
 
-/* UI chips (no duplicates between top strip and drawer) */
+/* UI chips */
 function chipClass(v){ return v>=2?'good':(v>=1.3?'avg':'bad'); }
 const chipsBox=document.getElementById('chips'); const drawerGrid=document.getElementById('drawerGrid');
 const expander=document.getElementById('expander'); const moreBtn=document.getElementById('moreBtn');
 let expanded=false; moreBtn.onclick=()=>{ expanded=!expanded; expander.style.display=expanded?'block':'none'; };
-
 function paintChips(list){
-  const data = Array.isArray(list) ? list : [];
-  const HEAD = 6, MAX_DRAWER = 96;
-
+  // show first 6 on top
+  const topSix = (list||[]).slice(0,6);
   chipsBox.innerHTML='';
-  data.slice(0, HEAD).forEach(v=>{
+  topSix.forEach(v=>{
     const c=document.createElement('div'); c.className='chip '+chipClass(v);
     c.textContent=Number(v).toFixed(2)+'x'; c.title=c.textContent; chipsBox.appendChild(c);
   });
-
+  // drawer: remaining (no duplicate of top row)
+  const rest = (list||[]).slice(6);
   drawerGrid.innerHTML='';
-  data.slice(HEAD, HEAD+MAX_DRAWER).forEach(v=>{
+  rest.forEach(v=>{
     const d=document.createElement('div'); d.className='chip '+chipClass(v);
     d.textContent=Number(v).toFixed(2)+'x'; d.title=d.textContent; drawerGrid.appendChild(d);
   });
 }
 const centerText=document.getElementById('centerText');
 
-/* ===== Flight model ===== */
+/* ===== Flight model (anchored) ===== */
 let STATE={ phase:'betting', multiplier:1, bust:2, history:[], speed:0.46, roundId:'-' };
 let gameSkew = 0;
 
@@ -434,7 +358,7 @@ function tFromMult(mult,bust){ if(!mult||mult<=1||!bust||bust<=1) return 0; retu
 function multFromT(t,bust){ const b=Math.max(1.000001,Number(bust||2)); return Math.pow(b, Math.max(0,Math.min(1,t))); }
 function damp(cur,tgt,rate,dt){ const k=Math.exp(-rate*Math.max(0,dt)); return cur*k + tgt*(1-k); }
 
-/* Path helpers — always start bottom-left; follow-cam keeps it visible */
+/* Path helpers — world coords start at bottom-left and never move */
 const DIAG_END = 0.30;
 function pathX(p, left, trackW){ const s = 1 - Math.exp(-2.4 * p); const base = left + trackW * DIAG_END * s; const wob = Math.pow(p,1.2)*(0.0011*trackW)*Math.sin(1.2*Math.PI*p); return base + wob; }
 function pathY(p, baseY, bust){
@@ -444,7 +368,7 @@ function pathY(p, baseY, bust){
   return baseY - Math.pow(p, pow) * (baseY * (0.95 * k));
 }
 
-/* draw */
+/* draw (no follow-cam on trail; plane can still scale slightly for drama) */
 let lastTs=performance.now();
 function draw(mult,phase,dt){
   ctx.clearRect(0,0,cssW,cssH);
@@ -452,10 +376,8 @@ function draw(mult,phase,dt){
   const left=0, baseY=cssH-1, trackW=cssW-1, bust=STATE.bust||2;
 
   // background
-  const tSky = (phase==='flying') ? progressVis : (phase==='busted' ? 1 : 0);
-  const slideY = tSky * cssH * 0.42;
   drawSun();
-  drawStars(slideY);
+  drawStars();
 
   if (phase === 'busted') {
     centerText.className='centerText flew';
@@ -473,63 +395,36 @@ function draw(mult,phase,dt){
     return;
   }
 
-  // FLYING
+  // FLYING (anchored path)
   const t = progressVis;
+  const steps=Math.max(2, Math.floor(340*t));
 
-  // plane tip world coords
-  const tipX=pathX(t, left, trackW), tipY=pathY(t, baseY, bust);
-
-  // Follow-cam so plane never disappears; smaller margins on phones
-  const isPhone = cssW < 640;
-  const marginTop = cssH * (isPhone ? 0.40 : 0.28);
-  const camDY = (tipY < marginTop) ? (marginTop - tipY) : 0;
-  const camScale = (isPhone ? (1 + t*0.14) : (1 + t*0.18));
-
-  ctx.save();
-  ctx.translate(0, camDY);
-  ctx.translate(left, baseY);
-  ctx.scale(camScale, camScale);
-  ctx.translate(-left, -baseY);
-
-  // ===== CONTRAIL (bold, inside only) =====
-  const steps=Math.max(2, Math.floor(360*t));
+  // trail stroke (bold-ish) + inside shading (anchored)
   ctx.beginPath(); ctx.moveTo(left, baseY);
-  for(let i=0;i<=steps;i++){ const p=i/360; ctx.lineTo(pathX(p,left,trackW), pathY(p,baseY,bust)); }
+  for(let i=0;i<=steps;i++){ const p=i/340; ctx.lineTo(pathX(p,left,trackW), pathY(p,baseY,bust)); }
+  ctx.strokeStyle='#ff4d6d'; ctx.lineWidth=2.6; ctx.stroke();
+  ctx.lineTo(pathX(t,left,trackW), baseY);
+  ctx.lineTo(left, baseY);
+  ctx.closePath();
+  ctx.fillStyle='rgba(255,77,109,0.18)';
+  ctx.globalCompositeOperation='source-over';
+  ctx.fill();
 
-  // glow stroke (outer)
-  ctx.save();
-  ctx.strokeStyle='rgba(255,77,109,0.25)';
-  ctx.lineWidth=12; ctx.lineJoin='round'; ctx.lineCap='round';
-  ctx.shadowColor='rgba(255,77,109,0.18)'; ctx.shadowBlur=14;
-  ctx.stroke();
-  ctx.restore();
-
-  // main stroke
-  ctx.strokeStyle='#ff4d6d';
-  ctx.lineWidth=4.5; ctx.lineJoin='round'; ctx.lineCap='round';
-  ctx.stroke();
-
-  // inner core
-  ctx.strokeStyle='rgba(255,210,220,0.65)';
-  ctx.lineWidth=2.2; ctx.stroke();
-
-  // particles (draw inside transform so positioning always matches plane)
+  // particles (anchored)
   const p2 = Math.max(0, t - 0.010);
   const px2 = pathX(p2, left, trackW), py2 = pathY(p2, baseY, bust);
   spawnParticles(px2, py2, dt);
   updateParticles(dt);
   drawParticles();
 
-  // plane sprite — bold
-  const BASE_PLANE_SCALE = isPhone ? 0.78 : 1.56;
-  const w=160*BASE_PLANE_SCALE, h=72*BASE_PLANE_SCALE;
-  const tailAx=8/160, tailAy=42/72; // anchor near exhaust
-  ctx.save();
-  ctx.translate(tipX, tipY);
-  ctx.drawImage(planeImg, -w*tailAx, -h*tailAy, w, h);
-  ctx.restore();
-
-  ctx.restore();
+  // plane sprite (slight scale with progress for drama; not bold)
+  const isPhone = cssW < 640;
+  const BASE_PLANE_SCALE = isPhone ? 0.75 : 1.5;
+  const scale = BASE_PLANE_SCALE * (1 + 0.10*t); // subtle zoom only
+  const w=140*scale, h=60*scale;
+  const tipX=pathX(t, left, trackW), tipY=pathY(t, baseY, bust);
+  const tailAx=4/140, tailAy=36/60;
+  ctx.save(); ctx.translate(tipX, tipY); ctx.drawImage(planeImg, -w*tailAx, -h*tailAy, w, h); ctx.restore();
 
   centerText.className='centerText multi';
   centerText.textContent = mult?`${Number(mult).toFixed(2)}x`:``;
@@ -595,7 +490,7 @@ function maybeNotifyAutoWins(currentMult){
 }
 
 /* polling */
-let lastPhase='betting', lastRoundId='-';
+let lastPhase='betting';
 async function poll(){
   try{
     const r=await fetch(API.aviState(),{cache:'no-store'}); if(!r.ok) throw 0;
@@ -605,7 +500,6 @@ async function poll(){
     const history = Array.isArray(j.history)? j.history : [];
     const bust = Number(j.bust || j.bustAt || 2);
     const speed = Number(j.speed || 0.46);
-    const roundId = j.roundId || '-';
     if (Number.isFinite(Number(j.serverNow))) gameSkew = Number(j.serverNow) - Date.now();
 
     if (lastPhase !== 'flying' && phase === 'flying'){
@@ -614,13 +508,11 @@ async function poll(){
       const offsetSec = Math.min(flightDurSec, Math.log(Math.max(1.000001,m)) / Math.max(0.01, speed));
       flightStartMs = performance.now() - offsetSec*1000;
       progressVis = 0;
-      if (roundId !== lastRoundId){ lastRoundId=roundId; }
-      SFX.play('takeoff'); SFX.humOn();
+      SFX.play('takeoff');
     }
-    if (lastPhase !== 'busted' && phase === 'busted'){ markAllLiveAsLost(m); SFX.play('bust'); SFX.humOff(); }
-    if (lastPhase !== 'betting' && phase === 'betting'){ SFX.humOff(); }
+    if (lastPhase !== 'busted' && phase === 'busted'){ markAllLiveAsLost(m); SFX.play('bust'); }
 
-    STATE={ phase, multiplier:m, history, bust, speed, roundId };
+    STATE={ phase, multiplier:m, history, bust, speed };
     paintChips(history);
     lastPhase = phase;
   }catch{}
@@ -655,7 +547,7 @@ function wireCard(pid){
       status.textContent='LIVE'; tEl.textContent=j.ticketId; pEl.textContent='—';
       addT({playerId:pid,ticketId:j.ticketId,stake,state:'LIVE'});
       notify(`Bet placed: ${KES(stake)}`, 'success', 1600);
-      if(SOUND_ON) ping('square',920,0.22,0.002,0.07);
+      SFX.play('bet');
       await refreshBal(pid);
     }catch{ notify('Network error placing bet','error'); }
   };
@@ -686,7 +578,7 @@ function wireCard(pid){
       status.textContent='LIVE'; tEl.textContent=j.ticketId; pEl.textContent='—';
       addT({playerId:pid,ticketId:j.ticketId,stake,autoCashOut:x,state:'LIVE'});
       notify(`Auto bet placed: ${KES(stake)} @ ${x}x`, 'success', 1700);
-      if(SOUND_ON) ping('square',920,0.22,0.002,0.07);
+      SFX.play('bet');
       await refreshBal(pid);
     }catch{ notify('Network error placing auto bet','error'); }
   };
