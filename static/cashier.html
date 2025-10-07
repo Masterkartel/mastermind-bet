@@ -577,7 +577,7 @@ function openReceipt(bet, shopName){
   try{ w.focus(); }catch{}
   return w;
 }
-/* Minimal Code39 barcode (A–Z, 0–9, - . $ / + % and space). */
+/* Minimal Code39 barcode */
 function drawCode39(canvas, text){
   const ctx=canvas.getContext('2d'); ctx.fillStyle='#000';
   const C={0:"nnnwwnwnn",1:"wnnwnnnnw",2:"nnwwnnnnw",3:"wnwwnnnnn",4:"nnnwwnnnw",5:"wnnwwnnnn",6:"nnwwwnnnn",7:"nnnwnnwnw",8:"wnnwnnwnn",9:"nnwwnnwnn",
@@ -593,11 +593,9 @@ function drawCode39(canvas, text){
       if(i%2===0){ ctx.fillRect(x,10,wide,100); }
       x+=wide;
     }
-    x+=unit; // narrow space between chars
+    x+=unit;
   }
 }
-
-/* Build a printable bet summary object */
 function makeBetSummary(apiResp, stake){
   const b = apiResp.bet||{};
   return {
@@ -620,7 +618,7 @@ async function placeBet(){
   if(LOCK_BETS){ return notify('Betting locked: round going live.', 'error'); }
   const stake=validateStake(el('stake').value); if(stake==null) return;
 
-  // quick balance pre-check to avoid backend error noise
+  // pre-check balance
   let bal=0;
   try{ const r=await API.get(`/cashier/${CASHIER_ID}/balance`); const j=await r.json(); bal=Number(j.balance||0); }catch{}
   if(stake>bal){ notify('Insufficient cashier balance.','error'); return; }
@@ -630,15 +628,14 @@ async function placeBet(){
     stake, cashierId:CASHIER_ID, slot:selectedSlot, label:CURRENT.label
   };
 
-  const btn=el('placeBtn'); btn.disabled=true;
+  const btn=el('placeBtn'); btn.disabled=true; btn.textContent='Placing…';
   try{
     const r=await API.post(`/bets`,payload); const j=await r.json();
-    if(!j || j.ok===false){ notify((j&&j.error)||'Bet failed','error'); btn.disabled=false; return; }
+    if(!j || j.ok===false){ notify((j&&j.error)||'Bet failed','error'); btn.disabled=false; btn.textContent='Place Bet'; return; }
 
     await refreshCashier(); await loadTickets();
     notify('Bet placed','success');
 
-    // open receipt + optional auto-print
     const summary = makeBetSummary(j, stake);
     const win = openReceipt(summary, CASHIER_ID.toUpperCase());
     if(el('autoPrint').checked){ setTimeout(()=>{ try{ win.print(); }catch{} }, 400); }
@@ -647,7 +644,7 @@ async function placeBet(){
   }catch(e){
     notify('Bet failed','error');
   }finally{
-    btn.disabled=false;
+    btn.disabled=false; btn.textContent='Place Bet';
   }
 }
 
@@ -680,7 +677,7 @@ async function loadTickets(){
 }
 
 /* RENDERERS */
-/* Football (speed-up: parallel market fetch for visible block) */
+/* Football */
 async function renderFootball(){
   renderGameTabs(); renderLeagueTabs(); renderMarketTabs(); buildWeekPager();
 
@@ -692,7 +689,6 @@ async function renderFootball(){
   const blocks=[]; for(let i=0;i<all.length;i+=10) blocks.push(all.slice(i,i+10));
   const blk = blocks[Math.min(blocks.length-1, weekPointer)];
 
-  // fetch all markets for this block in parallel
   const mkts = await Promise.all(blk.map(ev=>getMarkets(ev.id)));
 
   for(let i=0;i<blk.length;i++){
@@ -724,7 +720,10 @@ async function renderFootball(){
     const od=document.createElement('div'); od.className='oddsbar';
     (mdef.selections||[]).forEach(s=>{
       const b=document.createElement('div'); b.className='oddbtn'; b.textContent=mdef.odds[s.id];
-      b.title = `${s.name}`; b.onclick=()=>choose(ev,mdef,s); if(LOCK_BETS) b.setAttribute('disabled',''); od.appendChild(b);
+      b.title = `${s.name}`;
+      if(LOCK_BETS){ b.setAttribute('disabled',''); b.onclick=()=>notify('No bets allowed: game is LIVE / about to be live','error'); }
+      else{ b.onclick=()=>choose(ev,mdef,s); }
+      od.appendChild(b);
     });
     row.appendChild(od);
     stage.appendChild(row);
@@ -780,7 +779,8 @@ async function renderRacing(game){
         const wr=document.createElement('div'); wr.className='lanebtn';
         const tag=document.createElement('div'); tag.className='lanetag'; tag.textContent=String(idx+1);
         const b=document.createElement('div'); b.className='oddbtn small'; b.textContent=mdef.odds[s.id]; b.title=s.name.replace(/DOG|HORSE/gi,'').trim();
-        b.onclick=()=>choose(ev,mdef,s); if(LOCK_BETS) b.setAttribute('disabled','');
+        if(LOCK_BETS){ b.setAttribute('disabled',''); b.onclick=()=>notify('No bets allowed right now','error'); }
+        else{ b.onclick=()=>choose(ev,mdef,s); }
         wr.appendChild(tag); wr.appendChild(b); grid.appendChild(wr);
       });
       box.appendChild(grid);
@@ -802,7 +802,9 @@ async function renderColorsNumbers(){
   const gridC=document.createElement('div'); gridC.className='balls colors';
   (mC?.selections||[]).forEach(s=>{
     const w=document.createElement('div'); w.className='ballwrap';
-    const b=document.createElement('div'); b.className=`ball ${s.id}`; b.textContent=s.id[0]; b.onclick=()=>choose(evC,mC,s);
+    const b=document.createElement('div'); b.className=`ball ${s.id}`; b.textContent=s.id[0];
+    if(LOCK_BETS){ b.style.opacity=.5; b.onclick=()=>notify('No bets allowed right now','error'); }
+    else{ b.onclick=()=>choose(evC,mC,s); }
     const od=document.createElement('div'); od.className='oddlab'; od.textContent=mC.odds[s.id];
     w.appendChild(b); w.appendChild(od); gridC.appendChild(w);
   });
@@ -816,7 +818,9 @@ async function renderColorsNumbers(){
   (mN?.selections||[]).forEach(s=>{
     const idx=(Number(s.id)-1)%colors.length;
     const w=document.createElement('div'); w.className='ballwrap';
-    const b=document.createElement('div'); b.className=`ball ${colors[idx]}`; b.textContent=s.id; b.onclick=()=>choose(evN,mN,s);
+    const b=document.createElement('div'); b.className=`ball ${colors[idx]}`; b.textContent=s.id;
+    if(LOCK_BETS){ b.style.opacity=.5; b.onclick=()=>notify('No bets allowed right now','error'); }
+    else{ b.onclick=()=>choose(evN,mN,s); }
     const od=document.createElement('div'); od.className='oddlab'; od.textContent=mN.odds[s.id];
     w.appendChild(b); w.appendChild(od); gridN.appendChild(w);
   });
@@ -830,8 +834,6 @@ function renderAll(){
   if(CURRENT_TAB==='horses') renderRacing('horse');
   if(CURRENT_TAB==='colors') renderColorsNumbers();
 }
-
-function showSlip(b){ el('betslip').style.display=b?'block':'none'; el('noSlip').style.display=b?'none':'block'; }
 
 async function boot(){
   renderGameTabs(); renderLeagueTabs(); renderMarketTabs(); buildWeekPager();
